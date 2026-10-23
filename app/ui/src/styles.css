@@ -1,0 +1,597 @@
+:root {
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --fg: #1d2329;
+  --muted: #6b7480;
+  --border: #d8dce1;
+  --accent: #1f6feb;
+  --accent-bg: #e3edfd;
+  --warn: #b26b00;
+  --bad: #c62828;
+  --ok: #2e7d32;
+  --hover: #eceff3;
+  color-scheme: light;
+  font: 13px/1.35 system-ui, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191d;
+    --panel: #1d2127;
+    --fg: #e3e6ea;
+    --muted: #8e97a3;
+    --border: #333a43;
+    --accent: #4c8dff;
+    --accent-bg: #1c2b45;
+    --warn: #f0a646;
+    --bad: #ff6b6b;
+    --ok: #6cc070;
+    --hover: #262b33;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) {
+  background: var(--hover);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button.active,
+button.primary {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+input,
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+input[type="checkbox"],
+input[type="range"] {
+  vertical-align: middle;
+}
+input.narrow {
+  width: 70px;
+}
+input.wide {
+  width: 100%;
+  padding: 6px 8px;
+}
+
+a {
+  color: var(--accent);
+  cursor: pointer;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+.warn {
+  color: var(--warn);
+}
+.bad {
+  color: var(--bad);
+}
+.ok {
+  color: var(--ok);
+}
+.mono {
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+.grow {
+  flex: 1;
+}
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 4px;
+}
+.row {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0;
+  flex-wrap: wrap;
+}
+.row.end {
+  justify-content: flex-end;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Without this the column grows to the content (plots have a fixed pixel width). */
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+}
+
+.toolbar,
+.panel-toolbar,
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  flex-wrap: wrap;
+}
+.toolbar {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.brand {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.main {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+.center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.sidebar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+.bottom {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.splitter-v {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+}
+.splitter-h {
+  height: 5px;
+  cursor: row-resize;
+  background: var(--border);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.tabs button {
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+}
+.tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  color: #fff;
+  text-align: center;
+}
+.badge.bad {
+  background: var(--bad);
+}
+.badge.warn {
+  background: var(--warn);
+}
+
+/* Map */
+.map-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 120px;
+}
+.map {
+  position: absolute;
+  inset: 0;
+  background: #eef0f2;
+}
+.draw-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  z-index: 2;
+}
+.draw-shape {
+  fill: rgba(31, 111, 235, 0.12);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.map-cursor,
+.map-note {
+  position: absolute;
+  z-index: 3;
+  padding: 1px 6px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #222;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.map-cursor {
+  right: 6px;
+  bottom: 22px;
+}
+.map-note {
+  left: 6px;
+  top: 6px;
+}
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #555;
+  font-size: 15px;
+  pointer-events: none;
+}
+
+/* Timeline */
+.timeline {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+.timeline-empty {
+  padding: 6px 10px;
+  color: var(--muted);
+}
+.timeline-canvas {
+  padding: 0 8px 4px;
+}
+.timeline-canvas canvas {
+  display: block;
+  cursor: grab;
+  --fg: inherit;
+}
+
+/* Panels */
+.panel-empty {
+  padding: 14px;
+  color: var(--muted);
+}
+.panel-error {
+  margin: 6px 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+}
+.plot-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.plot-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 2px solid;
+  border-radius: 10px;
+  padding: 0 0 0 7px;
+}
+.chip button {
+  border: none;
+  background: none;
+  padding: 0 6px;
+}
+
+.props,
+.style-panel {
+  padding: 8px 10px;
+}
+.props h3 {
+  margin: 2px 0 6px;
+  font-size: 15px;
+}
+.props h4,
+.report-summary h4,
+.report-block h4 {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+table.kv {
+  border-collapse: collapse;
+  width: 100%;
+}
+table.kv td,
+table.kv th {
+  padding: 2px 6px 2px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+table.kv th {
+  font-weight: 500;
+  color: var(--muted);
+}
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+.id-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 8px;
+}
+
+.style-section {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+.style-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.style-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 6px 0;
+}
+.field {
+  display: flex;
+  gap: 6px;
+}
+.legend {
+  margin-top: 6px;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 2px 0;
+}
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+/* Report */
+.report-panel {
+  display: flex;
+  height: 100%;
+}
+.report-side {
+  width: 260px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+.report-head {
+  padding: 6px 8px;
+  font-size: 12px;
+  word-break: break-all;
+}
+.summary-item {
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.summary-item:hover {
+  background: var(--hover);
+}
+.summary-item.active {
+  background: var(--accent-bg);
+}
+.report-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.report-summary,
+.report-block {
+  padding: 4px 12px;
+}
+.report-block {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.msg {
+  padding: 2px 0;
+}
+.msg-error b {
+  color: var(--bad);
+}
+.msg-warning b {
+  color: var(--warn);
+}
+pre.notes {
+  margin: 0 0 6px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.table-box {
+  flex: 1;
+  min-height: 100px;
+  overflow: auto;
+}
+table.grid {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+table.grid th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: 500;
+}
+table.grid td {
+  padding: 0 8px;
+  height: 22px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+table.grid tr.link-row {
+  cursor: pointer;
+}
+table.grid tr.link-row:hover td {
+  background: var(--hover);
+}
+table.grid tr.footer-row td {
+  font-weight: 600;
+}
+
+/* Status bar */
+.statusbar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 3px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.busy {
+  color: var(--accent);
+}
+.progress {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  vertical-align: middle;
+  overflow: hidden;
+}
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* CRS dialog */
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.modal {
+  width: min(640px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+.modal h3 {
+  margin: 0;
+}
+.modal p {
+  margin: 0;
+}
+.crs-list {
+  overflow: auto;
+  min-height: 60px;
+  max-height: 40vh;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.crs-item {
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.crs-item:hover {
+  background: var(--hover);
+}
+
+/* uPlot legend in the theme colours */
+.u-legend {
+  font-size: 12px;
+  color: var(--fg);
+}

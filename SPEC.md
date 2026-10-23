@@ -299,6 +299,37 @@ Findings that change the spec:
 - Engines can be run without a console window, so the runner stops them itself on cancel (Ctrl+C in the CLI). `runswmm` starts no child processes, so a Windows Job Object is not needed.
 - Not done in M0: Parquet export (CSV only; Parquet stays in F-CLI-2, P1).
 
+### 6.2 M1 status (done, 2026-10-23)
+
+Delivered:
+- `swmm-geo`: EPSG registry with search by code or name, `EPSG:xxxx` or PROJ strings, reprojection to WGS 84 with `proj4rs` (datum shifts by `towgs84`), Web Mercator, R-tree (box, lasso, nearest).
+- `swmm-model`: read-only network (nodes, links, subcatchments, rain gages, connectivity, geometry), named properties of every in-scope section, numeric input attributes for thematic maps.
+- `swmm-out`: multi-resolution min/max from the cache's chunk summaries (no decompression for coarse zooms), whole-run statistics with or without cache, next-event search that skips chunks below the threshold.
+- Tauri 2 app (`app/src-tauri`, `app/ui`): F-FILE-1 (open), F-FILE-3, F-FILE-4 (`.swproj`: CRS, basemap, view, styles, linked results), F-GEO-1/2/3, F-GEO-8 (cartesian view without CRS; `[BACKDROP]` not drawn yet), F-MAP-1/2/3/4, F-SIM-4 (report messages linked to objects, continuity thresholds), F-RES-1, F-RES-2 (PNG/CSV; no SVG), F-RES-3, find object by ID (F-MAP-6, partly).
+- Results cache built automatically in the background when a `.out` without a valid cache is opened (§6.1 finding).
+- `swmm-cli out synth --inp` writes a model matching a synthetic `.out` (same IDs, grid in Lambert 93) for tests at scale.
+
+Verification: Rust unit tests for every crate and for the app session (synthetic `.out` with shuffled object order, report, CRS, selection, geometry buffer); UI smoke test (`app/ui/e2e/smoke.mjs`, Playwright over the WebView2 DevTools protocol, real mouse events) on the release build with: `tiny.inp` (EPA 5.2.4 run), a real 2,905-node / 3,118-link model in NTF Lambert Sud (EPSG:27563, 68 MB `.out` from EPA 5.2.4; pipes line up with the streets of the OSM basemap), a 112,001-object synthetic model, and a one-year 5-min run (105,192 periods, 1 GB).
+
+Measured on the same 15 W laptop as §6.1 (release build, 1400×900 window):
+
+| Metric | 112k objects (50k nodes, 52k links, 10k subcatchments) | 1 year at 5 min (105k periods, 450 objects) | Target |
+|---|---|---|---|
+| Open `.inp` + results + geometry to the UI | 0.8–1.2 s | 0.2–0.3 s | < 2 s |
+| Set CRS (reproject + index + geometry to the UI) | 0.2–0.45 s | 0.16 s | — |
+| Pan / zoom, all layers + basemap | 41–61 fps (lower while new tiles load) / 57–61 fps | 61 / 60 fps | 60 fps |
+| Change time step (2 frames + colours + draw), median / p90 over 30 steps | 18–33 / 32–37 ms (varies between runs) | 21 / 40 ms | < 30 ms (met on median in most runs, not always) |
+| Click pick / box select of everything | 50–70 ms / 60–115 ms | < 50 ms | — |
+| Full-run series plot, cache built (≤ 1 min/max pair per pixel) | — | 5–7 ms | < 50 ms |
+| Full-run series before the cache is built | — | refused, cache built in ~1 s (file in OS cache) | < 5 s |
+
+Findings that change the spec:
+- deck.gl only uploads typed arrays directly for instanced layers; accessor-based colour updates of 100k paths took ~40 ms per time step. Links are therefore drawn as one instance per segment (`LineLayer`, no round joins) with per-instance colour and width arrays, nodes as instanced points; only subcatchment polygons use accessors. Geometry is sent once as `Float64` lon/lat (deck.gl splits it for 64-bit precision), not as `Float32` offsets.
+- The cost of a time step is now dominated by IPC (~3 ms fixed per call, ~10 ms for two 50k-value frames).
+- OSM tile policy: the WebView's User-Agent is set to identify SWMM Studio; HTTP caching is the WebView's. No bulk prefetch.
+- A series over a long range is not read directly from the `.out` when that would touch more than 256 MB; the request waits for the cache (the UI says so and refreshes when it is ready).
+- Not done in M1: hover tooltips, measure tool, subcatchment→outlet connectors, flow arrows (P1); SVG plot export; `[BACKDROP]` image; i18n (English only); dockable panels (fixed layout with resizable panels).
+
 ---
 
 ## 7. Licence

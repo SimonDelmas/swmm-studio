@@ -1,0 +1,33 @@
+[package]
+name = "swmm-studio"
+description = "SWMM Studio desktop application (Tauri shell)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "swmm-studio"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+swmm-inp.workspace = true
+swmm-out.workspace = true
+swmm-rpt.workspace = true
+swmm-geo.workspace = true
+swmm-model.workspace = true
+swmm-engine.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+[dev-dependencies]
+tempfile.workspace = true

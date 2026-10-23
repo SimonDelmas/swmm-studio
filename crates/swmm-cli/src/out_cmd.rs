@@ -84,6 +84,15 @@ pub enum OutCmd {
         step: i32,
         #[arg(long, default_value_t = 1)]
         seed: u64,
+        /// Also write a matching model (.inp) with the same IDs, on a grid.
+        #[arg(long)]
+        inp: Option<PathBuf>,
+        /// Grid origin `x,y` of that model (default: Lyon, Lambert 93).
+        #[arg(long, default_value = "842000,6519000", value_delimiter = ',', num_args = 2)]
+        origin: Vec<f64>,
+        /// Grid spacing in model units.
+        #[arg(long, default_value_t = 30.0)]
+        spacing: f64,
     },
 }
 
@@ -127,7 +136,7 @@ pub fn run(cmd: &OutCmd) -> Result<ExitCode> {
         OutCmd::Export { out, kind: k, ids, vars, from, to, output } => {
             export(out, kind(k)?, ids, vars, from.as_deref(), to.as_deref(), output.as_deref())
         }
-        OutCmd::Synth { out, subcatchments, nodes, links, periods, years, step, seed } => {
+        OutCmd::Synth { out, subcatchments, nodes, links, periods, years, step, seed, inp, origin, spacing } => {
             let periods = match (periods, years) {
                 (Some(p), _) => *p,
                 (None, Some(y)) => (y * 365.25 * 86_400.0 / *step as f64).round() as usize,
@@ -142,6 +151,10 @@ pub fn run(cmd: &OutCmd) -> Result<ExitCode> {
                 start: NaiveDate::from_ymd_opt(2020, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap(),
                 seed: *seed,
             };
+            if let Some(inp) = inp {
+                std::fs::write(inp, synth::model_inp(&spec, [origin[0], origin[1]], *spacing))?;
+                println!("model written to {}", inp.display());
+            }
             println!("writing {} periods, ~{}", periods, human(spec.file_size()));
             let t0 = std::time::Instant::now();
             let pb = bar(periods as u64, "{spinner} [{bar:40}] {percent:>3}% {binary_bytes_per_sec} eta {eta}");

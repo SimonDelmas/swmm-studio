@@ -175,3 +175,82 @@ fn real_engine_file() {
         m.n_periods
     );
 }
+
+/// Exact min/max of `values` over each bucket starting at `starts` (ending at `end`).
+fn expected_minmax(values: &[f32], starts: &[usize], end: usize) -> Vec<(f32, f32)> {
+    (0..starts.len())
+        .map(|i| {
+            let b = starts[i]..starts.get(i + 1).copied().unwrap_or(end);
+            values[b].iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), &v| (lo.min(v), hi.max(v)))
+        })
+        .collect()
+}
+
+#[test]
+fn multi_resolution_series_from_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("m.out");
+    synth::generate(&path, &spec(1, 3, 3, 10_000), |_| {}).unwrap();
+    let mut results = Results::open(&path).unwrap();
+    let direct = results.out().series(ElementKind::Node, 1, 0, 0..10_000).unwrap();
+    let opts = CacheOptions { chunk_len: 100, ..Default::default() };
+    results.build_cache(&opts, |_| {}, &AtomicBool::new(false)).unwrap();
+    for (range, buckets) in [(0..10_000, 20), (150..9_930, 30), (1234..1300, 10), (0..10_000, 1)] {
+        let mm = results.series_minmax(ElementKind::Node, 1, 0, range.clone(), buckets).unwrap();
+        assert!(mm.len() <= buckets + 2, "{range:?}: {} buckets", mm.len());
+        assert_eq!(mm.periods[0], range.start);
+        assert!(mm.periods.windows(2).all(|w| w[0] < w[1]));
+        let want = expected_minmax(&direct, &mm.periods, range.end);
+        let got: Vec<(f32, f32)> = mm.min.iter().copied().zip(mm.max.iter().copied()).collect();
+        assert_eq!(got, want, "{range:?}");
+    }
+    // Same statistics without the cache.
+    let stats = results.stats(ElementKind::Node, 1, 0).unwrap();
+    drop(results);
+    std::fs::remove_file(cache::default_cache_path(&path)).unwrap();
+    let plain = Results::open(&path).unwrap();
+    assert!(plain.cache().is_none());
+    let s2 = plain.stats(ElementKind::Node, 1, 0).unwrap();
+    assert_eq!((stats.max, stats.argmax, stats.nonzero), (s2.max, s2.argmax, s2.nonzero));
+}
+
+#[test]
+fn next_rise_finds_event_starts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("e.out");
+    synth::generate(&path, &spec(1, 2, 2, 5_000), |_| {}).unwrap();
+    let mut results = Results::open(&path).unwrap();
+    let v = results.out().series(ElementKind::Link, 0, 0, 0..5_000).unwrap();
+    let mut sorted = v.clone();
+    sorted.sort_by(f32::total_cmp);
+    let threshold = sorted[sorted.len() * 9 / 10];
+    let want: Vec<usize> = (1..v.len()).filter(|&p| v[p] > threshold && v[p - 1] <= threshold).collect();
+    assert!(!want.is_empty());
+    let walk = |r: &Results| {
+        let mut found = Vec::new();
+        let mut at = 0;
+        while let Some(p) = r.next_rise(ElementKind::Link, 0, 0, at, threshold).unwrap() {
+            found.push(p);
+            at = p;
+        }
+        found
+    };
+    assert_eq!(walk(&results), want);
+    results
+        .build_cache(&CacheOptions { chunk_len: 64, ..Default::default() }, |_| {}, &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(walk(&results), want);
+    assert_eq!(results.next_rise(ElementKind::Link, 0, 0, 0, f32::MAX).unwrap(), None);
+}
+
+#[test]
+fn synthetic_model_matches_ids() {
+    let s = spec(5, 10, 12, 3);
+    let text = synth::model_inp(&s, [0.0, 0.0], 10.0);
+    for id in ["S5 RG1", "N9 ", "N10 ", "L12 N", "L12 CIRCULAR", "S5 "] {
+        assert!(text.contains(id), "{id} missing");
+    }
+    assert!(text.contains("[OUTFALLS]\nN10 "));
+    assert!(!text.contains("L13 "));
+    assert!(text.contains("REPORT_STEP 00:05:00"));
+}

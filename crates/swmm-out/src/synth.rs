@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeDelta};
 
 use crate::format::{self, ElementKind};
 use crate::writer::{OutSpec, OutWriter};
@@ -182,4 +182,91 @@ pub fn generate(path: impl AsRef<Path>, s: &SynthSpec, mut progress: impl FnMut(
     w.finish(0)?;
     progress(s.periods);
     Ok(())
+}
+
+/// A SWMM model matching a synthetic results file: same IDs (`S1…`, `N1…`, `L1…`),
+/// nodes on a grid (`spacing` apart, starting at `origin`), links along the rows then
+/// down the columns, one square subcatchment per node. Used to test viewers at scale.
+pub fn model_inp(s: &SynthSpec, origin: [f64; 2], spacing: f64) -> String {
+    use std::fmt::Write;
+    let cols = (s.nodes as f64).sqrt().ceil().max(1.0) as usize;
+    let xy = |i: usize| (origin[0] + (i % cols) as f64 * spacing, origin[1] - (i / cols) as f64 * spacing);
+    let mut t = String::new();
+    let dt = |d: NaiveDateTime| d.format("%m/%d/%Y").to_string();
+    let tm = |d: NaiveDateTime| d.format("%H:%M:%S").to_string();
+    let step = TimeDelta::seconds(s.report_step_secs as i64);
+    let end = s.start + step * s.periods as i32;
+    let rs = s.report_step_secs;
+    let _ = writeln!(
+        t,
+        "[TITLE]\nSynthetic network: {} nodes, {} links, {} subcatchments\n",
+        s.nodes, s.links, s.subcatchments
+    );
+    let _ = writeln!(
+        t,
+        "[OPTIONS]\nFLOW_UNITS CMS\nSTART_DATE {}\nSTART_TIME {}\nREPORT_START_DATE {}\nREPORT_START_TIME {}\nEND_DATE {}\nEND_TIME {}\nREPORT_STEP {:02}:{:02}:{:02}\n",
+        dt(s.start),
+        tm(s.start),
+        dt(s.start),
+        tm(s.start),
+        dt(end),
+        tm(end),
+        rs / 3600,
+        rs / 60 % 60,
+        rs % 60
+    );
+    let _ = writeln!(t, "[RAINGAGES]\nRG1 INTENSITY 0:05 1.0 TIMESERIES TS1\n");
+    t.push_str("[SUBCATCHMENTS]\n");
+    for i in 0..s.subcatchments {
+        let _ = writeln!(t, "S{} RG1 N{} 1 50 100 1 0", i + 1, i % s.nodes.max(1) + 1);
+    }
+    t.push_str("\n[JUNCTIONS]\n");
+    for i in 0..s.nodes.saturating_sub(1) {
+        let _ = writeln!(t, "N{} {:.2} 3 0 0 0", i + 1, 100.0 - i as f64 * 0.05);
+    }
+    if s.nodes > 0 {
+        let _ = writeln!(t, "\n[OUTFALLS]\nN{} {:.2} FREE NO", s.nodes, 100.0 - (s.nodes - 1) as f64 * 0.05);
+    }
+    // Links: along each row, then down the first column, then extra cross links.
+    let mut pairs = Vec::with_capacity(s.links);
+    for i in 0..s.nodes.saturating_sub(1) {
+        if (i + 1) % cols != 0 {
+            pairs.push((i, i + 1));
+        }
+    }
+    for r in 0..s.nodes / cols {
+        if (r + 1) * cols < s.nodes {
+            pairs.push((r * cols, (r + 1) * cols));
+        }
+    }
+    let mut k = 0;
+    while pairs.len() < s.links && s.nodes > cols {
+        pairs.push((k % (s.nodes - cols), k % (s.nodes - cols) + cols));
+        k += 1;
+    }
+    pairs.truncate(s.links);
+    t.push_str("\n[CONDUITS]\n");
+    for (i, (a, b)) in pairs.iter().enumerate() {
+        let _ = writeln!(t, "L{} N{} N{} {spacing} 0.013 0 0 0 0", i + 1, a + 1, b + 1);
+    }
+    t.push_str("\n[XSECTIONS]\n");
+    for i in 0..pairs.len() {
+        let _ = writeln!(t, "L{} CIRCULAR {} 0 0 0 1", i + 1, [0.3, 0.4, 0.6, 0.8, 1.0][i % 5]);
+    }
+    t.push_str("\n[TIMESERIES]\nTS1 0 0\nTS1 1 10\nTS1 2 0\n\n[COORDINATES]\n");
+    for i in 0..s.nodes {
+        let (x, y) = xy(i);
+        let _ = writeln!(t, "N{} {x:.2} {y:.2}", i + 1);
+    }
+    t.push_str("\n[POLYGONS]\n");
+    let h = spacing * 0.35;
+    for i in 0..s.subcatchments {
+        let (x, y) = xy(i % s.nodes.max(1));
+        let (x, y) = (x + spacing / 2.0, y - spacing / 2.0);
+        for (dx, dy) in [(-h, -h), (h, -h), (h, h), (-h, h)] {
+            let _ = writeln!(t, "S{} {:.2} {:.2}", i + 1, x + dx, y + dy);
+        }
+    }
+    let _ = writeln!(t, "\n[SYMBOLS]\nRG1 {:.2} {:.2}", origin[0] - spacing, origin[1] + spacing);
+    t
 }

@@ -1,0 +1,112 @@
+// Typed wrappers over the Tauri commands. Big arrays come back as ArrayBuffers.
+
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  BlockDto,
+  CrsEntry,
+  ElementKind,
+  Geometry,
+  MinMaxSeries,
+  ModelInfo,
+  ObjectInfo,
+  ObjKind,
+  ObjRef,
+  ResultsInfo,
+  Basemap,
+} from "./types";
+
+async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
+  const r = await invoke<ArrayBuffer | number[]>(cmd, args);
+  // Tauri returns an ArrayBuffer for `ipc::Response`; be lenient with plain arrays.
+  return r instanceof ArrayBuffer ? r : new Uint8Array(r).buffer;
+}
+
+export function decodeGeometry(buf: ArrayBuffer): Geometry {
+  const dv = new DataView(buf);
+  const magic = String.fromCharCode(...new Uint8Array(buf, 0, 4));
+  if (magic !== "SWG1") throw new Error("bad geometry buffer");
+  const space = dv.getUint32(4, true) === 1 ? "lonlat" : "cartesian";
+  const origin: [number, number] = [dv.getFloat64(8, true), dv.getFloat64(16, true)];
+  const [nNodes, nLinks, nLinkPts, nSubs, nSubPts, nGages] = [24, 28, 32, 36, 40, 44].map((o) =>
+    dv.getUint32(o, true),
+  );
+  let at = 64;
+  const f64 = (n: number) => {
+    const a = new Float64Array(buf, at, 2 * n);
+    at += 16 * n;
+    return a;
+  };
+  const nodes = f64(nNodes);
+  const linkPts = f64(nLinkPts);
+  const subPts = f64(nSubPts);
+  const gages = f64(nGages);
+  const u32 = (n: number) => {
+    const a = new Uint32Array(buf.slice(at, at + 4 * n));
+    at += 4 * n;
+    return a;
+  };
+  const linkStarts = u32(nLinks + 1);
+  const subStarts = u32(nSubs + 1);
+  const nodeTypes = new Uint8Array(buf, at, nNodes);
+  at += nNodes;
+  const linkTypes = new Uint8Array(buf, at, nLinks);
+  return { space, origin, nodes, nodeTypes, linkStarts, linkPts, linkTypes, subStarts, subPts, gages };
+}
+
+export const api = {
+  openModel: (path: string) => invoke<ModelInfo>("open_model", { path }),
+  modelInfo: () => invoke<ModelInfo>("model_info"),
+  geometry: async () => decodeGeometry(await buffer("geometry")),
+  ids: (kind: ObjKind) => invoke<string[]>("ids", { kind }),
+  searchCrs: (query: string) => invoke<CrsEntry[]>("search_crs", { query }),
+  setCrs: (crs: string | null) => invoke<ModelInfo>("set_crs", { crs }),
+  updateProject: (basemap?: Basemap, ui?: unknown) => invoke<void>("update_project", { basemap, ui }),
+  pick: (x: number, y: number, tol: number) => invoke<ObjRef | null>("pick", { x, y, tol }),
+  selectRect: (a: [number, number], b: [number, number]) => invoke<ObjRef[]>("select_rect", { a, b }),
+  selectPolygon: (ring: [number, number][]) => invoke<ObjRef[]>("select_polygon", { ring }),
+  findObject: (id: string) => invoke<ObjRef | null>("find_object", { id }),
+  objectInfo: (o: ObjRef, period: number | null) =>
+    invoke<ObjectInfo>("object_info", { kind: o.kind, index: o.index, period }),
+  attribute: async (kind: ObjKind, name: string) => new Float32Array(await buffer("attribute", { kind, name })),
+  openResults: (path: string) => invoke<ModelInfo>("open_results", { path }),
+  openReport: (path: string) => invoke<ModelInfo>("open_report", { path }),
+  frame: async (kind: ElementKind, v: number, period: number) =>
+    new Float32Array(await buffer("frame", { kind, var: v, period })),
+  envelope: async (kind: ElementKind, v: number) => new Float32Array(await buffer("envelope", { kind, var: v })),
+  series: async (
+    kind: ElementKind,
+    index: number,
+    v: number,
+    p0: number,
+    p1: number,
+    buckets: number,
+  ): Promise<MinMaxSeries> => {
+    const buf = await buffer("series", { kind, index, var: v, p0, p1, buckets: Math.max(1, Math.round(buckets)) });
+    const n = new DataView(buf).getUint32(0, true);
+    return {
+      periods: new Uint32Array(buf.slice(4, 4 + 4 * n)),
+      min: new Float32Array(buf.slice(4 + 4 * n, 4 + 8 * n)),
+      max: new Float32Array(buf.slice(4 + 8 * n, 4 + 12 * n)),
+    };
+  },
+  timeOfMax: (kind: ElementKind, index: number, v: number) => invoke<number>("time_of_max", { kind, index, var: v }),
+  nextEvent: (kind: ElementKind, index: number, v: number, from: number, threshold: number) =>
+    invoke<number | null>("next_event", { kind, index, var: v, from, threshold }),
+  reportBlock: (index: number) => invoke<BlockDto>("report_block", { index }),
+  rebuildCache: () => invoke<ModelInfo>("rebuild_cache"),
+  saveFile: (path: string, data: Uint8Array) =>
+    invoke<void>("save_file", data, { headers: { path: encodeURIComponent(path) } }),
+};
+
+export function onCacheProgress(f: (p: { path: string; progress: number }) => void): Promise<UnlistenFn> {
+  return listen<{ path: string; progress: number }>("cache-progress", (e) => f(e.payload));
+}
+
+export function onResultsChanged(f: (r: ResultsInfo) => void): Promise<UnlistenFn> {
+  return listen<ResultsInfo>("results-changed", (e) => f(e.payload));
+}
+
+export function errorText(e: unknown): string {
+  return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
+}

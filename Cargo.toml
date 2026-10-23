@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/*", "app/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,8 @@ swmm-inp = { path = "crates/swmm-inp" }
 swmm-out = { path = "crates/swmm-out" }
 swmm-rpt = { path = "crates/swmm-rpt" }
 swmm-engine = { path = "crates/swmm-engine" }
+swmm-geo = { path = "crates/swmm-geo" }
+swmm-model = { path = "crates/swmm-model" }
 
 anyhow = "1"
 thiserror = "2"

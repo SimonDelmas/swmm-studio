@@ -4,3 +4,6 @@
 *.rpt
 !crates/**/testdata/**
 /bench-data
+/app/src-tauri/gen
+/app/ui/node_modules
+/app/ui/dist

@@ -1,0 +1,13 @@
+[package]
+name = "swmm-model"
+description = "Network view of an EPA SWMM model: objects, connectivity, geometry, properties"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+swmm-inp.workspace = true
+serde.workspace = true

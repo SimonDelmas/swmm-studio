@@ -1,0 +1,15 @@
+[package]
+name = "swmm-geo"
+description = "Coordinate reference systems, reprojection and spatial index for SWMM Studio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+crs-definitions = "0.6"
+proj4rs = "0.2"
+rstar = "0.13"
+thiserror.workspace = true
