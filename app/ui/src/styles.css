@@ -595,3 +595,259 @@ table.grid tr.footer-row td {
   font-size: 12px;
   color: var(--fg);
 }
+
+/* Editing */
+button.danger {
+  color: var(--bad);
+}
+button.primary.danger {
+  color: #fff;
+  background: var(--bad);
+  border-color: var(--bad);
+}
+button.dirty {
+  font-weight: 600;
+}
+select.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+.map.tool-add .maplibregl-canvas-container,
+.map.tool-add canvas {
+  cursor: crosshair !important;
+}
+.map.tool-move .maplibregl-canvas-container,
+.map.tool-move canvas {
+  cursor: move !important;
+}
+.map-hint {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 6px;
+  max-width: 80%;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: rgba(31, 111, 235, 0.92);
+  color: #fff;
+  border-radius: 4px;
+  pointer-events: none;
+}
+table.kv.edit td {
+  vertical-align: middle;
+}
+table.kv.edit td:first-child {
+  width: 42%;
+}
+table.kv.edit td.unit {
+  width: 1%;
+  white-space: nowrap;
+}
+table.kv.edit input.value,
+table.kv.edit select {
+  width: 100%;
+  min-width: 60px;
+}
+input.value {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+input.invalid {
+  border-color: var(--bad);
+}
+tr.absent td:first-child {
+  color: var(--muted);
+}
+.field-error {
+  color: var(--bad);
+  font-size: 11px;
+  white-space: normal;
+}
+.group-action {
+  float: right;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.bulk {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+}
+
+/* Data panel */
+.data-panel {
+  padding: 6px 10px;
+}
+.data-cat {
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+.data-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.data-head a {
+  color: var(--fg);
+}
+.data-list {
+  max-height: 260px;
+  overflow: auto;
+  margin: 2px 0 2px 14px;
+}
+.data-item {
+  display: flex;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.data-item:hover {
+  background: var(--hover);
+}
+
+/* Table editor */
+.modal.wide-modal {
+  width: min(900px, 95vw);
+  max-height: 90vh;
+  overflow: auto;
+}
+.name-input {
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.table-form {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.table-form.column {
+  flex-direction: column;
+  align-items: stretch;
+}
+.grid-box {
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 6px;
+}
+table.edit-grid td {
+  padding: 0 2px;
+}
+table.edit-grid input {
+  width: 110px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+}
+table.edit-grid input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+svg.preview {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+}
+svg.preview .axis {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+svg.preview .curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+svg.preview .bars {
+  fill: color-mix(in srgb, var(--accent) 35%, transparent);
+  stroke: var(--accent);
+}
+svg.preview .dot {
+  fill: var(--accent);
+}
+svg.preview .lbl {
+  font-size: 10px;
+  fill: var(--muted);
+}
+div.preview {
+  padding: 20px;
+}
+.month-tabs {
+  gap: 2px;
+}
+.month-tabs button {
+  padding: 2px 6px;
+}
+.month-tabs button.has {
+  font-weight: 600;
+}
+
+/* Options dialog */
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 6px 18px;
+  padding: 8px 0;
+}
+label.option {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+label.option span {
+  white-space: normal;
+}
+label.option input,
+label.option select {
+  width: 170px;
+}
+label.title-option {
+  grid-column: 1 / -1;
+  align-items: flex-start;
+}
+label.title-option textarea {
+  flex: 1;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+td.path {
+  word-break: break-all;
+  font-size: 11px;
+}
+
+/* Run */
+.run-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.run-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.run-result {
+  padding: 3px 10px;
+}
+.run-result.success b {
+  color: var(--ok);
+}
+.run-result.warnings b {
+  color: var(--warn);
+}
+.run-result.failed b,
+.run-result.cancelled b {
+  color: var(--bad);
+}
+pre.run-log {
+  flex: 1;
+  margin: 0;
+  padding: 4px 10px;
+  overflow: auto;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}

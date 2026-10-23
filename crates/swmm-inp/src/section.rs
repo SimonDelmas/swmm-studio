@@ -184,7 +184,7 @@ impl Section {
 
     /// Appends a data line, before any trailing blank lines so sections stay separated.
     pub fn push_tokens<S: AsRef<str>>(&mut self, tokens: &[S], ending: LineEnding) -> usize {
-        let at = self.lines.iter().rposition(|l| l.kind() != LineKind::Blank).map_or(0, |i| i + 1);
+        let at = self.append_index();
         self.lines.insert(at, Line::from_tokens(tokens, None, ending));
         at
     }
@@ -195,6 +195,18 @@ impl Section {
 
     pub fn remove_line(&mut self, index: usize) -> Line {
         self.lines.remove(index)
+    }
+
+    /// Replaces `remove` lines starting at `at` with `insert`; returns the removed lines.
+    /// This is the primitive of undoable edits: its inverse is a splice at the same
+    /// index that puts the removed lines back.
+    pub fn splice(&mut self, at: usize, remove: usize, insert: Vec<Line>) -> Vec<Line> {
+        self.lines.splice(at..at + remove, insert).collect()
+    }
+
+    /// Index after the last non-blank line (where [`Section::push_tokens`] appends).
+    pub fn append_index(&self) -> usize {
+        self.lines.iter().rposition(|l| l.kind() != LineKind::Blank).map_or(0, |i| i + 1)
     }
 
     /// Removes every data line whose first token equals `id`. Returns how many were removed.

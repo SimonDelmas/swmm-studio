@@ -5,10 +5,11 @@ Visualize, edit, simulate and analyse EPA SWMM 5 models, built for large network
 
 See [SPEC.md](SPEC.md) for the functional and technical specification and the roadmap.
 
-**Status: M1 (results viewer).** Desktop app: open a model, set its coordinate system, see the
-network over OpenStreetMap, select objects and read their properties, animate results on the map
-with a zoomable timeline, plot time series of any length, browse the `.rpt` tables. Editing comes
-in M2.
+**Status: M2 (editor).** Desktop app: open or create a model, set its coordinate system, see the
+network over OpenStreetMap, edit it (properties, objects drawn on the map, vertices, curves, time
+series, patterns, transects, unit hydrographs and RDII, options) with undo / redo, run it with
+your SWMM engine, then animate results on the map with a zoomable timeline, plot time series of
+any length and browse the `.rpt` tables. Saved files change only where you edited them.
 
 ## Crates
 
@@ -19,7 +20,7 @@ in M2.
 | [`swmm-rpt`](crates/swmm-rpt) | `.rpt` parser: errors/warnings (with input line and object), continuity errors, RDII, every summary block as a table / key-values / text. |
 | [`swmm-engine`](crates/swmm-engine) | Engine registry (`%APPDATA%\SwmmStudio\settings.json`), version detection, runs in `<model>_runs/<timestamp>_<label>/` with progress, cancel and a `run.json` record. |
 | [`swmm-geo`](crates/swmm-geo) | EPSG registry (search by code or name), reprojection of model coordinates to WGS 84 (pure Rust, `proj4rs`), Web Mercator, R-tree for box / lasso selection and picking. |
-| [`swmm-model`](crates/swmm-model) | Network view of a model: nodes, links, subcatchments, rain gages, connectivity and map geometry; named properties of any object; numeric attributes for thematic maps. |
+| [`swmm-model`](crates/swmm-model) | Network view of a model: nodes, links, subcatchments, rain gages, connectivity and map geometry; named properties of any object; numeric attributes for thematic maps. Editing: undoable line-level transactions, field schema (types, units, validation), rename and delete with every reference, curves / time series / patterns / unit hydrographs / transects. |
 | [`swmm-cli`](crates/swmm-cli) | Command-line front-end. |
 | [`app/src-tauri`](app/src-tauri) | Desktop application (Tauri 2): session state, commands, background results cache. |
 | [`app/ui`](app/ui) | Front-end (React, TypeScript, MapLibre GL, deck.gl, uPlot). |
@@ -60,6 +61,30 @@ cd app/src-tauri && cargo tauri dev
   red above 5 %), every summary table, sortable, rows linked to the map.
 - A large `.out` gets its results cache built in the background on open (progress in the status
   bar); until it is ready, series over long ranges wait for it and short ranges are read directly.
+
+Editing (every change can be undone with Ctrl+Z and redone with Ctrl+Y; Ctrl+S saves):
+
+- **Properties**: every field of the selected object, named, with its unit and checked as you type
+  (Enter or leaving the field applies it, Escape restores it). Changing a type (outfall, storage
+  shape, cross-section shape, rain gage source…) rebuilds the line and keeps the other values.
+  Renaming updates every reference. Optional lines (direct inflow, dry weather flow, RDII, losses)
+  are added and removed from the panel.
+- **Several objects selected**: set one field on all of them, assign a unit hydrograph and a
+  sewershed area to the selected nodes, delete them.
+- **Map**: **+ Add…** draws junctions, outfalls, storage units, dividers, rain gages (click), links
+  (click the start node, optional vertices, the end node) and subcatchments (click the outline,
+  Enter to finish; area, width and outlet are filled in). **Move** drags nodes and gages, or the
+  selection. **Vertices** edits the selected link or subcatchment: drag a vertex, drag a midpoint to
+  add one, Alt+click to delete one, drag a link end onto another node to reconnect it. Delete
+  removes the selection, with the connected links (a dialog lists what else changes).
+- **Data** tab: curves, time series, time patterns, unit hydrographs (per month, short / medium /
+  long responses) and transects, in grids that accept cells pasted from a spreadsheet, with a
+  preview. **Options** edits the simulation options and the title.
+- **Run** (F5) simulates the model as it is, without saving it first, with the engine chosen in
+  **Engines** (shared with the CLI; a model can use its own). Progress, elapsed time and the engine
+  output are shown in the **Run** tab; Cancel stops the engine. The results and the report are
+  loaded at the end.
+- **New** writes an empty model with default options; **Save as** continues with the new file.
 
 Basemap tiles come from OpenStreetMap (© OpenStreetMap contributors); the app identifies itself
 with its own User-Agent, as the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
@@ -116,6 +141,15 @@ export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222
 ```bash
 node app/ui/e2e/smoke.mjs model.inp EPSG:2154 shots
 ```
+
+Editing test (real mouse and keyboard; use a copy of `testdata/tiny.inp` and `storm.dat`, and a
+scratch settings file in `SWMM_STUDIO_SETTINGS` since the test registers the engine):
+
+```bash
+node app/ui/e2e/edit.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)\runswmm.exe" shots EPSG:2154
+```
+
+Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`.
 
 ## Licence
 

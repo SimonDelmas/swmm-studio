@@ -191,13 +191,7 @@ impl InpFile {
         if let Some(i) = self.sections.iter().position(|s| *s.kind() == kind) {
             return &mut self.sections[i];
         }
-        let rank = |k: &SectionKind| SectionKind::KNOWN.iter().position(|x| x == k);
-        let at = match rank(&kind) {
-            Some(r) => {
-                self.sections.iter().position(|s| rank(s.kind()).is_some_and(|x| x > r)).unwrap_or(self.sections.len())
-            }
-            None => self.sections.len(),
-        };
+        let at = self.canonical_position(&kind);
         // Keep a blank line between the previous section and the new one.
         let ending = self.ending;
         if let Some(prev) = at.checked_sub(1).map(|i| &mut self.sections[i]) {
@@ -214,6 +208,28 @@ impl InpFile {
         }
         self.sections.insert(at, section);
         &mut self.sections[at]
+    }
+
+    /// Index in [`InpFile::sections`] where a new section of this kind belongs: before the
+    /// first section that comes after it in canonical order; unknown kinds go last.
+    pub fn canonical_position(&self, kind: &SectionKind) -> usize {
+        let rank = |k: &SectionKind| SectionKind::KNOWN.iter().position(|x| x == k);
+        match rank(kind) {
+            Some(r) => {
+                self.sections.iter().position(|s| rank(s.kind()).is_some_and(|x| x > r)).unwrap_or(self.sections.len())
+            }
+            None => self.sections.len(),
+        }
+    }
+
+    /// Inserts a section at an index of [`InpFile::sections`] (no blank-line fix-up).
+    pub fn insert_section(&mut self, at: usize, section: Section) {
+        self.sections.insert(at, section);
+    }
+
+    /// Removes the section at an index of [`InpFile::sections`].
+    pub fn remove_section_at(&mut self, at: usize) -> Section {
+        self.sections.remove(at)
     }
 
     /// Removes all sections of this kind. Returns how many were removed.

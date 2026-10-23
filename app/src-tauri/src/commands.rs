@@ -7,12 +7,17 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use swmm_engine::{EngineConfig, RunEvent, RunOptions, RunStatus, Settings};
+use swmm_model::ops::DeletePlan;
+use swmm_model::schema::RefKind;
+use swmm_model::tables::Table;
 use swmm_model::{ObjKind, ObjRef};
 use swmm_out::cache::{self, CacheOptions};
 use swmm_out::OutFile;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::editing::{create_model, EditOutcome, EditRequest, OptionsDto};
 use crate::project::Basemap;
 use crate::session::{element_by_name, ModelInfo, Res, Session};
 
@@ -21,6 +26,8 @@ pub struct AppState {
     session: RwLock<Option<Session>>,
     /// Cancel flag of the running cache build.
     job: Mutex<Option<Arc<AtomicBool>>>,
+    /// Cancel flag of the running simulation.
+    run: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 impl AppState {
@@ -312,6 +319,281 @@ fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+// ---- editing -------------------------------------------------------------------
+
+#[tauri::command(async)]
+pub fn edit(state: State<'_, AppState>, request: EditRequest, selection: Vec<ObjRef>) -> Res<EditOutcome> {
+    state.write(|s| s.edit(request, &selection))
+}
+
+#[tauri::command(async)]
+pub fn undo(state: State<'_, AppState>, selection: Vec<ObjRef>) -> Res<EditOutcome> {
+    state.write(|s| s.undo(&selection))
+}
+
+#[tauri::command(async)]
+pub fn redo(state: State<'_, AppState>, selection: Vec<ObjRef>) -> Res<EditOutcome> {
+    state.write(|s| s.redo(&selection))
+}
+
+#[tauri::command(async)]
+pub fn delete_plan(state: State<'_, AppState>, objects: Vec<ObjRef>) -> Res<DeletePlan> {
+    state.read(|s| Ok(s.delete_plan(&objects)))
+}
+
+#[tauri::command(async)]
+pub fn names(state: State<'_, AppState>, kind: RefKind) -> Res<Vec<String>> {
+    state.read(|s| Ok(s.names(kind)))
+}
+
+#[tauri::command(async)]
+pub fn table(state: State<'_, AppState>, kind: RefKind, name: String) -> Res<Table> {
+    state.read(|s| s.table(kind, &name))
+}
+
+#[tauri::command(async)]
+pub fn options(state: State<'_, AppState>) -> Res<OptionsDto> {
+    state.read(|s| Ok(s.options()))
+}
+
+/// Saves the model; `path` saves a copy under a new name and continues with it.
+#[tauri::command(async)]
+pub fn save_model(state: State<'_, AppState>, path: Option<PathBuf>) -> Res<ModelInfo> {
+    state.write(|s| {
+        s.save(path.as_deref())?;
+        Ok(s.info())
+    })
+}
+
+/// Writes a new empty model and opens it.
+#[tauri::command(async)]
+pub fn new_model(app: AppHandle, state: State<'_, AppState>, path: PathBuf, flow_units: String) -> Res<ModelInfo> {
+    create_model(&path, &flow_units)?;
+    open_model(app, state, path)
+}
+
+// ---- engines and runs ----------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct EnginesDto {
+    engines: Vec<EngineConfig>,
+    default: Option<String>,
+    /// Engine chosen for this model (overrides the default).
+    project: Option<String>,
+    /// Engine a run would use.
+    effective: Option<String>,
+    settings_path: PathBuf,
+    error: Option<String>,
+}
+
+fn load_settings() -> (Settings, Option<String>) {
+    match Settings::load(&Settings::default_path()) {
+        Ok(s) => (s, None),
+        Err(e) => (Settings::default(), Some(e.to_string())),
+    }
+}
+
+fn save_settings(s: &Settings) -> Res<()> {
+    s.save(&Settings::default_path()).map_err(|e| e.to_string())
+}
+
+/// Engine for the open model: the project's choice, else the default one.
+fn effective_engine(settings: &Settings, project: Option<&str>) -> Option<EngineConfig> {
+    project.and_then(|n| settings.engine(n)).or_else(|| settings.default_engine()).cloned()
+}
+
+fn engines_dto(state: &AppState) -> EnginesDto {
+    let (settings, error) = load_settings();
+    let project = state.read(|s| Ok(s.project.engine.clone())).ok().flatten();
+    let effective = effective_engine(&settings, project.as_deref()).map(|e| e.name);
+    EnginesDto {
+        default: settings.default_engine().map(|e| e.name.clone()),
+        engines: settings.engines,
+        project,
+        effective,
+        settings_path: Settings::default_path(),
+        error,
+    }
+}
+
+#[tauri::command(async)]
+pub fn engines(state: State<'_, AppState>) -> EnginesDto {
+    engines_dto(&state)
+}
+
+/// Registers an engine after checking that it runs and reading its version.
+#[tauri::command(async)]
+pub fn add_engine(state: State<'_, AppState>, name: String, path: PathBuf) -> Res<EnginesDto> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("give the engine a name".into());
+    }
+    let version = swmm_engine::detect_version(&path).map_err(|e| e.to_string())?;
+    let (mut settings, error) = load_settings();
+    if let Some(e) = error {
+        return Err(format!("settings not saved, the file is unreadable: {e}"));
+    }
+    settings.add_engine(EngineConfig { name, path, version });
+    save_settings(&settings)?;
+    Ok(engines_dto(&state))
+}
+
+#[tauri::command(async)]
+pub fn remove_engine(state: State<'_, AppState>, name: String) -> Res<EnginesDto> {
+    let (mut settings, _) = load_settings();
+    settings.remove_engine(&name);
+    save_settings(&settings)?;
+    Ok(engines_dto(&state))
+}
+
+#[tauri::command(async)]
+pub fn set_default_engine(state: State<'_, AppState>, name: String) -> Res<EnginesDto> {
+    let (mut settings, _) = load_settings();
+    settings.set_default(&name).map_err(|e| e.to_string())?;
+    save_settings(&settings)?;
+    Ok(engines_dto(&state))
+}
+
+/// Engine for this model only (`None`: use the default engine).
+#[tauri::command(async)]
+pub fn set_project_engine(state: State<'_, AppState>, name: Option<String>) -> Res<EnginesDto> {
+    state.write(|s| {
+        s.project.engine = name;
+        s.save_project()
+    })?;
+    Ok(engines_dto(&state))
+}
+
+#[derive(Clone, Serialize)]
+struct RunProgress {
+    progress: Option<f64>,
+    elapsed: f64,
+    run_dir: Option<PathBuf>,
+}
+
+#[derive(Clone, Serialize)]
+struct RunFinished {
+    status: String,
+    message: Option<String>,
+    seconds: f64,
+    run_dir: Option<PathBuf>,
+    errors: usize,
+    warnings: usize,
+    console: Vec<String>,
+    info: Option<ModelInfo>,
+}
+
+/// Starts a simulation of the model as it is in memory (unsaved edits included).
+/// Events: `run-progress`, `run-output` (console lines), `run-finished`.
+#[tauri::command(async)]
+pub fn run_start(app: AppHandle, state: State<'_, AppState>, label: Option<String>) -> Res<()> {
+    let mut slot = state.run.lock().unwrap();
+    if slot.is_some() {
+        return Err("a simulation is already running".into());
+    }
+    let (settings, _) = load_settings();
+    let (inp, path, engine) = state.read(|s| {
+        let engine = effective_engine(&settings, s.project.engine.as_deref())
+            .ok_or("no SWMM engine configured: add one in Engines")?;
+        Ok((s.inp.clone(), s.inp_path.clone(), engine))
+    })?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    *slot = Some(cancel.clone());
+    drop(slot);
+    std::thread::spawn(move || {
+        let t0 = Instant::now();
+        let mut last = Instant::now() - Duration::from_secs(1);
+        let mut run_dir = None;
+        let opts = RunOptions { label: label.filter(|l| !l.trim().is_empty()), run_dir: None };
+        let result = swmm_engine::run_inp(
+            &inp,
+            &path,
+            &engine,
+            &opts,
+            |ev| match ev {
+                RunEvent::Started { run_dir: d } => {
+                    run_dir = Some(d.clone());
+                    let _ = app.emit("run-progress", RunProgress { progress: None, elapsed: 0.0, run_dir: Some(d) });
+                }
+                RunEvent::Progress(p) => {
+                    if last.elapsed() >= Duration::from_millis(100) || p >= 1.0 {
+                        last = Instant::now();
+                        let elapsed = t0.elapsed().as_secs_f64();
+                        let _ = app.emit("run-progress", RunProgress { progress: Some(p), elapsed, run_dir: None });
+                    }
+                }
+                RunEvent::Output(line) => {
+                    let _ = app.emit("run-output", line);
+                }
+            },
+            &cancel,
+        );
+        let state = app.state::<AppState>();
+        let finished = match result {
+            Ok(o) => {
+                let status = format!("{:?}", o.status).to_lowercase();
+                // Load the results into the model they were made from. A cancelled run
+                // leaves the loaded results alone; a failed one shows its report (with
+                // the errors) and no results.
+                let info = state
+                    .write(|s| {
+                        if s.inp_path != path || o.status == RunStatus::Cancelled {
+                            return Ok(None);
+                        }
+                        s.results = None;
+                        s.project.results.out = None;
+                        if o.out_complete {
+                            s.open_results(&o.out)?;
+                        }
+                        if o.rpt.is_file() {
+                            s.open_report(&o.rpt)?;
+                        }
+                        s.save_project()?;
+                        Ok(Some(s.info()))
+                    })
+                    .unwrap_or_else(|e| {
+                        let _ = app.emit("run-output", format!("results not loaded: {e}"));
+                        None
+                    });
+                RunFinished {
+                    status,
+                    message: None,
+                    seconds: o.seconds,
+                    run_dir: Some(o.run_dir),
+                    errors: o.report.as_ref().map_or(0, |r| r.errors.len()),
+                    warnings: o.report.as_ref().map_or(0, |r| r.warnings.len()),
+                    console: o.console,
+                    info,
+                }
+            }
+            Err(e) => RunFinished {
+                status: "failed".into(),
+                message: Some(e.to_string()),
+                seconds: t0.elapsed().as_secs_f64(),
+                run_dir,
+                errors: 0,
+                warnings: 0,
+                console: Vec::new(),
+                info: None,
+            },
+        };
+        state.run.lock().unwrap().take();
+        let loaded = finished.info.is_some();
+        let _ = app.emit("run-finished", finished);
+        if loaded {
+            start_cache_job(&app, &state);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn run_cancel(state: State<'_, AppState>) {
+    if let Some(c) = state.run.lock().unwrap().as_ref() {
+        c.store(true, Ordering::Relaxed);
+    }
 }
 
 /// Deletes and rebuilds the results cache.

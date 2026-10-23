@@ -29,8 +29,8 @@ pub enum Space {
     LonLat,
 }
 
-struct Display {
-    space: Space,
+pub(crate) struct Display {
+    pub(crate) space: Space,
     nodes: Vec<[f64; 2]>,
     link_starts: Vec<u32>,
     link_pts: Vec<[f64; 2]>,
@@ -53,7 +53,9 @@ fn kind_of_layer(l: u8) -> ObjKind {
 }
 
 impl Display {
-    fn build(net: &Network, crs: Option<&Crs>) -> Display {
+    /// `origin`: keep the cartesian origin of the previous display (edits must not
+    /// shift the view); `None` centres it on the network.
+    pub(crate) fn build(net: &Network, crs: Option<&Crs>, origin: Option<[f64; 2]>) -> Display {
         let nan = [f64::NAN; 2];
         let mut nodes: Vec<[f64; 2]> = net.nodes.iter().map(|n| n.xy.unwrap_or(nan)).collect();
         let mut gages: Vec<[f64; 2]> = net.gages.iter().map(|g| g.xy.unwrap_or(nan)).collect();
@@ -76,9 +78,10 @@ impl Display {
             }
             sub_starts.push(sub_pts.len() as u32);
         }
-        let space = match crs {
-            Some(_) => Space::LonLat,
-            None => {
+        let space = match (crs, origin) {
+            (Some(_), _) => Space::LonLat,
+            (None, Some(origin)) => Space::Cartesian { origin },
+            (None, None) => {
                 let b = net.bounds().unwrap_or([0.0; 4]);
                 Space::Cartesian { origin: [(b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0] }
             }
@@ -130,6 +133,132 @@ impl Display {
         d
     }
 
+    /// Model coordinates → display coordinates, in place.
+    pub(crate) fn project(&self, crs: Option<&Crs>, pts: &mut [[f64; 2]]) {
+        match (crs, self.space) {
+            (Some(c), _) => c.to_lonlat(pts),
+            (None, Space::Cartesian { origin }) => {
+                pts.iter_mut().for_each(|p| *p = [p[0] - origin[0], p[1] - origin[1]])
+            }
+            (None, Space::LonLat) => {}
+        }
+    }
+
+    /// Display coordinates → model coordinates (`None` if a point cannot be converted).
+    pub(crate) fn unproject(&self, crs: Option<&Crs>, pts: &[[f64; 2]]) -> Option<Vec<[f64; 2]>> {
+        let mut v = pts.to_vec();
+        match (crs, self.space) {
+            (Some(c), _) => c.from_lonlat(&mut v),
+            (None, Space::Cartesian { origin }) => v.iter_mut().for_each(|p| *p = [p[0] + origin[0], p[1] + origin[1]]),
+            (None, Space::LonLat) => {}
+        }
+        v.iter().all(|p| p[0].is_finite() && p[1].is_finite()).then_some(v)
+    }
+
+    /// Display geometry of the objects an edit changed (for the map to update in place),
+    /// or `None` when that would be larger than reloading everything.
+    pub(crate) fn patch(&self, net: &Network, r: &swmm_model::Refresh) -> Option<GeometryPatch> {
+        let pts: usize = r.links.iter().map(|&i| self.link(i as usize).len()).sum::<usize>()
+            + r.subcatchments.iter().map(|&i| self.sub(i as usize).len()).sum::<usize>()
+            + r.nodes.len()
+            + r.gages.len();
+        if pts > 20_000 {
+            return None;
+        }
+        let end = |n: Option<u32>| n.unwrap_or(u32::MAX);
+        Some(GeometryPatch {
+            nodes: r.nodes.iter().map(|&i| (i, self.nodes[i as usize])).collect(),
+            gages: r.gages.iter().map(|&i| (i, self.gages[i as usize])).collect(),
+            links: r
+                .links
+                .iter()
+                .map(|&i| {
+                    let l = &net.links[i as usize];
+                    (i, [end(l.from), end(l.to)], self.link(i as usize).to_vec())
+                })
+                .collect(),
+            subcatchments: r.subcatchments.iter().map(|&i| (i, self.sub(i as usize).to_vec())).collect(),
+        })
+    }
+
+    /// Display point of a node, if it is drawn.
+    pub(crate) fn node_point(&self, i: usize) -> Option<[f64; 2]> {
+        self.nodes.get(i).copied().filter(|p| p[0].is_finite())
+    }
+
+    pub(crate) fn gage_point(&self, i: usize) -> Option<[f64; 2]> {
+        self.gages.get(i).copied().filter(|p| p[0].is_finite())
+    }
+
+    /// Updates the objects whose geometry changed after an edit (same object set).
+    pub(crate) fn update(&mut self, net: &Network, crs: Option<&Crs>, r: &swmm_model::Refresh) {
+        let nan = [f64::NAN; 2];
+        for &i in &r.nodes {
+            let mut p = [net.nodes[i as usize].xy.unwrap_or(nan)];
+            self.project(crs, &mut p);
+            self.nodes[i as usize] = p[0];
+            let q = self.to_index(p[0]);
+            self.index.set_point(layer(ObjKind::Node), i, q);
+        }
+        for &i in &r.gages {
+            let mut p = [net.gages[i as usize].xy.unwrap_or(nan)];
+            self.project(crs, &mut p);
+            self.gages[i as usize] = p[0];
+            let q = self.to_index(p[0]);
+            self.index.set_point(layer(ObjKind::Gage), i, q);
+        }
+        if !r.links.is_empty() {
+            let changed: std::collections::HashSet<u32> = r.links.iter().copied().collect();
+            let mut starts = Vec::with_capacity(self.link_starts.len());
+            let mut pts = Vec::with_capacity(self.link_pts.len() + 8);
+            starts.push(0);
+            for i in 0..net.links.len() {
+                if changed.contains(&(i as u32)) {
+                    let mut p = net.link_path(i);
+                    self.project(crs, &mut p);
+                    pts.extend(p);
+                } else {
+                    pts.extend_from_slice(self.link(i));
+                }
+                starts.push(pts.len() as u32);
+            }
+            (self.link_starts, self.link_pts) = (starts, pts);
+            for &i in &r.links {
+                let ip: Vec<_> = self.link(i as usize).iter().map(|p| self.to_index(*p)).collect();
+                self.index.set_line(layer(ObjKind::Link), i, &ip);
+            }
+        }
+        if !r.subcatchments.is_empty() {
+            let changed: std::collections::HashSet<u32> = r.subcatchments.iter().copied().collect();
+            let mut starts = Vec::with_capacity(self.sub_starts.len());
+            let mut pts = Vec::with_capacity(self.sub_pts.len() + 8);
+            starts.push(0);
+            for (i, s) in net.subcatchments.iter().enumerate() {
+                if changed.contains(&(i as u32)) {
+                    if s.polygon.len() >= 3 {
+                        let mut p = s.polygon.clone();
+                        if p.first() != p.last() {
+                            p.push(p[0]);
+                        }
+                        self.project(crs, &mut p);
+                        pts.extend(p);
+                    }
+                } else {
+                    pts.extend_from_slice(self.sub(i));
+                }
+                starts.push(pts.len() as u32);
+            }
+            (self.sub_starts, self.sub_pts) = (starts, pts);
+            for &i in &r.subcatchments {
+                let ip: Vec<_> = self.sub(i as usize).iter().map(|p| self.to_index(*p)).collect();
+                self.index.set_polygon(layer(ObjKind::Subcatchment), i, &ip);
+            }
+        }
+        let all: Vec<[f64; 2]> =
+            self.nodes.iter().chain(&self.gages).chain(&self.link_pts).chain(&self.sub_pts).copied().collect();
+        self.bounds = swmm_geo::bounds(&all);
+    }
+
     fn link(&self, i: usize) -> &[[f64; 2]] {
         &self.link_pts[self.link_starts[i] as usize..self.link_starts[i + 1] as usize]
     }
@@ -145,6 +274,17 @@ impl Display {
             _ => p,
         }
     }
+}
+
+/// New display geometry of some objects (NaN coordinates are sent as `null`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GeometryPatch {
+    pub nodes: Vec<(u32, [f64; 2])>,
+    pub gages: Vec<(u32, [f64; 2])>,
+    /// Link index, from/to node indices (`u32::MAX` when unknown), path.
+    pub links: Vec<(u32, [u32; 2], Vec<[f64; 2]>)>,
+    /// Closed ring (empty when the subcatchment has no outline).
+    pub subcatchments: Vec<(u32, Vec<[f64; 2]>)>,
 }
 
 /// State of the results cache of the open `.out`.
@@ -248,6 +388,13 @@ pub struct ModelInfo {
     pub report: Option<ReportSummary>,
     /// Messages for the user (results that could not be loaded…).
     pub notes: Vec<String>,
+    /// Unsaved changes.
+    pub dirty: bool,
+    /// Labels of the edits undo / redo would revert / apply.
+    pub undo: Option<String>,
+    pub redo: Option<String>,
+    /// Changes on every edit, undo or redo.
+    pub revision: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -319,6 +466,8 @@ pub struct ObjectInfo {
     #[serde(rename = "type")]
     pub type_name: String,
     pub groups: Vec<PropertyGroup>,
+    /// Optional lines the object could have (inflows, RDII…).
+    pub addable: Vec<swmm_model::Addable>,
     pub connections: Vec<Connection>,
     pub results: Option<Vec<VarValue>>,
 }
@@ -329,11 +478,14 @@ pub struct Session {
     pub net: Network,
     pub project: Project,
     project_error: Option<String>,
-    crs: Option<Crs>,
-    display: Display,
+    pub(crate) crs: Option<Crs>,
+    pub(crate) display: Display,
     pub results: Option<LoadedResults>,
     pub report: Option<(PathBuf, Report)>,
     notes: Vec<String>,
+    pub(crate) history: swmm_model::edit::History,
+    /// Incremented on every change of the model (edit, undo, redo).
+    pub(crate) revision: u64,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -355,7 +507,7 @@ impl Session {
             }
             None => None,
         };
-        let display = Display::build(&net, crs.as_ref());
+        let display = Display::build(&net, crs.as_ref(), None);
         let mut s = Session {
             inp_path: path.to_path_buf(),
             inp,
@@ -367,6 +519,8 @@ impl Session {
             results: None,
             report: None,
             notes,
+            history: Default::default(),
+            revision: 0,
         };
         let (out, rpt) = s.find_results();
         if let Some(out) = out {
@@ -439,6 +593,10 @@ impl Session {
             results: self.results_info(),
             report: self.report_summary(),
             notes: self.notes.clone(),
+            dirty: self.history.is_dirty(),
+            undo: self.history.undo_label().map(str::to_string),
+            redo: self.history.redo_label().map(str::to_string),
+            revision: self.revision,
         }
     }
 
@@ -463,7 +621,7 @@ impl Session {
         };
         self.project.crs = crs.as_ref().map(|c| c.id.clone());
         self.crs = crs;
-        self.display = Display::build(&self.net, self.crs.as_ref());
+        self.display = Display::build(&self.net, self.crs.as_ref(), None);
         self.save_project()
     }
 
@@ -481,12 +639,13 @@ impl Session {
     /// 48  padding to 64
     /// 64  f64 xy: nodes, link points, subcatchment points (closed rings), gages
     ///     u32 link starts (links + 1), subcatchment starts (subcatchments + 1)
+    ///     u32 link end nodes (from, to per link; u32::MAX when unknown)
     ///     u8 node types, link types
     /// ```
     pub fn geometry(&self) -> Vec<u8> {
         let d = &self.display;
         let mut b = Vec::with_capacity(64 + 16 * (d.nodes.len() + d.link_pts.len() + d.sub_pts.len()));
-        b.extend_from_slice(b"SWG1");
+        b.extend_from_slice(b"SWG2");
         let (space, origin) = match d.space {
             Space::Cartesian { origin } => (0u32, origin),
             Space::LonLat => (1, [0.0, 0.0]),
@@ -511,6 +670,10 @@ impl Session {
         }
         for s in d.link_starts.iter().chain(&d.sub_starts) {
             b.extend_from_slice(&s.to_le_bytes());
+        }
+        for l in &self.net.links {
+            b.extend_from_slice(&l.from.unwrap_or(u32::MAX).to_le_bytes());
+            b.extend_from_slice(&l.to.unwrap_or(u32::MAX).to_le_bytes());
         }
         b.extend(self.net.nodes.iter().map(|n| match n.kind {
             NodeType::Junction => 0u8,
@@ -614,6 +777,7 @@ impl Session {
             id: net.id(r).to_string(),
             type_name,
             groups: swmm_model::properties(&self.inp, net, r),
+            addable: swmm_model::addable(&self.inp, net, r),
             connections,
             results,
         })
@@ -628,22 +792,7 @@ impl Session {
     pub fn open_results(&mut self, path: &Path) -> Res<()> {
         let results = Results::open(path).map_err(|e| e.to_string())?;
         let meta = results.meta();
-        let mut to_out: [Vec<u32>; 3] = Default::default();
-        let mut matched = [0usize; 3];
-        for (ek, ok) in [
-            (ElementKind::Subcatchment, ObjKind::Subcatchment),
-            (ElementKind::Node, ObjKind::Node),
-            (ElementKind::Link, ObjKind::Link),
-        ] {
-            let mut map = vec![u32::MAX; self.net.len(ok)];
-            for (oi, id) in meta.ids(ek).iter().enumerate() {
-                if let Some(ni) = self.net.find(ok, id) {
-                    map[ni as usize] = oi as u32;
-                    matched[ek as usize] += 1;
-                }
-            }
-            to_out[ek as usize] = map;
-        }
+        let (to_out, matched) = match_results(meta, &self.net);
         if matched.iter().sum::<usize>() == 0
             && meta.ids(ElementKind::Node).len() + meta.ids(ElementKind::Link).len() > 0
         {
@@ -929,7 +1078,34 @@ impl Session {
     }
 }
 
+/// For each network object, its index in the results (by element kind), and how many
+/// objects matched.
+fn match_results(meta: &swmm_out::OutMeta, net: &Network) -> ([Vec<u32>; 3], [usize; 3]) {
+    let mut to_out: [Vec<u32>; 3] = Default::default();
+    let mut matched = [0usize; 3];
+    for (ek, ok) in [
+        (ElementKind::Subcatchment, ObjKind::Subcatchment),
+        (ElementKind::Node, ObjKind::Node),
+        (ElementKind::Link, ObjKind::Link),
+    ] {
+        let mut map = vec![u32::MAX; net.len(ok)];
+        for (oi, id) in meta.ids(ek).iter().enumerate() {
+            if let Some(ni) = net.find(ok, id) {
+                map[ni as usize] = oi as u32;
+                matched[ek as usize] += 1;
+            }
+        }
+        to_out[ek as usize] = map;
+    }
+    (to_out, matched)
+}
+
 impl LoadedResults {
+    /// Matches the results again after the network was rebuilt by an edit.
+    pub(crate) fn remap(&mut self, net: &Network) {
+        (self.to_out, self.matched) = match_results(self.results.meta(), net);
+    }
+
     fn object_values(&self, kind: ElementKind, index: usize, period: usize) -> Option<Vec<VarValue>> {
         let o = *self.to_out[kind as usize].get(index).filter(|&&o| o != u32::MAX)? as usize;
         let m = self.results.meta();
@@ -1066,7 +1242,7 @@ mod tests {
         let b = info.bounds.unwrap();
         assert!(b[0] > 2.3 && b[2] < 2.4 && b[1] > 48.8 && b[3] < 48.9, "{b:?}");
         let geom = s.geometry();
-        assert_eq!(&geom[0..4], b"SWG1");
+        assert_eq!(&geom[0..4], b"SWG2");
         assert_eq!(u32::from_le_bytes(geom[4..8].try_into().unwrap()), 1);
         // J1 in lon/lat, then picked with a 1 m tolerance.
         let lon = f64::from_le_bytes(geom[64..72].try_into().unwrap());
@@ -1093,7 +1269,9 @@ mod tests {
         let floats = 2 * (nodes + link_pts + sub_pts + gages);
         let starts = 64 + 8 * floats;
         assert_eq!(u(starts + 4 * 3), 6);
-        let types = starts + 4 * (links + 1 + subs + 1);
+        let types = starts + 4 * (links + 1 + subs + 1) + 8 * links;
+        // C1 goes from J1 (node 0) to J2 (node 1).
+        assert_eq!((u(types - 8 * links), u(types - 8 * links + 4)), (0, 1));
         assert_eq!(g.len(), types + nodes + links);
         assert_eq!(g[types + 3], 1); // Out1 is an outfall
     }

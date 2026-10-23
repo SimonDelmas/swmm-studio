@@ -18,7 +18,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 pub use progress::{parse_progress, Fragments};
-pub use run::{run, RunEvent, RunOptions, RunOutcome, RunStatus};
+pub use run::{run, run_inp, RunEvent, RunOptions, RunOutcome, RunStatus};
 pub use settings::{EngineConfig, Settings};
 
 #[derive(Debug, thiserror::Error)]

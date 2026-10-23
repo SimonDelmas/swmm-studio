@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { onCacheProgress, onResultsChanged, api } from "./api";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { onCacheProgress, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
 import { CrsDialog } from "./components/CrsDialog";
+import { DataPanel } from "./components/DataPanel";
+import { DeleteDialog, EnginesDialog, NewModelDialog, OptionsDialog, refreshEngine } from "./components/Dialogs";
 import { PlotPanel } from "./components/PlotPanel";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ReportPanel } from "./components/ReportPanel";
+import { onFinished, onOutput, onProgress, RunPanel, startRun } from "./components/RunPanel";
 import { StatusBar } from "./components/StatusBar";
 import { StylePanel } from "./components/StylePanel";
+import { TableEditor } from "./components/TableEditor";
 import { Timeline } from "./components/Timeline";
 import { Toolbar } from "./components/Toolbar";
-import { MapView } from "./map/MapView";
+import { confirmDiscard, deleteObjects, redo, saveModel, undo } from "./edit";
+import { MapView, mapTools } from "./map/MapView";
 import { getState, setState, useStore } from "./store";
 
 /** Drag handle that resizes a panel. */
@@ -43,23 +49,77 @@ function useEvents() {
         const m = getState().model;
         if (m?.results?.path === results.path) setState({ model: { ...m, results } });
       }),
+      onRunProgress(onProgress),
+      onRunOutput(onOutput),
+      onRunFinished(onFinished),
     ];
+    refreshEngine();
     return () => un.forEach((p) => p.then((f) => f()));
   }, []);
 
-  // Keyboard: Space play/pause, arrows step, Escape clears the selection.
+  // Unsaved changes are not lost when the window closes.
+  useEffect(() => {
+    const w = getCurrentWindow();
+    const un = w.onCloseRequested(async (e) => {
+      if (!getState().model?.dirty) return;
+      e.preventDefault();
+      if (await confirmDiscard()) await w.destroy();
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  // Window title: model name, * when modified.
+  const name = useStore((s) => s.model?.name);
+  const dirty = useStore((s) => s.model?.dirty);
+  useEffect(() => {
+    getCurrentWindow()
+      .setTitle(name ? `${dirty ? "* " : ""}${name} – SWMM Studio` : "SWMM Studio")
+      .catch(() => {});
+  }, [name, dirty]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
+      const typing = t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA";
       const s = getState();
+      const ctrl = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      // Shortcuts that also work in text fields.
+      if (ctrl && k === "s") {
+        e.preventDefault();
+        saveModel(e.shiftKey);
+        return;
+      }
+      if (typing || s.dialog || s.tableEditor || s.pendingDelete || s.crsDialog) return;
       const n = s.model?.results?.n_periods ?? 0;
-      if (e.key === " " && n > 0) {
+      if (ctrl && k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      } else if (e.key === "F5") {
+        e.preventDefault();
+        startRun();
+      } else if (e.key === "Delete" && !mapTools.current?.busy && s.selection.length > 0) {
+        e.preventDefault();
+        deleteObjects(s.selection);
+      } else if (e.key === "Backspace" && mapTools.current?.back()) {
+        e.preventDefault();
+      } else if (e.key === "Enter") {
+        mapTools.current?.finish();
+      } else if (e.key === " " && n > 0) {
         setState({ playing: !s.playing });
         e.preventDefault();
       } else if (e.key === "ArrowRight" && n > 0) setState({ period: Math.min(n - 1, s.period + s.stride) });
       else if (e.key === "ArrowLeft" && n > 0) setState({ period: Math.max(0, s.period - s.stride) });
-      else if (e.key === "Escape") setState({ selection: [], tool: "select" });
+      else if (e.key === "Escape") {
+        if (mapTools.current?.cancel()) return;
+        if (s.tool !== "select") setState({ tool: "select" });
+        else setState({ selection: [] });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -82,11 +142,13 @@ function useEvents() {
 export function App() {
   useEvents();
   const crsDialog = useStore((s) => s.crsDialog);
+  const dialog = useStore((s) => s.dialog);
   const bottomTab = useStore((s) => s.bottomTab);
+  const sideTab = useStore((s) => s.sideTab);
+  const running = useStore((s) => s.run.running);
   const reportIssues = useStore((s) => (s.model?.report ? s.model.report.errors.length : 0));
-  const [sideW, setSideW] = useState(340);
+  const [sideW, setSideW] = useState(360);
   const [bottomH, setBottomH] = useState(260);
-  const [sideTab, setSideTab] = useState<"props" | "style">("props");
 
   return (
     <div className="app">
@@ -104,25 +166,40 @@ export function App() {
               <button className={bottomTab === "report" ? "active" : ""} onClick={() => setState({ bottomTab: "report" })}>
                 Report{reportIssues > 0 && <span className="badge bad">{reportIssues}</span>}
               </button>
+              <button className={bottomTab === "run" ? "active" : ""} onClick={() => setState({ bottomTab: "run" })}>
+                Run{running && <span className="badge warn">…</span>}
+              </button>
             </div>
-            <div className="tab-body">{bottomTab === "plot" ? <PlotPanel /> : <ReportPanel />}</div>
+            <div className="tab-body">
+              {bottomTab === "plot" ? <PlotPanel /> : bottomTab === "report" ? <ReportPanel /> : <RunPanel />}
+            </div>
           </div>
         </div>
-        <Splitter vertical onDrag={(d) => setSideW((w) => Math.max(220, Math.min(700, w - d)))} />
+        <Splitter vertical onDrag={(d) => setSideW((w) => Math.max(240, Math.min(760, w - d)))} />
         <div className="sidebar" style={{ width: sideW }}>
           <div className="tabs">
-            <button className={sideTab === "props" ? "active" : ""} onClick={() => setSideTab("props")}>
+            <button className={sideTab === "props" ? "active" : ""} onClick={() => setState({ sideTab: "props" })}>
               Properties
             </button>
-            <button className={sideTab === "style" ? "active" : ""} onClick={() => setSideTab("style")}>
+            <button className={sideTab === "data" ? "active" : ""} onClick={() => setState({ sideTab: "data" })}>
+              Data
+            </button>
+            <button className={sideTab === "style" ? "active" : ""} onClick={() => setState({ sideTab: "style" })}>
               Map style
             </button>
           </div>
-          <div className="tab-body">{sideTab === "props" ? <PropertiesPanel /> : <StylePanel />}</div>
+          <div className="tab-body">
+            {sideTab === "props" ? <PropertiesPanel /> : sideTab === "data" ? <DataPanel /> : <StylePanel />}
+          </div>
         </div>
       </div>
       <StatusBar />
       {crsDialog && <CrsDialog />}
+      {dialog === "options" && <OptionsDialog />}
+      {dialog === "engines" && <EnginesDialog />}
+      {dialog === "new" && <NewModelDialog />}
+      <TableEditor />
+      <DeleteDialog />
     </div>
   );
 }

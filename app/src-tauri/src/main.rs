@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod editing;
 mod project;
 mod session;
 
@@ -34,6 +35,22 @@ fn main() {
             commands::rebuild_cache,
             commands::envelope,
             commands::save_file,
+            commands::edit,
+            commands::undo,
+            commands::redo,
+            commands::delete_plan,
+            commands::names,
+            commands::table,
+            commands::options,
+            commands::save_model,
+            commands::new_model,
+            commands::engines,
+            commands::add_engine,
+            commands::remove_engine,
+            commands::set_default_engine,
+            commands::set_project_engine,
+            commands::run_start,
+            commands::run_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running SWMM Studio");

@@ -14,6 +14,16 @@ import type {
   ObjRef,
   ResultsInfo,
   Basemap,
+  DeletePlan,
+  EditOutcome,
+  EditRequest,
+  EnginesDto,
+  OptionsDto,
+  RefKind,
+  RunFinished,
+  RunProgress,
+  Table,
+  TableKind,
 } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
@@ -25,7 +35,7 @@ async function buffer(cmd: string, args?: Record<string, unknown>): Promise<Arra
 export function decodeGeometry(buf: ArrayBuffer): Geometry {
   const dv = new DataView(buf);
   const magic = String.fromCharCode(...new Uint8Array(buf, 0, 4));
-  if (magic !== "SWG1") throw new Error("bad geometry buffer");
+  if (magic !== "SWG2") throw new Error("bad geometry buffer");
   const space = dv.getUint32(4, true) === 1 ? "lonlat" : "cartesian";
   const origin: [number, number] = [dv.getFloat64(8, true), dv.getFloat64(16, true)];
   const [nNodes, nLinks, nLinkPts, nSubs, nSubPts, nGages] = [24, 28, 32, 36, 40, 44].map((o) =>
@@ -48,10 +58,11 @@ export function decodeGeometry(buf: ArrayBuffer): Geometry {
   };
   const linkStarts = u32(nLinks + 1);
   const subStarts = u32(nSubs + 1);
+  const linkEnds = u32(2 * nLinks);
   const nodeTypes = new Uint8Array(buf, at, nNodes);
   at += nNodes;
   const linkTypes = new Uint8Array(buf, at, nLinks);
-  return { space, origin, nodes, nodeTypes, linkStarts, linkPts, linkTypes, subStarts, subPts, gages };
+  return { space, origin, nodes, nodeTypes, linkStarts, linkPts, linkTypes, linkEnds, subStarts, subPts, gages };
 }
 
 export const api = {
@@ -97,7 +108,35 @@ export const api = {
   rebuildCache: () => invoke<ModelInfo>("rebuild_cache"),
   saveFile: (path: string, data: Uint8Array) =>
     invoke<void>("save_file", data, { headers: { path: encodeURIComponent(path) } }),
+  edit: (request: EditRequest, selection: ObjRef[]) => invoke<EditOutcome>("edit", { request, selection }),
+  undo: (selection: ObjRef[]) => invoke<EditOutcome>("undo", { selection }),
+  redo: (selection: ObjRef[]) => invoke<EditOutcome>("redo", { selection }),
+  deletePlan: (objects: ObjRef[]) => invoke<DeletePlan>("delete_plan", { objects }),
+  names: (kind: RefKind) => invoke<string[]>("names", { kind }),
+  table: (kind: TableKind, name: string) => invoke<Table>("table", { kind, name }),
+  options: () => invoke<OptionsDto>("options"),
+  saveModel: (path: string | null) => invoke<ModelInfo>("save_model", { path }),
+  newModel: (path: string, flowUnits: string) => invoke<ModelInfo>("new_model", { path, flowUnits }),
+  engines: () => invoke<EnginesDto>("engines"),
+  addEngine: (name: string, path: string) => invoke<EnginesDto>("add_engine", { name, path }),
+  removeEngine: (name: string) => invoke<EnginesDto>("remove_engine", { name }),
+  setDefaultEngine: (name: string) => invoke<EnginesDto>("set_default_engine", { name }),
+  setProjectEngine: (name: string | null) => invoke<EnginesDto>("set_project_engine", { name }),
+  runStart: (label: string | null) => invoke<void>("run_start", { label }),
+  runCancel: () => invoke<void>("run_cancel"),
 };
+
+export function onRunProgress(f: (p: RunProgress) => void): Promise<UnlistenFn> {
+  return listen<RunProgress>("run-progress", (e) => f(e.payload));
+}
+
+export function onRunOutput(f: (line: string) => void): Promise<UnlistenFn> {
+  return listen<string>("run-output", (e) => f(e.payload));
+}
+
+export function onRunFinished(f: (r: RunFinished) => void): Promise<UnlistenFn> {
+  return listen<RunFinished>("run-finished", (e) => f(e.payload));
+}
 
 export function onCacheProgress(f: (p: { path: string; progress: number }) => void): Promise<UnlistenFn> {
   return listen<{ path: string; progress: number }>("cache-progress", (e) => f(e.payload));

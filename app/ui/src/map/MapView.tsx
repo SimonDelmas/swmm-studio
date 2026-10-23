@@ -8,12 +8,17 @@ import { api, errorText } from "../api";
 import { getState, notify, sameRef, setState, useStore } from "../store";
 import type { Geometry, ObjKind, ObjRef } from "../types";
 import { styleObjects } from "./colors";
+import { useEditTools, type EditTools } from "./useEditTools";
 import { useLayerValues } from "./useLayerValues";
 
 const EARTH = 40075016.686;
 
 /** Rendering measurements, read by the UI tests. */
 export const mapPerf = { steps: [] as { period: number; ms: number }[] };
+/** Editing tools of the map, for keyboard shortcuts (Escape, Enter, Backspace). */
+export const mapTools: { current: EditTools | null } = { current: null };
+/** Display coordinates → page coordinates on the map (UI tests). */
+export const mapProject: { current: ((p: Pt) => Pt) | null } = { current: null };
 const HIGHLIGHT: [number, number, number, number] = [255, 200, 0, 255];
 const MAX_LABELS = 400;
 
@@ -23,11 +28,15 @@ type Pt = [number, number];
 interface Viewer {
   setLayers(layers: Layer[]): void;
   unproject(p: Pt): Pt;
+  /** Display coordinates → pixels in the map element. */
+  project(p: Pt): Pt;
   /** Size of a screen pixel in spatial-index units (Web Mercator metres or model units). */
   unitsPerPixel(): number;
   fit(b: [number, number, number, number]): void;
   /** Visible extent in display coordinates. */
   extent(): [number, number, number, number];
+  /** Double-click zoom gets in the way while drawing. */
+  setDoubleClickZoom(on: boolean): void;
   destroy(): void;
 }
 
@@ -90,6 +99,10 @@ function createMapViewer(container: HTMLDivElement, onView: () => void): Viewer 
       const ll = map.unproject(p);
       return [ll.lng, ll.lat];
     },
+    project: (p) => {
+      const q = map.project(p as [number, number]);
+      return [q.x, q.y];
+    },
     unitsPerPixel: () => EARTH / (512 * Math.pow(2, map.getZoom())),
     fit: (b) =>
       map.fitBounds(
@@ -103,9 +116,11 @@ function createMapViewer(container: HTMLDivElement, onView: () => void): Viewer 
       const b = map.getBounds();
       return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     },
+    setDoubleClickZoom: (on) => (on ? map.doubleClickZoom.enable() : map.doubleClickZoom.disable()),
     destroy: () => {
       ro.disconnect();
       map.remove();
+      delete (container as unknown as { __map?: maplibregl.Map }).__map;
     },
   };
 }
@@ -131,6 +146,10 @@ function createDeckViewer(container: HTMLDivElement, onView: () => void): Viewer
       const v = viewport();
       return v ? (v.unproject(p) as Pt) : p;
     },
+    project: (p) => {
+      const v = viewport();
+      return v ? (v.project(p) as Pt) : p;
+    },
     unitsPerPixel: () => 1 / Math.pow(2, viewState.zoom),
     fit: (b) => {
       const w = container.clientWidth || 800;
@@ -149,6 +168,7 @@ function createDeckViewer(container: HTMLDivElement, onView: () => void): Viewer
       const [x1, y1] = v.unproject([v.width, 0]);
       return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
     },
+    setDoubleClickZoom: (on) => deck.setProps({ controller: { doubleClickZoom: on, inertia: false } }),
     destroy: () => deck.finalize(),
   };
 }
@@ -185,11 +205,19 @@ export function MapView() {
   const [cursor, setCursor] = useState<string>("");
   const [drawing, setDrawing] = useState<Pt[] | null>(null);
 
-  const resultsKey = model?.results ? `${model.results.path}:${model.results.cache.state}` : null;
-  const modelKey = model ? `${model.path}:${model.crs?.id ?? ""}` : null;
-  const nodeValues = useLayerValues("node", styles.node, period, resultsKey, modelKey);
-  const linkValues = useLayerValues("link", styles.link, period, resultsKey, modelKey);
-  const subValues = useLayerValues("subcatchment", styles.subcatchment, period, resultsKey, modelKey);
+  const modelSeq = useStore((s) => s.modelSeq);
+  const revision = model?.revision ?? 0;
+  // Values are reloaded after every edit (the objects or their attributes may differ).
+  const resultsKey = model?.results ? `${model.results.path}:${model.results.cache.state}:${revision}` : null;
+  const modelKey = model ? `${modelSeq}:${model.crs?.id ?? ""}` : null;
+  const valuesKey = modelKey ? `${modelKey}:${revision}` : null;
+  const nodeValues = useLayerValues("node", styles.node, period, resultsKey, valuesKey);
+  const linkValues = useLayerValues("link", styles.link, period, resultsKey, valuesKey);
+  const subValues = useLayerValues("subcatchment", styles.subcatchment, period, resultsKey, valuesKey);
+  const tools = useEditTools(viewer, container, g, tool, selection);
+  mapTools.current = tools;
+  const drawingTool = tool.startsWith("add-");
+  useEffect(() => viewer.current?.setDoubleClickZoom(!drawingTool), [drawingTool, modelKey]);
 
   const space = g?.space;
   // (Re)create the viewer when the kind of view changes.
@@ -203,6 +231,11 @@ export function MapView() {
     };
     const v = space === "lonlat" ? createMapViewer(el, onView) : createDeckViewer(el, onView);
     viewer.current = v;
+    mapProject.current = (p) => {
+      const r = el.getBoundingClientRect();
+      const q = v.project(p);
+      return [r.left + q[0], r.top + q[1]];
+    };
     const saved = (getState().model?.project.ui as { view?: { extent?: number[]; space?: string } })?.view;
     const b = saved?.space === space && saved.extent?.length === 4 ? saved.extent : getState().model?.bounds;
     if (b) v.fit(b as [number, number, number, number]);
@@ -516,7 +549,7 @@ export function MapView() {
   }, [period]);
 
   useEffect(() => {
-    viewer.current?.setLayers([...baseLayers, ...selectionLayers, ...(labelLayer ? [labelLayer] : [])]);
+    viewer.current?.setLayers([...baseLayers, ...selectionLayers, ...(labelLayer ? [labelLayer] : []), ...tools.layers]);
     const s = stepStart.current;
     if (s) {
       requestAnimationFrame(() => {
@@ -524,7 +557,7 @@ export function MapView() {
         if (mapPerf.steps.length > 500) mapPerf.steps.shift();
       });
     }
-  }, [baseLayers, selectionLayers, labelLayer]);
+  }, [baseLayers, selectionLayers, labelLayer, tools.layers]);
 
   // ---- interaction ----------------------------------------------------------
 
@@ -547,13 +580,23 @@ export function MapView() {
     if (e.button !== 0) return;
     down.current = { p: relative(e), shift: e.shiftKey };
   };
+  const onPointerDownCapture = (e: React.PointerEvent) => {
+    if (tools.onDownCapture(e, relative(e))) {
+      // The drag is ours: the map must not pan.
+      e.preventDefault();
+      e.stopPropagation();
+      down.current = null;
+    }
+  };
   const onPointerUp = (e: React.PointerEvent) => {
     const d = down.current;
     down.current = null;
     const v = viewer.current;
-    if (!d || !v || tool !== "select") return;
+    if (!d || !v || tool === "box" || tool === "lasso") return;
     const p = relative(e);
     if (Math.hypot(p[0] - d.p[0], p[1] - d.p[1]) > 4) return;
+    if (tools.onClick(p, e)) return;
+    if (tool.startsWith("add-")) return;
     const [x, y] = v.unproject(p);
     api
       .pick(x, y, 6 * v.unitsPerPixel())
@@ -563,6 +606,7 @@ export function MapView() {
   const onPointerMove = (e: React.PointerEvent) => {
     const v = viewer.current;
     if (!v || !g) return;
+    tools.onMove(relative(e));
     const [x, y] = v.unproject(relative(e));
     setCursor(
       g.space === "lonlat"
@@ -629,20 +673,42 @@ export function MapView() {
     <div className="map-wrap">
       <div
         ref={container}
-        className="map"
+        className={`map tool-${drawingTool ? "add" : tool}`}
+        onPointerDownCapture={onPointerDownCapture}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerMove={onPointerMove}
+        onContextMenu={(e) => e.preventDefault()}
       />
-      {tool !== "select" && (
+      {(tool === "box" || tool === "lasso") && (
         <svg className="draw-overlay" onPointerDown={onDrawDown} onPointerMove={onDrawMove} onPointerUp={onDrawUp}>
           {shape}
         </svg>
       )}
       {attribution}
       {cursor && <div className="map-cursor">{cursor}</div>}
+      {model && <ToolHint tool={tool} sketching={tools.busy} />}
       {!model && <div className="map-empty">Open a SWMM model (.inp) to start.</div>}
     </div>
   );
 }
 
+
+const HINTS: Partial<Record<string, string>> = {
+  move: "Drag a node or gage; drag a selected object to move the selection.",
+  vertex: "Select a link or subcatchment: drag a vertex, drag a midpoint to add one, Alt+click to delete one. Drag a link end onto a node to reconnect it.",
+  "add-subcatchment": "Click the outline points; click the first point or press Enter to finish. Backspace removes the last point.",
+  "add-gage": "Click to place a rain gage.",
+};
+
+/** One-line help for the active editing tool. */
+function ToolHint({ tool, sketching }: { tool: string; sketching: boolean }) {
+  let text = HINTS[tool];
+  if (!text && /^add-(junction|outfall|divider|storage)$/.test(tool)) text = `Click to add a ${tool.slice(4)}.`;
+  if (!text && tool.startsWith("add-"))
+    text = sketching
+      ? "Click to add vertices, then click the end node. Backspace removes the last vertex, Escape cancels."
+      : `Click the start node of the ${tool.slice(4)}.`;
+  if (!text) return null;
+  return <div className="map-hint">{text} Escape: back to selection.</div>;
+}

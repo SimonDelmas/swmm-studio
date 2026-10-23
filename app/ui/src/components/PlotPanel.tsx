@@ -36,7 +36,10 @@ export async function addToPlot(kind: ElementKind, index: number, v: number) {
   const id = kind === "system" ? "System" : (s.ids[kind]?.[index] ?? `${kind} #${index + 1}`);
   const key = `${kind}:${index}:${v}`;
   if (s.plot.some((p) => p.key === key)) return;
-  setState({ plot: [...s.plot, { key, kind, index, var: v, label: `${id} ${info.name}`, unit: info.unit }], bottomTab: "plot" });
+  setState({
+    plot: [...s.plot, { key, kind, index, id: kind === "system" ? undefined : id, var: v, label: `${id} ${info.name}`, unit: info.unit }],
+    bottomTab: "plot",
+  });
 }
 
 interface Built {

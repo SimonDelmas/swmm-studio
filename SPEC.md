@@ -330,6 +330,39 @@ Findings that change the spec:
 - A series over a long range is not read directly from the `.out` when that would touch more than 256 MB; the request waits for the cache (the UI says so and refreshes when it is ready).
 - Not done in M1: hover tooltips, measure tool, subcatchment→outlet connectors, flow arrows (P1); SVG plot export; `[BACKDROP]` image; i18n (English only); dockable panels (fixed layout with resizable panels).
 
+### 6.3 M2 status (done, 2026-10-23)
+
+Delivered:
+- `swmm-inp`: section splices, canonical section insertion (primitives of undoable edits).
+- `swmm-model`:
+  - `edit`: transactions of line-level ops; applying an op turns it into its inverse, so undo / redo are exact and a saved file differs from the source only on the edited lines. Dirty state, failed edits rolled back.
+  - `schema`: field layout of every in-scope section (names, types, units in the model's unit system, defaults, validation), including layouts that depend on a value (outfall type, divider type, storage shape, outlet type, cross-section shape, rain gage source, infiltration method); changing such a value rebuilds the line and carries the other values over.
+  - `refs`: where names are used (definitions, owned lines, references, `[REPORT]` / `[PROFILES]` lists, control rules).
+  - `ops`: field edits (single and bulk), rename with every reference, delete with cascade (links of deleted nodes, owned lines; references set to `*`, lists shortened, rules reported), add nodes / links (cross-section, length from the map) / subcatchments (subareas, infiltration, area and width from the outline, nearest node as outlet) / rain gages, map geometry, options, title, RDII assignment.
+  - `tables`: curves, time series (values or external file), time patterns, unit hydrographs (13 months × short / medium / long, initial abstraction), transects (NC / X1 / GR blocks; the next transect keeps its roughness when one changes or is deleted).
+  - `Network::refresh`: incremental update after an edit (value edits: nothing; moved points, vertices, reconnections, outlets: in place; added / removed / renamed objects: rebuild).
+- `swmm-geo`: in-place updates of the R-tree, picking restricted to a layer.
+- `swmm-engine`: `run_inp` runs the model held in memory (unsaved edits included).
+- App: F-EDIT-1 (property panel with typed fields, units, inline validation, rename, optional lines added / removed: inflows, dry weather flow, RDII, losses, cross-sections, subareas, infiltration), F-EDIT-2 (add every node and link type, subcatchments and gages on the map; move nodes, gages and the selection; insert / move / delete vertices; reconnect link ends by dragging them onto a node; delete with a cascade confirmation), F-EDIT-3 (undo / redo of every edit, Ctrl+Z / Ctrl+Y), F-EDIT-4 (curves, time series, patterns, options, rain gages, transects; grids accept cells pasted from a spreadsheet; previews), F-EDIT-6 (unit hydrograph editor, `[RDII]` lines in the property panel, bulk assignment to the selected nodes), bulk field edit on a selection, F-SIM-1 (engine registry dialog shared with the CLI, per-project engine in `.swproj`; Run opens the registry when no engine is configured), F-SIM-2/3 (background run with progress, elapsed time, console log, cancel; results and report loaded at the end), F-FILE-1 (save, save as, new model from a template; unsaved changes guarded on close), F-GEO-2 (map coordinates converted back to the model CRS; coordinates written with 3 decimals, 8 for geographic CRS).
+
+Verification: Rust unit tests for every operation (byte-exact undo of every kind of edit, refresh equal to a rebuild, incremental display equal to a fresh one); UI test `app/ui/e2e/edit.mjs` on the release build with real mouse and keyboard events, in Lambert 93 (over OSM) and in local coordinates: field edit with invalid value refused, undo / redo, add a junction, a conduit with a vertex and a subcatchment, drag a node (the patched map geometry is compared with a full reload), insert / delete a vertex, reconnect, cascade delete and undo, curve editor, RDII bulk assignment, options dialog, engine registration, run of the edited model with EPA SWMM 5.2.4 (results matched to the new objects), cancel of a 20-year run, save as. The M1 smoke test still passes.
+
+Measured on the same 15 W laptop as §6.1 (release build, `app/ui/e2e/edit-perf.mjs`, times until the next frame is drawn):
+
+| Metric | 112k objects (50k nodes, 52k links, 10k subcatchments) | Target |
+|---|---|---|
+| Field edit, round trip to the UI (median) | 17 ms (4–7 ms of IPC, 0.6 ms in Rust) | < 20 ms |
+| Undo of a field edit | 16–17 ms | < 20 ms |
+| Move a node (its links follow) | 48 ms (9 ms in Rust) | — |
+| Add or delete a junction | 350–410 ms (network and display rebuilt: ~280 ms) | — |
+
+Findings that change the spec:
+- The model is not stored in `slotmap` arenas (§4.3): the lossless `.inp` stays the source of truth and edits are line splices with their inverse. The network and the map are derived from it incrementally. Adding, deleting or renaming objects rebuilds them (~0.3 s at 112k objects, a few ms for usual models); making these incremental is left for later.
+- After a map edit the backend sends the changed objects only (a geometry patch); reloading the whole geometry cost ~55 ms at 112k objects.
+- Every change of an edit reaches the UI as the new model info; results and report keep their identity unless objects were added or removed, so the panels that depend on them do not reload.
+- A run simulates the model as edited, without saving it first. A cancelled run leaves the loaded results; a failed run shows its report and no results.
+- Not done in M2: validation list (F-EDIT-11), tabular editor (F-EDIT-9), control rules editor (F-EDIT-7), evaporation / climatology editors, streets and inlets, copy / paste of objects, autosave (F-FILE-5); length and area are computed for new objects only (F-EDIT-12); UI still in English only.
+
 ---
 
 ## 7. Licence

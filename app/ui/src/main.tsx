@@ -2,10 +2,12 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { api } from "./api";
 import { applyCrs } from "./components/CrsDialog";
+import { startRun } from "./components/RunPanel";
+import { edit, redo, saveModel, tryEdit, undo } from "./edit";
 import { addToPlot } from "./components/PlotPanel";
 import { applyStyle } from "./components/StylePanel";
 import { openModel } from "./components/Toolbar";
-import { mapPerf } from "./map/MapView";
+import { mapPerf, mapProject } from "./map/MapView";
 import { getState, setState } from "./store";
 import "./styles.css";
 
@@ -19,6 +21,13 @@ import "./styles.css";
   getState,
   setState,
   mapPerf,
+  mapProject: (p: [number, number]) => mapProject.current?.(p) ?? null,
+  edit,
+  tryEdit,
+  undo,
+  redo,
+  saveModel,
+  startRun,
 };
 
 createRoot(document.getElementById("root")!).render(<App />);

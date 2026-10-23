@@ -1,7 +1,7 @@
 // Minimal global store (no dependency): state + subscribe, read with `useStore`.
 
 import { useSyncExternalStore } from "react";
-import type { ElementKind, Geometry, ModelInfo, ObjKind, ObjRef } from "./types";
+import type { DeletePlan, ElementKind, Geometry, LinkType, ModelInfo, NodeType, ObjKind, ObjRef, RunFinished, TableKind } from "./types";
 
 export type StyledKind = "node" | "link" | "subcatchment";
 export type ClassMethod = "equal" | "quantile" | "custom";
@@ -27,12 +27,35 @@ export interface PlotSeries {
   key: string;
   kind: ElementKind;
   index: number;
+  /** Object name, to find it again after objects are added or removed. */
+  id?: string;
   var: number;
   label: string;
   unit: string;
 }
 
-export type Tool = "select" | "box" | "lasso";
+export type Tool =
+  | "select"
+  | "box"
+  | "lasso"
+  /** Drag objects. */
+  | "move"
+  /** Drag, add and remove the vertices of the selected link or subcatchment. */
+  | "vertex"
+  | `add-${NodeType}`
+  | `add-${LinkType}`
+  | "add-subcatchment"
+  | "add-gage";
+
+export interface RunState {
+  running: boolean;
+  progress: number | null;
+  elapsed: number;
+  log: string[];
+  last: RunFinished | null;
+}
+
+export type Dialog = "options" | "engines" | "new" | null;
 
 export interface State {
   model: ModelInfo | null;
@@ -48,13 +71,24 @@ export interface State {
   styles: Record<StyledKind, LayerStyle>;
   labels: boolean;
   plot: PlotSeries[];
-  bottomTab: "plot" | "report";
+  bottomTab: "plot" | "report" | "run";
   /** Incremented to ask the map to zoom to the model extent / to the selection. */
   fitExtent: number;
   fitSelection: number;
   message: { text: string; error: boolean } | null;
   busy: string | null;
   crsDialog: boolean;
+  dialog: Dialog;
+  /** Table open in the editor. */
+  tableEditor: { kind: TableKind; name: string } | null;
+  /** Deletion waiting for confirmation. */
+  pendingDelete: { objects: ObjRef[]; plan: DeletePlan } | null;
+  run: RunState;
+  /** Engine a run would use (null: none configured). */
+  engine: string | null;
+  sideTab: "props" | "style" | "data";
+  /** Incremented when a model is opened (the map view is rebuilt). */
+  modelSeq: number;
 }
 
 export const defaultStyle = (kind: StyledKind): LayerStyle => ({
@@ -88,6 +122,13 @@ const initial: State = {
   message: null,
   busy: null,
   crsDialog: false,
+  dialog: null,
+  tableEditor: null,
+  pendingDelete: null,
+  run: { running: false, progress: null, elapsed: 0, log: [], last: null },
+  engine: null,
+  sideTab: "props",
+  modelSeq: 0,
 };
 
 let state: State = initial;
@@ -126,6 +167,10 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     labels: ui.labels ?? true,
     plot: [],
     fitExtent: state.fitExtent + 1,
+    tool: "select",
+    modelSeq: state.modelSeq + 1,
+    tableEditor: null,
+    pendingDelete: null,
   });
 }
 

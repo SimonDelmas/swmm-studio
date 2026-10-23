@@ -40,6 +40,9 @@ pub struct Project {
     pub crs: Option<String>,
     pub basemap: Basemap,
     pub results: LinkedResults,
+    /// Engine used to run this model (name in the registry); `None` = default engine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
     /// State owned by the front-end (view, map styles, panels).
     pub ui: serde_json::Value,
 }
@@ -51,6 +54,7 @@ impl Default for Project {
             crs: None,
             basemap: Basemap::default(),
             results: LinkedResults::default(),
+            engine: None,
             ui: serde_json::Value::Object(Default::default()),
         }
     }

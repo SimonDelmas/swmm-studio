@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
+import { confirmDiscard, redo, saveModel, undo } from "../edit";
 import { getState, notify, resetForModel, setState, useStore, type Tool } from "../store";
 import type { Basemap } from "../types";
+import { RunControls } from "./RunPanel";
 
 export async function openModel(path: string) {
   setState({ busy: "Opening model…", playing: false });
@@ -21,8 +23,13 @@ export async function openModel(path: string) {
 }
 
 async function chooseModel() {
+  if (!(await confirmDiscard())) return;
   const path = await open({ filters: [{ name: "SWMM model", extensions: ["inp"] }] });
   if (typeof path === "string") await openModel(path);
+}
+
+async function newModel() {
+  if (await confirmDiscard()) setState({ dialog: "new" });
 }
 
 async function chooseResults() {
@@ -51,6 +58,22 @@ const TOOLS: [Tool, string, string][] = [
   ["select", "↖", "Select: click an object (Shift adds)"],
   ["box", "▭", "Box selection (Shift adds)"],
   ["lasso", "✎", "Lasso selection (Shift adds)"],
+  ["move", "✥", "Move: drag nodes and gages, or the selected objects"],
+  ["vertex", "⌖", "Edit vertices of the selected link or subcatchment, reconnect link ends"],
+];
+
+const ADD: [Tool, string][] = [
+  ["add-junction", "Junction"],
+  ["add-outfall", "Outfall"],
+  ["add-storage", "Storage unit"],
+  ["add-divider", "Flow divider"],
+  ["add-conduit", "Conduit"],
+  ["add-pump", "Pump"],
+  ["add-orifice", "Orifice"],
+  ["add-weir", "Weir"],
+  ["add-outlet", "Outlet"],
+  ["add-subcatchment", "Subcatchment"],
+  ["add-gage", "Rain gage"],
 ];
 
 export function Toolbar() {
@@ -66,12 +89,31 @@ export function Toolbar() {
     });
   };
   const bm = model?.project.basemap;
+  const adding = tool.startsWith("add-");
   return (
     <div className="toolbar">
       <span className="brand">SWMM Studio</span>
-      <button onClick={chooseModel}>Open model…</button>
+      <button onClick={newModel} title="New model">
+        New
+      </button>
+      <button onClick={chooseModel} title="Open a model (Ctrl+O)">
+        Open…
+      </button>
+      <button disabled={!model} onClick={() => saveModel()} title="Save (Ctrl+S)" className={model?.dirty ? "dirty" : ""}>
+        Save
+      </button>
+      <button disabled={!model} onClick={() => saveModel(true)} title="Save as (Ctrl+Shift+S)">
+        Save as…
+      </button>
       <button disabled={!model} onClick={chooseResults}>
         Open results…
+      </button>
+      <span className="sep" />
+      <button disabled={!model?.undo} onClick={undo} title={model?.undo ? `Undo ${model.undo} (Ctrl+Z)` : "Undo (Ctrl+Z)"}>
+        ↶
+      </button>
+      <button disabled={!model?.redo} onClick={redo} title={model?.redo ? `Redo ${model.redo} (Ctrl+Y)` : "Redo (Ctrl+Y)"}>
+        ↷
       </button>
       <span className="sep" />
       <button disabled={!model} onClick={() => setState({ crsDialog: true })} title="Coordinate system of the model">
@@ -100,9 +142,28 @@ export function Toolbar() {
           {icon}
         </button>
       ))}
+      <select
+        disabled={!model}
+        className={adding ? "active" : ""}
+        value={adding ? tool : ""}
+        title="Add objects on the map"
+        onChange={(e) => setState({ tool: (e.target.value || "select") as Tool, selection: [] })}
+      >
+        <option value="">+ Add…</option>
+        {ADD.map(([t, label]) => (
+          <option key={t} value={t}>
+            {label}
+          </option>
+        ))}
+      </select>
       <button disabled={!model} title="Zoom to the whole model" onClick={() => setState({ fitExtent: getState().fitExtent + 1 })}>
         ⤢
       </button>
+      <span className="sep" />
+      <button disabled={!model} onClick={() => setState({ dialog: "options" })} title="Simulation options">
+        Options
+      </button>
+      <RunControls />
       <span className="grow" />
       <input
         disabled={!model}

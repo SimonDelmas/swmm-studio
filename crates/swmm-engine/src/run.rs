@@ -106,6 +106,20 @@ pub fn run(
     model: &Path,
     engine: &EngineConfig,
     opts: &RunOptions,
+    on_event: impl FnMut(RunEvent),
+    cancel: &AtomicBool,
+) -> Result<RunOutcome, EngineError> {
+    let inp = InpFile::read(model)?;
+    run_inp(&inp, model, engine, opts, on_event, cancel)
+}
+
+/// Runs a model held in memory (possibly with unsaved edits). `model` is its file path:
+/// it names the run folder and relative external files are resolved from its folder.
+pub fn run_inp(
+    inp: &InpFile,
+    model: &Path,
+    engine: &EngineConfig,
+    opts: &RunOptions,
     mut on_event: impl FnMut(RunEvent),
     cancel: &AtomicBool,
 ) -> Result<RunOutcome, EngineError> {
@@ -116,7 +130,7 @@ pub fn run(
     }
     let model = std::path::absolute(model).map_err(|e| EngineError::io(model, e))?;
     let model_dir = model.parent().map(Path::to_path_buf).unwrap_or_default();
-    let mut inp = InpFile::read(&model)?;
+    let mut inp = inp.clone();
     absolutize(&mut inp, &model_dir);
     let total_days = inp.simulation_period().map(|p| p.duration().num_seconds() as f64 / 86_400.0);
 

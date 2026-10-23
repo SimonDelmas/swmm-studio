@@ -3,10 +3,13 @@
 //! Each shape belongs to a *layer* (an object category chosen by the caller, e.g. nodes,
 //! links, subcatchments) and carries the caller's object index.
 
+use std::collections::HashMap;
+
 use rstar::primitives::{GeomWithData, Rectangle};
 use rstar::{RTree, AABB};
 
 type P = [f64; 2];
+type Entry = GeomWithData<Rectangle<P>, u32>;
 
 /// An object found by a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -61,24 +64,23 @@ impl IndexBuilder {
     }
 
     pub fn finish(self) -> SpatialIndex {
-        let entries = self
-            .shapes
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                let pts = &self.coords[s.start as usize..(s.start + s.len) as usize];
-                let b = crate::bounds(pts).expect("shapes have finite points");
-                GeomWithData::new(Rectangle::from_corners([b[0], b[1]], [b[2], b[3]]), i as u32)
-            })
-            .collect();
-        SpatialIndex { coords: self.coords, shapes: self.shapes, tree: RTree::bulk_load(entries) }
+        let entries = (0..self.shapes.len()).map(|i| entry(&self.coords, &self.shapes[i], i as u32)).collect();
+        let lookup = self.shapes.iter().enumerate().map(|(i, s)| (s.hit, i as u32)).collect();
+        SpatialIndex { coords: self.coords, shapes: self.shapes, lookup, tree: RTree::bulk_load(entries) }
     }
+}
+
+fn entry(coords: &[P], s: &Shape, i: u32) -> Entry {
+    let pts = &coords[s.start as usize..(s.start + s.len) as usize];
+    let b = crate::bounds(pts).expect("shapes have finite points");
+    GeomWithData::new(Rectangle::from_corners([b[0], b[1]], [b[2], b[3]]), i)
 }
 
 pub struct SpatialIndex {
     coords: Vec<P>,
     shapes: Vec<Shape>,
-    tree: RTree<GeomWithData<Rectangle<P>, u32>>,
+    lookup: HashMap<Hit, u32>,
+    tree: RTree<Entry>,
 }
 
 impl SpatialIndex {
@@ -96,6 +98,57 @@ impl SpatialIndex {
 
     fn pts(&self, s: &Shape) -> &[P] {
         &self.coords[s.start as usize..(s.start + s.len) as usize]
+    }
+
+    /// Replaces the shape of an object (adds it if new, removes it when `pts` has no
+    /// finite point). Old coordinates are not reclaimed until the index is rebuilt.
+    fn set(&mut self, layer: u8, index: u32, kind: ShapeKind, pts: &[P]) {
+        let hit = Hit { layer, index };
+        let pts: Vec<P> = pts.iter().copied().filter(|p| p[0].is_finite() && p[1].is_finite()).collect();
+        let slot = match self.lookup.get(&hit) {
+            Some(&i) => {
+                let old = entry(&self.coords, &self.shapes[i as usize], i);
+                self.tree.remove(&old);
+                Some(i)
+            }
+            None => None,
+        };
+        if pts.is_empty() {
+            // Keep the slot (shape indices are stored in the tree) but make it unreachable.
+            if slot.is_some() {
+                self.lookup.remove(&hit);
+            }
+            return;
+        }
+        let start = self.coords.len() as u32;
+        self.coords.extend_from_slice(&pts);
+        let shape = Shape { hit, kind, start, len: pts.len() as u32 };
+        let i = match slot {
+            Some(i) => {
+                self.shapes[i as usize] = shape;
+                i
+            }
+            None => {
+                self.shapes.push(shape);
+                let i = self.shapes.len() as u32 - 1;
+                self.lookup.insert(hit, i);
+                i
+            }
+        };
+        self.tree.insert(entry(&self.coords, &self.shapes[i as usize], i));
+    }
+
+    pub fn set_point(&mut self, layer: u8, index: u32, p: P) {
+        self.set(layer, index, ShapeKind::Point, &[p]);
+    }
+
+    pub fn set_line(&mut self, layer: u8, index: u32, pts: &[P]) {
+        self.set(layer, index, ShapeKind::Line, pts);
+    }
+
+    pub fn set_polygon(&mut self, layer: u8, index: u32, ring: &[P]) {
+        let kind = if ring.len() >= 3 { ShapeKind::Polygon } else { ShapeKind::Line };
+        self.set(layer, index, kind, if ring.len() >= 3 { ring } else { &[] });
     }
 
     fn candidates(&self, min: P, max: P) -> impl Iterator<Item = &Shape> + '_ {
@@ -154,8 +207,14 @@ impl SpatialIndex {
     /// Closest object within `tol` of `p`. Points win over lines, lines over polygons
     /// (a polygon is hit when `p` is inside it).
     pub fn nearest(&self, p: P, tol: f64) -> Option<Hit> {
+        self.nearest_in(p, tol, None)
+    }
+
+    /// Like [`SpatialIndex::nearest`], restricted to one layer when `layer` is set.
+    pub fn nearest_in(&self, p: P, tol: f64, layer: Option<u8>) -> Option<Hit> {
         let mut best: Option<(u8, f64, Hit)> = None;
-        for s in self.candidates([p[0] - tol, p[1] - tol], [p[0] + tol, p[1] + tol]) {
+        let cands = self.candidates([p[0] - tol, p[1] - tol], [p[0] + tol, p[1] + tol]);
+        for s in cands.filter(|s| layer.is_none_or(|l| s.hit.layer == l)) {
             let pts = self.pts(s);
             let (rank, d) = match s.kind {
                 ShapeKind::Point => (0, dist(p, pts[0])),
@@ -270,6 +329,28 @@ mod tests {
         let lasso = [[8.0, -2.0], [12.0, -2.0], [12.0, 2.0], [8.0, 2.0]];
         let h = idx.in_polygon(&lasso);
         assert_eq!(h, vec![Hit { layer: 0, index: 1 }, Hit { layer: 1, index: 0 }]);
+    }
+
+    #[test]
+    fn update_shapes_in_place() {
+        let mut idx = sample();
+        // Move point 0 far away; it is no longer found at the origin.
+        idx.set_point(0, 0, [100.0, 100.0]);
+        assert_eq!(idx.nearest_in([0.0, 0.0], 0.5, Some(0)), None);
+        assert_eq!(idx.nearest([100.0, 100.2], 0.5), Some(Hit { layer: 0, index: 0 }));
+        // The line keeps its place; restrict to the line layer.
+        assert_eq!(idx.nearest_in([0.0, 0.0], 0.5, Some(1)), Some(Hit { layer: 1, index: 0 }));
+        // Reshape a line, add a new point, remove an object.
+        idx.set_line(1, 1, &[[50.0, 50.0], [60.0, 50.0]]);
+        assert_eq!(idx.in_rect([54.0, 49.0], [56.0, 51.0]), vec![Hit { layer: 1, index: 1 }]);
+        idx.set_point(0, 9, [7.0, 7.0]);
+        assert_eq!(idx.nearest([7.0, 7.0], 0.1), Some(Hit { layer: 0, index: 9 }));
+        idx.set_point(0, 9, [f64::NAN, f64::NAN]);
+        assert_eq!(idx.nearest([7.0, 7.0], 0.1), None);
+        idx.set_polygon(2, 0, &[]);
+        assert!(idx.in_rect([24.0, 4.0], [26.0, 6.0]).is_empty());
+        idx.set_point(0, 9, [7.0, 7.0]);
+        assert_eq!(idx.nearest([7.0, 7.0], 0.1), Some(Hit { layer: 0, index: 9 }));
     }
 
     #[test]
