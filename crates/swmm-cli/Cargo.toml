@@ -1,0 +1,27 @@
+[package]
+name = "swmm-cli"
+description = "Command-line interface of SWMM Studio: run models, inspect and export results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "swmm-cli"
+path = "src/main.rs"
+
+[dependencies]
+swmm-inp.workspace = true
+swmm-out.workspace = true
+swmm-rpt.workspace = true
+swmm-engine.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+ctrlc.workspace = true
+indicatif.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

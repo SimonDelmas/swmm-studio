@@ -1,0 +1,21 @@
+[package]
+name = "swmm-inp"
+description = "Lossless reader/writer for EPA SWMM 5 input (.inp) files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+encoding_rs.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "parse"
+harness = false

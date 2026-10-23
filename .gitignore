@@ -1,0 +1,6 @@
+/target
+*.swcache
+*.out
+*.rpt
+!crates/**/testdata/**
+/bench-data

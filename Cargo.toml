@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Simon Delmas"]
+repository = "https://github.com/SimonDelmas/swmm-studio"
+rust-version = "1.85"
+
+[workspace.dependencies]
+swmm-inp = { path = "crates/swmm-inp" }
+swmm-out = { path = "crates/swmm-out" }
+swmm-rpt = { path = "crates/swmm-rpt" }
+swmm-engine = { path = "crates/swmm-engine" }
+
+anyhow = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+clap = { version = "4", features = ["derive"] }
+crossbeam-channel = "0.5"
+ctrlc = "3"
+dirs = "6"
+encoding_rs = "0.8"
+indicatif = "0.17"
+memmap2 = "0.9"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+zstd = "0.13"
+criterion = "0.5"
+
+[profile.release]
+debug = "line-tables-only"
+
+[profile.bench]
+debug = "line-tables-only"

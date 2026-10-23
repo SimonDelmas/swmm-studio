@@ -1,0 +1,13 @@
+[package]
+name = "swmm-rpt"
+description = "Parser for EPA SWMM 5 status reports (.rpt)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+encoding_rs.workspace = true
+thiserror.workspace = true

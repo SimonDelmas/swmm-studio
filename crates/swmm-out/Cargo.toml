@@ -1,0 +1,26 @@
+[package]
+name = "swmm-out"
+description = "Fast reader, writer and results cache for EPA SWMM 5 binary output (.out) files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+crossbeam-channel.workspace = true
+memmap2.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+xxhash-rust.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "out"
+harness = false
