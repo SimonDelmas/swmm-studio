@@ -38,7 +38,9 @@ npm ci --prefix app/ui
 cd app/src-tauri && cargo tauri dev
 ```
 
-`cargo tauri build` makes the MSI and NSIS installers.
+`cargo tauri build` makes the MSI and NSIS installers. A plain `cargo build --release` also makes
+a working `target/release/swmm-studio.exe` once the front-end is built (`npm run build --prefix app/ui`):
+the app embeds `app/ui/dist`.
 
 - **Open model…** reads the `.inp`, its project file `<model>.swproj` (coordinate system, basemap,
   view, map styles, linked results) and the results found next to it (`<model>.out` / `.rpt`, or

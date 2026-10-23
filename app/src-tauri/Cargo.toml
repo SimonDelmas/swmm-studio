@@ -12,6 +12,13 @@ rust-version.workspace = true
 name = "swmm-studio"
 path = "src/main.rs"
 
+[features]
+# Serves the built front-end (app/ui/dist) from the binary, so that a plain
+# `cargo build --release` makes a working app. `cargo tauri dev` turns it off to use
+# the Vite dev server instead.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
