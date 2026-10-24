@@ -211,9 +211,10 @@ export function MapView() {
   const resultsKey = model?.results ? `${model.results.path}:${model.results.cache.state}:${revision}` : null;
   const modelKey = model ? `${modelSeq}:${model.crs?.id ?? ""}` : null;
   const valuesKey = modelKey ? `${modelKey}:${revision}` : null;
-  const nodeValues = useLayerValues("node", styles.node, period, resultsKey, valuesKey);
-  const linkValues = useLayerValues("link", styles.link, period, resultsKey, valuesKey);
-  const subValues = useLayerValues("subcatchment", styles.subcatchment, period, resultsKey, valuesKey);
+  const compareKey = model?.compare ? `${model.compare.path}:${model.compare.cache.state}:${revision}` : null;
+  const nodeValues = useLayerValues("node", styles.node, period, resultsKey, valuesKey, compareKey);
+  const linkValues = useLayerValues("link", styles.link, period, resultsKey, valuesKey, compareKey);
+  const subValues = useLayerValues("subcatchment", styles.subcatchment, period, resultsKey, valuesKey, compareKey);
   const tools = useEditTools(viewer, container, g, tool, selection);
   mapTools.current = tools;
   const drawingTool = tool.startsWith("add-");

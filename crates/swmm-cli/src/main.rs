@@ -92,6 +92,14 @@ enum InpCmd {
         #[arg(required = true)]
         models: Vec<PathBuf>,
     },
+    /// Model checks: duplicate IDs, missing references, adverse slopes, offsets below
+    /// inverts, sub-networks without outfall… Exit code 1 when there are errors.
+    Validate {
+        model: PathBuf,
+        /// Also list the warnings.
+        #[arg(long)]
+        warnings: bool,
+    },
 }
 
 fn settings_path(cli: &Cli) -> PathBuf {
@@ -325,6 +333,18 @@ fn inp_cmd(cmd: &InpCmd) -> Result<ExitCode> {
                 }
             }
             Ok(ExitCode::SUCCESS)
+        }
+        InpCmd::Validate { model, warnings } => {
+            let inp = InpFile::read(model)?;
+            let net = swmm_model::Network::from_inp(&inp);
+            let issues = swmm_model::validate::validate(&inp, &net);
+            let errors = issues.iter().filter(|i| i.severity == swmm_model::validate::Severity::Error).count();
+            for i in issues.iter().filter(|i| *warnings || i.severity == swmm_model::validate::Severity::Error) {
+                let sev = if i.severity == swmm_model::validate::Severity::Error { "ERROR  " } else { "WARNING" };
+                println!("{sev} {:<20} {}", i.code, i.message);
+            }
+            println!("{errors} error(s), {} warning(s)", issues.len() - errors);
+            Ok(if errors == 0 { ExitCode::SUCCESS } else { ExitCode::from(1) })
         }
         InpCmd::Check { models } => {
             let mut failed = 0;

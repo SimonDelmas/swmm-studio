@@ -110,6 +110,8 @@ export interface ModelInfo {
   project_error: string | null;
   attributes: Record<string, string[]>;
   results: ResultsInfo | null;
+  /** Results compared with the loaded ones (run B). */
+  compare: ResultsInfo | null;
   report: ReportSummary | null;
   notes: string[];
   dirty: boolean;
@@ -237,7 +239,10 @@ export type EditRequest =
   | { op: "add_table"; kind: TableKind }
   | { op: "delete_table"; kind: TableKind; name: string }
   | { op: "assign_rdii"; nodes: number[]; hydrograph: string; area: string | null }
-  | { op: "remove_rdii"; nodes: number[] };
+  | { op: "remove_rdii"; nodes: number[] }
+  | { op: "set_cells"; section: string; cells: GridCell[] }
+  | { op: "set_climate"; climate: Climate }
+  | { op: "set_section_text"; section: string; text: string };
 
 /** Coordinates are null where they cannot be drawn. */
 type PPt = [number | null, number | null];
@@ -361,4 +366,165 @@ export interface RunFinished {
   warnings: number;
   console: string[];
   info: ModelInfo | null;
+}
+
+// ---- analysis (app/src-tauri/src/analysis.rs) ----------------------------------
+
+export type Stat =
+  | { stat: "max" }
+  | { stat: "min" }
+  | { stat: "mean" }
+  | { stat: "time_of_max" }
+  | { stat: "total" }
+  | { stat: "periods_above"; threshold: number };
+
+export type Calendar = "day" | "month" | "year";
+
+export interface Aggregated {
+  starts_ms: number[];
+  end_ms: number | null;
+  periods: [number, number][];
+  values: number[];
+  unit: string;
+}
+
+export interface YearStats {
+  year: number;
+  count: number;
+  total: number;
+  hours: number;
+  peak: number | null;
+}
+
+export interface EventRow {
+  index: number;
+  id: string;
+  count: number;
+  per_year: number;
+  total: number;
+  hours: number;
+  peak: number | null;
+  years: YearStats[];
+}
+
+export interface EventTable {
+  rows: EventRow[];
+  years: number;
+  unit: string;
+  total_unit: string;
+  seconds: number;
+}
+
+export interface EventDto {
+  start: number;
+  end: number;
+  peak: number;
+  peak_period: number;
+  total: number;
+  hours: number;
+}
+
+export interface ProfileNode {
+  index: number;
+  id: string;
+  station: number;
+  invert: number | null;
+  rim: number | null;
+}
+
+export interface ProfileLink {
+  index: number;
+  id: string;
+  start: number;
+  end: number;
+  invert_start: number | null;
+  invert_end: number | null;
+  height: number | null;
+}
+
+export interface ProfileDto {
+  nodes: ProfileNode[];
+  links: ProfileLink[];
+  max_head: (number | null)[];
+}
+
+export interface Issue {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  object: ObjRef | null;
+  section: string | null;
+  id: string | null;
+}
+
+export type GridColumn = FieldType & { key: string; name: string; unit: string };
+
+export interface GridRow {
+  key: string[];
+  cells: (string | null)[];
+  object: number | null;
+}
+
+export interface Grid {
+  section: string;
+  object_kind: ObjKind;
+  columns: GridColumn[];
+  rows: GridRow[];
+}
+
+export interface GridCell {
+  key: string[];
+  field: string;
+  value: string;
+}
+
+export interface Climate {
+  evap_source: string;
+  evap_values: string[];
+  evap_recovery: string;
+  evap_dry_only: boolean;
+  temp_source: string;
+  temp_series: string;
+  temp_file: string;
+  temp_file_start: string;
+  wind_source: string;
+  wind_monthly: string[];
+  snowmelt: string[];
+  adc_impervious: string[];
+  adc_pervious: string[];
+  adj_temperature: string[];
+  adj_evaporation: string[];
+  adj_rainfall: string[];
+  adj_conductivity: string[];
+}
+
+export interface RunRecord {
+  label: string | null;
+  model: string;
+  engine: EngineConfig;
+  started: string;
+  seconds: number;
+  status: "success" | "warnings" | "failed" | "cancelled";
+  exit_code: number | null;
+  errors: number;
+  warnings: number;
+  continuity: { runoff_quantity: number | null; groundwater: number | null; flow_routing: number | null } | null;
+  inp: string;
+  rpt: string;
+  out: string;
+}
+
+export interface RunDto {
+  dir: string;
+  record: RunRecord;
+  out: string | null;
+  rpt: string | null;
+  loaded: boolean;
+  compared: boolean;
+}
+
+export interface SectionInfo {
+  name: string;
+  lines: number;
+  present: boolean;
 }

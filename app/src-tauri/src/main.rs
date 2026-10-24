@@ -2,8 +2,10 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analysis;
 mod commands;
 mod editing;
+mod export;
 mod project;
 mod session;
 
@@ -51,6 +53,28 @@ fn main() {
             commands::set_project_engine,
             commands::run_start,
             commands::run_cancel,
+            commands::stat_values,
+            commands::stat_unit,
+            commands::compare_frame,
+            commands::compare_period,
+            commands::open_comparison,
+            commands::close_comparison,
+            commands::aggregate,
+            commands::event_stats,
+            commands::object_events,
+            commands::profile,
+            commands::heads,
+            commands::validate_model,
+            commands::grid,
+            commands::climate,
+            commands::sections,
+            commands::section_text,
+            commands::runs,
+            commands::open_run,
+            commands::compare_run,
+            commands::set_run_label,
+            commands::delete_run,
+            commands::export_table,
         ])
         .run(tauri::generate_context!())
         .expect("error while running SWMM Studio");

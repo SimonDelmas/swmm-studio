@@ -3,6 +3,7 @@
 
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "./api";
+import { seriesKey } from "./components/PlotPanel";
 import { getState, notify, resetForModel, setState, type State } from "./store";
 import type { EditOutcome, EditRequest, Geometry, GeometryPatch, ObjKind, ObjRef } from "./types";
 
@@ -100,7 +101,7 @@ export async function applyOutcome(o: EditOutcome) {
       if (p.kind === "system" || !p.id) return [p];
       const list = ids[p.kind as ObjKind];
       const index = list ? list.findIndex((x) => x.toUpperCase() === p.id!.toUpperCase()) : -1;
-      return index < 0 ? [] : [{ ...p, index, key: `${p.kind}:${index}:${p.var}` }];
+      return index < 0 ? [] : [{ ...p, index, key: seriesKey(p.kind, index, p.var, p.b) }];
     });
   }
   setState(patch);

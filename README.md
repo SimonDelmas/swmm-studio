@@ -5,11 +5,15 @@ Visualize, edit, simulate and analyse EPA SWMM 5 models, built for large network
 
 See [SPEC.md](SPEC.md) for the functional and technical specification and the roadmap.
 
-**Status: M2 (editor).** Desktop app: open or create a model, set its coordinate system, see the
-network over OpenStreetMap, edit it (properties, objects drawn on the map, vertices, curves, time
-series, patterns, transects, unit hydrographs and RDII, options) with undo / redo, run it with
-your SWMM engine, then animate results on the map with a zoomable timeline, plot time series of
-any length and browse the `.rpt` tables. Saved files change only where you edited them.
+**Status: M3 (analysis, v1.0).** Desktop app: open or create a model, set its coordinate system,
+see the network over OpenStreetMap, edit it (properties, objects drawn on the map, vertices, curves,
+time series, patterns, transects, unit hydrographs and RDII, climatology, any section as text, or
+whole sections in a spreadsheet-like table) with undo / redo, check it, run it with your SWMM
+engine, then analyse the results: animated maps, envelope and time-aggregated maps, time series of
+any length (also per day / month / year), longitudinal profiles with the moving water line,
+long-term event statistics (e.g. overflow frequency), and comparisons between runs kept in the run
+history. Tables export to CSV or Excel, figures to PNG or SVG. Saved files change only where you
+edited them.
 
 ## Crates
 
@@ -21,6 +25,7 @@ any length and browse the `.rpt` tables. Saved files change only where you edite
 | [`swmm-engine`](crates/swmm-engine) | Engine registry (`%APPDATA%\SwmmStudio\settings.json`), version detection, runs in `<model>_runs/<timestamp>_<label>/` with progress, cancel and a `run.json` record. |
 | [`swmm-geo`](crates/swmm-geo) | EPSG registry (search by code or name), reprojection of model coordinates to WGS 84 (pure Rust, `proj4rs`), Web Mercator, R-tree for box / lasso selection and picking. |
 | [`swmm-model`](crates/swmm-model) | Network view of a model: nodes, links, subcatchments, rain gages, connectivity and map geometry; named properties of any object; numeric attributes for thematic maps. Editing: undoable line-level transactions, field schema (types, units, validation), rename and delete with every reference, curves / time series / patterns / unit hydrographs / transects. |
+| [`swmm-analysis`](crates/swmm-analysis) | Statistics of results over any range of periods (max, min, mean, time of max, total volume / depth, time above a threshold) from the cache's chunk summaries; calendar days / months / years; event detection with a minimum inter-event time and per-year statistics; shortest path and longitudinal profile between nodes. |
 | [`swmm-cli`](crates/swmm-cli) | Command-line front-end. |
 | [`app/src-tauri`](app/src-tauri) | Desktop application (Tauri 2): session state, commands, background results cache. |
 | [`app/ui`](app/ui) | Front-end (React, TypeScript, MapLibre GL, deck.gl, uPlot). |
@@ -88,6 +93,35 @@ Editing (every change can be undone with Ctrl+Z and redone with Ctrl+Y; Ctrl+S s
   loaded at the end.
 - **New** writes an empty model with default options; **Save as** continues with the new file.
 
+Analysis (bottom tabs; every table has an **Export** button, CSV or Excel):
+
+- **Map style → Statistics**: colour nodes, links or subcatchments by the maximum, minimum, mean,
+  time of maximum, total (volume of a flow, depth of a rainfall) or duration above a threshold of a
+  result, over the whole run or over the day, month or year of the current time (the map follows the
+  timeline). With a compared run: **Δ** maps (A − B), at the current time or of any statistic.
+- **Time series**: **per day / month / year** plots daily, monthly or yearly statistics; **+ From
+  run B** overlays the same objects from the compared run (dashed). **Data**, **SVG**, **PNG** export.
+- **Profile**: select two nodes or more (Shift+click, in order) and click *From selected nodes*: the
+  shortest path, with ground, conduits, the water line at the current time (it moves with the
+  timeline), the maximum water line of the run and the water line of run B. SVG / PNG / data export.
+- **Events**: events of a variable above a threshold, closer than a minimum inter-event time merged
+  (e.g. outfall inflow above 0, 6 h apart): count, events per year, volume, duration and peak per
+  object, a per-year table and the list of events (click one to jump to it on the timeline).
+- **Compare**: per-object statistics of the loaded run (A) and another one (B), with their
+  difference; difference maps and overlaid plots. Runs are matched by object name and by time.
+- **Runs**: every simulation kept in `<model>_runs/`, with status, engine, continuity errors; label,
+  load, compare or delete them.
+- **Table**: a section (junctions, conduits, subareas, infiltration, inflows…) as a grid of 100k rows:
+  sort, filter, show the selection only; Enter or typing edits a cell; Shift+click selects a range;
+  Ctrl+C / Ctrl+V copy and paste with Excel (one undoable edit).
+- **Issues**: checks run after every edit: duplicate names, references to missing objects (curves,
+  time series, unit hydrographs…), links without cross-section, bad lengths and roughness, adverse
+  slopes, offsets below the node inverts, subcatchments without subareas or infiltration, unconnected
+  nodes, sub-networks that drain to no outfall. Click an issue to select the object.
+- **Data → Climatology…**: evaporation (constant, monthly, time series, temperatures, climate file,
+  recovery pattern, dry only), temperature, wind speed, snowmelt, areal depletion and monthly
+  adjustments. **Sections as text…** edits any section as text (water quality, LID, groundwater…).
+
 Basemap tiles come from OpenStreetMap (© OpenStreetMap contributors); the app identifies itself
 with its own User-Agent, as the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
 requires. The tile URL is stored in the project file.
@@ -109,9 +143,9 @@ target/release/swmm-cli run model.inp --label "base case" --cache
 Other commands:
 
 - `swmm-cli runs model.inp`: previous runs with status and continuity error.
-- `swmm-cli inp info|check`: sections and object counts, simulation period, external files; lossless round-trip check.
+- `swmm-cli inp info|check|validate`: sections and object counts, simulation period, external files; lossless round-trip check; model checks (exit code 1 on errors).
 - `swmm-cli rpt report.rpt --blocks`: errors, warnings, continuity, list of report blocks.
-- `swmm-cli out info|cache|stats|export|synth`: inspect results, build the cache, whole-run statistics (e.g. max depth of every node), CSV export, synthetic files for benchmarks.
+- `swmm-cli out info|cache|stats|events|export|synth`: inspect results, build the cache, whole-run statistics (e.g. max depth of every node), events per object and year (`--threshold`, `--gap` hours), CSV export, synthetic files for benchmarks.
 
 No SWMM engine is bundled: register any `runswmm.exe`-compatible executable (EPA SWMM 5.1/5.2, OWA, custom builds).
 
@@ -152,6 +186,15 @@ node app/ui/e2e/edit.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)
 ```
 
 Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`.
+
+Analysis test (runs the model twice, then run history, comparison, envelope maps, profile, events,
+aggregated plots, tabular editor, validation, climatology, section text, exports):
+
+```bash
+node app/ui/e2e/analysis.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)\runswmm.exe" shots
+```
+
+Analysis timings on a large model: `node app/ui/e2e/analysis-perf.mjs big.inp EPSG:2154`.
 
 ## Licence
 

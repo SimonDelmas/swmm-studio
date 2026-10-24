@@ -64,6 +64,17 @@ export function DataPanel() {
         <button onClick={() => setState({ dialog: "options" })}>Simulation options…</button>
         <button onClick={() => setState({ dialog: "engines" })}>Engines…</button>
       </div>
+      <div className="row">
+        <button onClick={() => setState({ dialog: "climate" })} title="Evaporation, temperature, wind speed, snowmelt, areal depletion, monthly adjustments">
+          Climatology…
+        </button>
+        <button onClick={() => setState({ dialog: "sections" })} title="Raw text of any section (water quality, LID, groundwater…)">
+          Sections as text…
+        </button>
+        <button onClick={() => setState({ bottomTab: "table" })} title="Edit the objects of a section in a table">
+          Tables
+        </button>
+      </div>
       {KINDS.map(([k, t]) => (
         <Category key={k} kind={k} title={t} />
       ))}

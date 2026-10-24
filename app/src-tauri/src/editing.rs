@@ -108,6 +108,19 @@ pub enum EditRequest {
     RemoveRdii {
         nodes: Vec<u32>,
     },
+    /// Sets many cells of a section (tabular editor, paste).
+    SetCells {
+        section: String,
+        cells: Vec<swmm_model::grid::Cell>,
+    },
+    SetClimate {
+        climate: swmm_model::climate::Climate,
+    },
+    /// Replaces the text of a section.
+    SetSectionText {
+        section: String,
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -332,7 +345,7 @@ impl Session {
                 Space::LonLat => None,
             };
             self.display = crate::session::Display::build(&self.net, self.crs.as_ref(), origin);
-            if let Some(lr) = &mut self.results {
+            for lr in [&mut self.results, &mut self.compare].into_iter().flatten() {
                 lr.remap(&self.net);
             }
         } else if r.geometry_changed() {
@@ -597,6 +610,32 @@ impl Session {
                     ops::assign_rdii(tx, &ids, hydrograph.trim(), area.as_deref().filter(|a| !a.trim().is_empty()))
                 })?;
                 message = Some(format!("{} node(s) assigned to {}", a.value, hydrograph.trim()));
+                (a.label, a.changes)
+            }
+            EditRequest::SetCells { section: s, cells } => {
+                let kind = section(&s)?;
+                let label = if cells.len() == 1 {
+                    format!("Edit {}", cells[0].key.first().cloned().unwrap_or_default())
+                } else {
+                    format!("Edit {} cells of [{}]", cells.len(), kind.name())
+                };
+                let a = self.history.edit(&mut self.inp, label, |tx| swmm_model::grid::set_cells(tx, &kind, &cells))?;
+                if cells.len() > 1 {
+                    message = Some(format!("{} line(s) changed", a.value));
+                }
+                (a.label, a.changes)
+            }
+            EditRequest::SetClimate { climate } => {
+                let a = self.history.edit(&mut self.inp, "Climatology", |tx| climate.write(tx))?;
+                (a.label, a.changes)
+            }
+            EditRequest::SetSectionText { section: s, text } => {
+                // Unknown sections (extensions) can be edited as text too.
+                let kind = SectionKind::from_name(&s);
+                let label = format!("Edit [{}]", kind.name());
+                let a = self
+                    .history
+                    .edit(&mut self.inp, label, |tx| swmm_model::grid::set_section_text(tx, &kind, &text))?;
                 (a.label, a.changes)
             }
             EditRequest::RemoveRdii { nodes } => {

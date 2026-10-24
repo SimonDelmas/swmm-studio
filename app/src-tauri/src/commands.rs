@@ -17,6 +17,10 @@ use swmm_out::OutFile;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use swmm_analysis::{Calendar, Stat};
+use swmm_model::{climate::Climate, grid::Grid, validate::Issue};
+
+use crate::analysis::{Aggregated, EventDto, EventQuery, EventTable, ProfileDto, RunDto, SectionInfo};
 use crate::editing::{create_model, EditOutcome, EditRequest, OptionsDto};
 use crate::project::Basemap;
 use crate::session::{element_by_name, ModelInfo, Res, Session};
@@ -62,48 +66,56 @@ struct CacheEvent {
     progress: f64,
 }
 
-/// Starts building the results cache in the background if the open `.out` has none.
+/// Starts building, in the background, the results caches that the loaded and the
+/// compared `.out` files lack (one after the other).
 fn start_cache_job(app: &AppHandle, state: &AppState) {
-    let Ok(Some(path)) = state.read(|s| Ok(s.cache_job())) else {
+    let Ok(paths) = state.read(|s| Ok(s.cache_jobs())) else {
         return;
     };
+    if paths.is_empty() {
+        return;
+    }
     state.cancel_job();
     let cancel = Arc::new(AtomicBool::new(false));
     *state.job.lock().unwrap() = Some(cancel.clone());
     let app = app.clone();
     std::thread::spawn(move || {
-        let last = Mutex::new(Instant::now());
-        let progress = |p: cache::BuildProgress| {
-            let mut l = last.lock().unwrap();
-            if l.elapsed() < Duration::from_millis(250) {
+        for path in paths {
+            let last = Mutex::new(Instant::now());
+            let progress = |p: cache::BuildProgress| {
+                let mut l = last.lock().unwrap();
+                if l.elapsed() < Duration::from_millis(250) {
+                    return;
+                }
+                *l = Instant::now();
+                let f = p.bytes_done as f64 / p.bytes_total.max(1) as f64;
+                let state = app.state::<AppState>();
+                let _ = state.write(|s| {
+                    s.cache_progress(&path, f);
+                    Ok(())
+                });
+                let _ = app.emit("cache-progress", CacheEvent { path: path.clone(), progress: f });
+            };
+            let outcome = OutFile::open(&path).map_err(|e| e.to_string()).and_then(|out| {
+                cache::build(&out, &cache::default_cache_path(&path), &CacheOptions::default(), progress, &cancel)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            });
+            if cancel.load(Ordering::Relaxed) {
                 return;
             }
-            *l = Instant::now();
-            let f = p.bytes_done as f64 / p.bytes_total.max(1) as f64;
             let state = app.state::<AppState>();
             let _ = state.write(|s| {
-                s.cache_progress(&path, f);
+                s.cache_done(&path, outcome);
                 Ok(())
             });
-            let _ = app.emit("cache-progress", CacheEvent { path: path.clone(), progress: f });
-        };
-        let outcome = OutFile::open(&path).map_err(|e| e.to_string()).and_then(|out| {
-            cache::build(&out, &cache::default_cache_path(&path), &CacheOptions::default(), progress, &cancel)
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        });
-        if cancel.load(Ordering::Relaxed) {
-            return;
+            if let Ok(info) = state.read(|s| Ok(s.info())) {
+                for r in info.results.into_iter().chain(info.compare).filter(|r| r.path == path) {
+                    let _ = app.emit("results-changed", r);
+                }
+            }
         }
-        let state = app.state::<AppState>();
-        let _ = state.write(|s| {
-            s.cache_done(&path, outcome);
-            Ok(())
-        });
-        state.job.lock().unwrap().take();
-        if let Ok(Some(info)) = state.read(|s| Ok(s.results_info())) {
-            let _ = app.emit("results-changed", info);
-        }
+        app.state::<AppState>().job.lock().unwrap().take();
     });
 }
 
@@ -238,6 +250,7 @@ pub fn frame(state: State<'_, AppState>, kind: String, var: usize, period: usize
 }
 
 /// `u32 n`, then `u32 periods[n]`, `f32 min[n]`, `f32 max[n]`.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 pub fn series(
     state: State<'_, AppState>,
@@ -247,10 +260,11 @@ pub fn series(
     p0: usize,
     p1: usize,
     buckets: usize,
+    b: Option<bool>,
 ) -> Res<Response> {
     let k = element_by_name(&kind)?;
     state.read(|s| {
-        let mm = s.series(k, index, var, p0, p1, buckets.clamp(1, 20_000))?;
+        let mm = s.series(k, index, var, p0, p1, buckets.clamp(1, 20_000), b.unwrap_or(false))?;
         let mut b = Vec::with_capacity(4 + 12 * mm.len());
         b.extend_from_slice(&(mm.len() as u32).to_le_bytes());
         b.extend(mm.periods.iter().flat_map(|&p| (p as u32).to_le_bytes()));
@@ -610,6 +624,181 @@ pub fn rebuild_cache(app: AppHandle, state: State<'_, AppState>) -> Res<ModelInf
     })?;
     start_cache_job(&app, &state);
     Ok(info)
+}
+
+// ---- analysis ------------------------------------------------------------------
+
+/// A statistic over `[p0, p1)` for every network object (`f32` array, network order).
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+pub fn stat_values(
+    state: State<'_, AppState>,
+    kind: String,
+    var: usize,
+    stat: Stat,
+    p0: usize,
+    p1: usize,
+    b: Option<bool>,
+) -> Res<Response> {
+    let k = element_by_name(&kind)?;
+    state.read(|s| s.stat_values(k, var, stat, p0, p1, b.unwrap_or(false)).map(|v| Response::new(f32_bytes(&v))))
+}
+
+#[tauri::command(async)]
+pub fn stat_unit(state: State<'_, AppState>, kind: String, var: usize, stat: Stat, b: Option<bool>) -> Res<String> {
+    let k = element_by_name(&kind)?;
+    state.read(|s| s.stat_unit(k, var, stat, b.unwrap_or(false)))
+}
+
+/// Loaded minus compared results at a period (`f32` array, network order).
+#[tauri::command(async)]
+pub fn compare_frame(state: State<'_, AppState>, kind: String, var: usize, period: usize) -> Res<Response> {
+    let k = element_by_name(&kind)?;
+    state.read(|s| s.compare_frame(k, var, period).map(|v| Response::new(f32_bytes(&v))))
+}
+
+#[tauri::command(async)]
+pub fn compare_period(state: State<'_, AppState>, period: usize) -> Res<Option<usize>> {
+    state.read(|s| s.compare_period(period))
+}
+
+#[tauri::command(async)]
+pub fn open_comparison(app: AppHandle, state: State<'_, AppState>, path: PathBuf) -> Res<ModelInfo> {
+    let info = state.write(|s| {
+        s.open_comparison(&path)?;
+        Ok(s.info())
+    })?;
+    start_cache_job(&app, &state);
+    Ok(info)
+}
+
+#[tauri::command(async)]
+pub fn close_comparison(state: State<'_, AppState>) -> Res<ModelInfo> {
+    state.write(|s| {
+        s.compare = None;
+        Ok(s.info())
+    })
+}
+
+#[tauri::command(async)]
+pub fn aggregate(
+    state: State<'_, AppState>,
+    kind: String,
+    index: usize,
+    var: usize,
+    unit: Calendar,
+    stat: Stat,
+    b: Option<bool>,
+) -> Res<Aggregated> {
+    let k = element_by_name(&kind)?;
+    state.read(|s| s.aggregate(k, index, var, unit, stat, b.unwrap_or(false)))
+}
+
+#[tauri::command(async)]
+pub fn event_stats(state: State<'_, AppState>, query: EventQuery) -> Res<EventTable> {
+    state.read(|s| s.event_stats(&query))
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+pub fn object_events(
+    state: State<'_, AppState>,
+    kind: String,
+    index: u32,
+    var: usize,
+    threshold: f32,
+    min_gap_hours: f64,
+    b: Option<bool>,
+) -> Res<Vec<EventDto>> {
+    state.read(|s| s.object_events(&kind, index, var, threshold, min_gap_hours, b.unwrap_or(false)))
+}
+
+#[tauri::command(async)]
+pub fn profile(state: State<'_, AppState>, nodes: Vec<u32>) -> Res<ProfileDto> {
+    state.read(|s| s.profile(&nodes))
+}
+
+/// Heads of nodes at a period (`f32` array).
+#[tauri::command(async)]
+pub fn heads(state: State<'_, AppState>, nodes: Vec<u32>, period: usize, b: Option<bool>) -> Res<Response> {
+    state.read(|s| s.heads(&nodes, period, b.unwrap_or(false)).map(|v| Response::new(f32_bytes(&v))))
+}
+
+#[tauri::command(async)]
+pub fn validate_model(state: State<'_, AppState>) -> Res<Vec<Issue>> {
+    state.read(|s| Ok(s.validate()))
+}
+
+#[tauri::command(async)]
+pub fn grid(state: State<'_, AppState>, section: String) -> Res<Grid> {
+    state.read(|s| s.grid(&section))
+}
+
+#[tauri::command(async)]
+pub fn climate(state: State<'_, AppState>) -> Res<Climate> {
+    state.read(|s| Ok(s.climate()))
+}
+
+#[tauri::command(async)]
+pub fn sections(state: State<'_, AppState>) -> Res<Vec<SectionInfo>> {
+    state.read(|s| Ok(s.sections()))
+}
+
+#[tauri::command(async)]
+pub fn section_text(state: State<'_, AppState>, section: String) -> Res<String> {
+    state.read(|s| Ok(s.section_text(&section)))
+}
+
+#[tauri::command(async)]
+pub fn runs(state: State<'_, AppState>) -> Res<Vec<RunDto>> {
+    state.read(|s| Ok(s.runs()))
+}
+
+#[tauri::command(async)]
+pub fn open_run(app: AppHandle, state: State<'_, AppState>, dir: PathBuf) -> Res<ModelInfo> {
+    state.cancel_job();
+    let info = state.write(|s| {
+        s.open_run(&dir)?;
+        Ok(s.info())
+    })?;
+    start_cache_job(&app, &state);
+    Ok(info)
+}
+
+#[tauri::command(async)]
+pub fn compare_run(app: AppHandle, state: State<'_, AppState>, dir: PathBuf) -> Res<ModelInfo> {
+    let info = state.write(|s| {
+        s.compare_run(&dir)?;
+        Ok(s.info())
+    })?;
+    start_cache_job(&app, &state);
+    Ok(info)
+}
+
+#[tauri::command(async)]
+pub fn set_run_label(state: State<'_, AppState>, dir: PathBuf, label: Option<String>) -> Res<Vec<RunDto>> {
+    state.read(|s| {
+        s.set_run_label(&dir, label.as_deref())?;
+        Ok(s.runs())
+    })
+}
+
+#[tauri::command(async)]
+pub fn delete_run(app: AppHandle, state: State<'_, AppState>, dir: PathBuf) -> Res<ModelInfo> {
+    // A cache being built for these results holds the file open.
+    state.cancel_job();
+    let info = state.write(|s| {
+        s.delete_run(&dir)?;
+        Ok(s.info())
+    })?;
+    start_cache_job(&app, &state);
+    Ok(info)
+}
+
+/// Writes a table as CSV or, for a `.xlsx` path, as an Excel workbook (numbers as numbers).
+#[tauri::command(async)]
+pub fn export_table(path: PathBuf, title: String, columns: Vec<String>, rows: Vec<Vec<String>>) -> Res<()> {
+    crate::export::write_table(&path, &title, &columns, &rows)
 }
 
 #[cfg(test)]

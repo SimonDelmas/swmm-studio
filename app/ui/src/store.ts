@@ -1,15 +1,26 @@
 // Minimal global store (no dependency): state + subscribe, read with `useStore`.
 
 import { useSyncExternalStore } from "react";
-import type { DeletePlan, ElementKind, Geometry, LinkType, ModelInfo, NodeType, ObjKind, ObjRef, RunFinished, TableKind } from "./types";
+import type { Calendar, DeletePlan, ElementKind, Geometry, Issue, LinkType, ModelInfo, NodeType, ObjKind, ObjRef, RunFinished, Stat, TableKind } from "./types";
 
 export type StyledKind = "node" | "link" | "subcatchment";
 export type ClassMethod = "equal" | "quantile" | "custom";
+export type StatName = Stat["stat"];
+/** Period range of a statistic: the whole run, or the day / month / year of the current time. */
+export type Scope = "run" | Calendar;
+
+export function makeStat(name: StatName, threshold: number): Stat {
+  return name === "periods_above" ? { stat: name, threshold } : ({ stat: name } as Stat);
+}
 
 export interface LayerStyle {
   visible: boolean;
-  /** `type`: colour by object type; `attribute`: an input attribute; `result`: a result variable. */
-  source: "type" | "attribute" | "result";
+  /**
+   * `type`: colour by object type; `attribute`: an input attribute; `result`: a result
+   * variable at the current time; `stat`: a statistic of a result variable over a period
+   * range (envelope map); `compare`: loaded minus compared results.
+   */
+  source: "type" | "attribute" | "result" | "stat" | "compare";
   /** Attribute name, or result variable index (as a string). */
   field: string;
   method: ClassMethod;
@@ -21,6 +32,10 @@ export interface LayerStyle {
   size: number;
   /** Wider lines / bigger points for higher classes. */
   sizeByClass: boolean;
+  /** Statistic (`stat` and `compare` sources; `value` = at the current time, compare only). */
+  stat: StatName | "value";
+  threshold: number;
+  scope: Scope;
 }
 
 export interface PlotSeries {
@@ -32,6 +47,8 @@ export interface PlotSeries {
   var: number;
   label: string;
   unit: string;
+  /** From the compared results (run B). */
+  b?: boolean;
 }
 
 export type Tool =
@@ -55,7 +72,9 @@ export interface RunState {
   last: RunFinished | null;
 }
 
-export type Dialog = "options" | "engines" | "new" | null;
+export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | null;
+
+export type BottomTab = "plot" | "profile" | "events" | "compare" | "runs" | "table" | "issues" | "report" | "run";
 
 export interface State {
   model: ModelInfo | null;
@@ -71,7 +90,13 @@ export interface State {
   styles: Record<StyledKind, LayerStyle>;
   labels: boolean;
   plot: PlotSeries[];
-  bottomTab: "plot" | "report" | "run";
+  /** Time aggregation of the plot (null: the series themselves). */
+  plotAgg: { unit: Calendar; stat: StatName; threshold: number } | null;
+  bottomTab: BottomTab;
+  /** Nodes the profile goes through (in order). */
+  profileNodes: number[];
+  /** Last model check (null: not run yet). */
+  issues: Issue[] | null;
   /** Incremented to ask the map to zoom to the model extent / to the selection. */
   fitExtent: number;
   fitSelection: number;
@@ -101,6 +126,9 @@ export const defaultStyle = (kind: StyledKind): LayerStyle => ({
   ramp: kind === "subcatchment" ? "greens" : "blue-red",
   size: kind === "node" ? 4 : kind === "link" ? 2 : 1,
   sizeByClass: kind === "link",
+  stat: "max",
+  threshold: 0,
+  scope: "run",
 });
 
 const initial: State = {
@@ -116,7 +144,10 @@ const initial: State = {
   styles: { node: defaultStyle("node"), link: defaultStyle("link"), subcatchment: defaultStyle("subcatchment") },
   labels: true,
   plot: [],
+  plotAgg: null,
   bottomTab: "plot",
+  profileNodes: [],
+  issues: null,
   fitExtent: 0,
   fitSelection: 0,
   message: null,
@@ -151,10 +182,9 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     const saved = ui.styles?.[k];
     if (saved) styles[k] = { ...defaultStyle(k), ...saved };
   }
-  // A saved result style needs results with that variable.
+  // A saved result style needs results with that variable (and compared results).
   for (const k of Object.keys(styles) as StyledKind[]) {
-    const s = styles[k];
-    if (s.source === "result" && !model.results?.variables[k]?.[Number(s.field)]) styles[k] = defaultStyle(k);
+    if (!styleUsable(styles[k], k, model)) styles[k] = defaultStyle(k);
   }
   setState({
     model,
@@ -166,12 +196,21 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     styles,
     labels: ui.labels ?? true,
     plot: [],
+    profileNodes: [],
+    issues: null,
     fitExtent: state.fitExtent + 1,
     tool: "select",
     modelSeq: state.modelSeq + 1,
     tableEditor: null,
     pendingDelete: null,
   });
+}
+
+/** A style still applies to the model's results (a result variable needs results). */
+export function styleUsable(s: LayerStyle, kind: StyledKind, model: ModelInfo): boolean {
+  if (s.source === "type" || s.source === "attribute") return true;
+  if (!model.results?.variables[kind]?.[Number(s.field)]) return false;
+  return s.source !== "compare" || !!model.compare?.variables[kind]?.[Number(s.field)];
 }
 
 export function subscribe(l: () => void) {

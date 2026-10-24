@@ -385,6 +385,8 @@ pub struct ModelInfo {
     pub project_error: Option<String>,
     pub attributes: std::collections::BTreeMap<String, Vec<String>>,
     pub results: Option<ResultsInfo>,
+    /// Results compared with the loaded ones (run B).
+    pub compare: Option<ResultsInfo>,
     pub report: Option<ReportSummary>,
     /// Messages for the user (results that could not be loaded…).
     pub notes: Vec<String>,
@@ -481,6 +483,8 @@ pub struct Session {
     pub(crate) crs: Option<Crs>,
     pub(crate) display: Display,
     pub results: Option<LoadedResults>,
+    /// Second results, for comparisons (difference maps, overlaid series).
+    pub compare: Option<LoadedResults>,
     pub report: Option<(PathBuf, Report)>,
     notes: Vec<String>,
     pub(crate) history: swmm_model::edit::History,
@@ -517,6 +521,7 @@ impl Session {
             crs,
             display,
             results: None,
+            compare: None,
             report: None,
             notes,
             history: Default::default(),
@@ -591,6 +596,7 @@ impl Session {
             project_error: self.project_error.clone(),
             attributes,
             results: self.results_info(),
+            compare: self.compare.as_ref().map(LoadedResults::info),
             report: self.report_summary(),
             notes: self.notes.clone(),
             dirty: self.history.is_dirty(),
@@ -790,24 +796,15 @@ impl Session {
     // ---- results ---------------------------------------------------------------
 
     pub fn open_results(&mut self, path: &Path) -> Res<()> {
-        let results = Results::open(path).map_err(|e| e.to_string())?;
-        let meta = results.meta();
-        let (to_out, matched) = match_results(meta, &self.net);
-        if matched.iter().sum::<usize>() == 0
-            && meta.ids(ElementKind::Node).len() + meta.ids(ElementKind::Link).len() > 0
-        {
-            return Err("no object of the results file is in the model".into());
-        }
-        let cache = if results.cache().is_some() {
-            CacheState::Ready
-        } else if !meta.complete {
-            CacheState::Unavailable { message: "the simulation did not finish writing this file".into() }
-        } else {
-            // The caller starts the background build.
-            CacheState::Building { progress: 0.0 }
-        };
-        self.results = Some(LoadedResults { path: path.to_path_buf(), results, to_out, matched, cache });
+        self.results = Some(LoadedResults::open(path, &self.net)?);
         self.project.results.out = Some(path.to_path_buf());
+        Ok(())
+    }
+
+    /// Loads results to compare with the loaded ones.
+    pub fn open_comparison(&mut self, path: &Path) -> Res<()> {
+        self.compare = None;
+        self.compare = Some(LoadedResults::open(path, &self.net)?);
         Ok(())
     }
 
@@ -819,77 +816,40 @@ impl Session {
     }
 
     pub fn results_info(&self) -> Option<ResultsInfo> {
-        let lr = self.results.as_ref()?;
-        let m = lr.results.meta();
-        let mut variables = std::collections::BTreeMap::new();
-        let mut matched = std::collections::BTreeMap::new();
-        let mut in_file = std::collections::BTreeMap::new();
-        for ek in ElementKind::ALL {
-            let vars = m
-                .var_names(ek)
-                .into_iter()
-                .enumerate()
-                .map(|(v, name)| VarInfo { name, unit: swmm_out::format::unit(ek, v, m.flow_units).to_string() })
-                .collect();
-            variables.insert(ek.name().to_string(), vars);
-            in_file.insert(ek.name().to_string(), m.count(ek));
-            if ek != ElementKind::System {
-                matched.insert(ek.name().to_string(), lr.matched[ek as usize]);
-            }
-        }
-        Some(ResultsInfo {
-            path: lr.path.clone(),
-            n_periods: m.n_periods,
-            start_ms: m.time(0).and_utc().timestamp_millis(),
-            step_secs: m.report_step_secs as i64,
-            complete: m.complete,
-            flow_units: m.flow_units.name().to_string(),
-            version: m.version,
-            variables,
-            matched,
-            in_file,
-            cache: lr.cache.clone(),
-        })
+        self.results.as_ref().map(LoadedResults::info)
     }
 
-    fn loaded(&self) -> Res<&LoadedResults> {
+    pub(crate) fn loaded(&self) -> Res<&LoadedResults> {
         self.results.as_ref().ok_or_else(|| "no results loaded".to_string())
     }
 
+    /// The loaded results, or the compared ones (`b`).
+    pub(crate) fn source(&self, b: bool) -> Res<&LoadedResults> {
+        if b {
+            self.compare.as_ref().ok_or_else(|| "no results to compare with".to_string())
+        } else {
+            self.loaded()
+        }
+    }
     /// One variable for every network object of a kind at a period (NaN where the
     /// object is not in the results).
     pub fn frame(&self, kind: ElementKind, var: usize, period: usize) -> Res<Vec<f32>> {
         let lr = self.loaded()?;
         let raw = lr.results.frame(kind, var, period).map_err(|e| e.to_string())?;
-        if kind == ElementKind::System {
-            return Ok(raw);
-        }
-        Ok(lr.to_out[kind as usize].iter().map(|&o| raw.get(o as usize).copied().unwrap_or(f32::NAN)).collect())
+        Ok(lr.to_network(kind, &raw, f32::NAN))
     }
 
     /// Whole-run maximum of a variable for every network object (needs the cache).
     pub fn envelope_max(&self, kind: ElementKind, var: usize) -> Res<Vec<f32>> {
         let lr = self.loaded()?;
         let env = lr.results.envelope(kind, var).map_err(|e| e.to_string())?;
-        if kind == ElementKind::System {
-            return Ok(env.iter().map(|s| s.max).collect());
-        }
-        Ok(lr.to_out[kind as usize].iter().map(|&o| env.get(o as usize).map_or(f32::NAN, |s| s.max)).collect())
+        let max: Vec<f32> = env.iter().map(|s| s.max).collect();
+        Ok(lr.to_network(kind, &max, f32::NAN))
     }
 
-    /// Index in the `.out` of a network object (`system`: 0).
-    fn out_index(&self, kind: ElementKind, index: usize) -> Res<usize> {
-        let lr = self.loaded()?;
-        if kind == ElementKind::System {
-            return Ok(0);
-        }
-        match lr.to_out[kind as usize].get(index) {
-            Some(&o) if o != u32::MAX => Ok(o as usize),
-            _ => Err(format!("{} #{index} has no results", kind.name())),
-        }
-    }
-
-    /// Min/max envelope of a series over `[p0, p1)` in about `buckets` points.
+    /// Min/max envelope of a series over `[p0, p1)` in about `buckets` points, from the
+    /// loaded results or the compared ones (`b`).
+    #[allow(clippy::too_many_arguments)]
     pub fn series(
         &self,
         kind: ElementKind,
@@ -898,9 +858,10 @@ impl Session {
         p0: usize,
         p1: usize,
         buckets: usize,
+        b: bool,
     ) -> Res<MinMax> {
-        let lr = self.loaded()?;
-        let o = self.out_index(kind, index)?;
+        let lr = self.source(b)?;
+        let o = lr.out_index(kind, index)?;
         let p1 = p1.min(lr.results.out().n_periods());
         if lr.results.cache().is_none() {
             let bytes = (p1.saturating_sub(p0)) as u64 * lr.results.out().layout().bytes_per_period();
@@ -919,8 +880,8 @@ impl Session {
     /// Period of the maximum of a series over the whole run.
     pub fn time_of_max(&self, kind: ElementKind, index: usize, var: usize) -> Res<usize> {
         let lr = self.loaded()?;
-        self.check_long_read(lr)?;
-        let o = self.out_index(kind, index)?;
+        lr.check_long_read(lr.results.out().n_periods())?;
+        let o = lr.out_index(kind, index)?;
         lr.results.stats(kind, o, var).map(|s| s.argmax).map_err(|e| e.to_string())
     }
 
@@ -934,38 +895,39 @@ impl Session {
         threshold: f32,
     ) -> Res<Option<usize>> {
         let lr = self.loaded()?;
-        self.check_long_read(lr)?;
-        let o = self.out_index(kind, index)?;
+        lr.check_long_read(lr.results.out().n_periods())?;
+        let o = lr.out_index(kind, index)?;
         lr.results.next_rise(kind, o, var, from, threshold).map_err(|e| e.to_string())
     }
 
-    fn check_long_read(&self, lr: &LoadedResults) -> Res<()> {
-        let size = lr.results.out().n_periods() as u64 * lr.results.out().layout().bytes_per_period();
-        if lr.results.cache().is_none() && size > DIRECT_READ_LIMIT {
-            return Err("this needs the results cache, which is not ready yet".into());
-        }
-        Ok(())
+    /// `.out` files to cache in the background (loaded and compared results).
+    pub fn cache_jobs(&self) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = [&self.results, &self.compare]
+            .into_iter()
+            .flatten()
+            .filter(|lr| matches!(lr.cache, CacheState::Building { .. }))
+            .map(|lr| lr.path.clone())
+            .collect();
+        v.dedup();
+        v
     }
 
-    /// `.out` to cache in the background, if its cache is missing.
-    pub fn cache_job(&self) -> Option<PathBuf> {
-        let lr = self.results.as_ref()?;
-        matches!(lr.cache, CacheState::Building { .. }).then(|| lr.path.clone())
+    fn results_at<'a>(&'a mut self, path: &'a Path) -> impl Iterator<Item = &'a mut LoadedResults> + 'a {
+        [&mut self.results, &mut self.compare].into_iter().flatten().filter(move |lr| lr.path == path)
     }
 
     /// Called when the background build of `path` ends.
     pub fn cache_done(&mut self, path: &Path, outcome: Result<(), String>) {
-        let Some(lr) = self.results.as_mut().filter(|lr| lr.path == path) else {
-            return;
-        };
-        lr.cache = match outcome.and_then(|()| lr.results.reload_cache().map_err(|e| e.to_string())) {
-            Ok(()) => CacheState::Ready,
-            Err(message) => CacheState::Failed { message },
-        };
+        for lr in self.results_at(path) {
+            lr.cache = match outcome.clone().and_then(|()| lr.results.reload_cache().map_err(|e| e.to_string())) {
+                Ok(()) => CacheState::Ready,
+                Err(message) => CacheState::Failed { message },
+            };
+        }
     }
 
     pub fn cache_progress(&mut self, path: &Path, progress: f64) {
-        if let Some(lr) = self.results.as_mut().filter(|lr| lr.path == path) {
+        for lr in self.results_at(path) {
             if matches!(lr.cache, CacheState::Building { .. }) {
                 lr.cache = CacheState::Building { progress };
             }
@@ -1101,6 +1063,97 @@ fn match_results(meta: &swmm_out::OutMeta, net: &Network) -> ([Vec<u32>; 3], [us
 }
 
 impl LoadedResults {
+    /// Opens a results file and matches its objects with the network.
+    pub(crate) fn open(path: &Path, net: &Network) -> Res<LoadedResults> {
+        let results = Results::open(path).map_err(|e| e.to_string())?;
+        let meta = results.meta();
+        let (to_out, matched) = match_results(meta, net);
+        if matched.iter().sum::<usize>() == 0
+            && meta.ids(ElementKind::Node).len() + meta.ids(ElementKind::Link).len() > 0
+        {
+            return Err("no object of the results file is in the model".into());
+        }
+        let cache = if results.cache().is_some() {
+            CacheState::Ready
+        } else if !meta.complete {
+            CacheState::Unavailable { message: "the simulation did not finish writing this file".into() }
+        } else {
+            // The caller starts the background build.
+            CacheState::Building { progress: 0.0 }
+        };
+        Ok(LoadedResults { path: path.to_path_buf(), results, to_out, matched, cache })
+    }
+
+    pub(crate) fn info(&self) -> ResultsInfo {
+        let lr = self;
+        let m = lr.results.meta();
+
+        let mut variables = std::collections::BTreeMap::new();
+        let mut matched = std::collections::BTreeMap::new();
+        let mut in_file = std::collections::BTreeMap::new();
+        for ek in ElementKind::ALL {
+            let vars = m
+                .var_names(ek)
+                .into_iter()
+                .enumerate()
+                .map(|(v, name)| VarInfo { name, unit: swmm_out::format::unit(ek, v, m.flow_units).to_string() })
+                .collect();
+            variables.insert(ek.name().to_string(), vars);
+            in_file.insert(ek.name().to_string(), m.count(ek));
+            if ek != ElementKind::System {
+                matched.insert(ek.name().to_string(), lr.matched[ek as usize]);
+            }
+        }
+        ResultsInfo {
+            path: lr.path.clone(),
+            n_periods: m.n_periods,
+            start_ms: m.time(0).and_utc().timestamp_millis(),
+            step_secs: m.report_step_secs as i64,
+            complete: m.complete,
+            flow_units: m.flow_units.name().to_string(),
+            version: m.version,
+            variables,
+            matched,
+            in_file,
+            cache: lr.cache.clone(),
+        }
+    }
+
+    /// Index in the `.out` of a network object (`system`: 0).
+    pub(crate) fn out_index(&self, kind: ElementKind, index: usize) -> Res<usize> {
+        if kind == ElementKind::System {
+            return Ok(0);
+        }
+        match self.to_out[kind as usize].get(index) {
+            Some(&o) if o != u32::MAX => Ok(o as usize),
+            _ => Err(format!("{} #{index} has no results", kind.name())),
+        }
+    }
+
+    /// Network-ordered values from values in `.out` order (`missing` where an object
+    /// has no results).
+    pub(crate) fn to_network<T: Copy>(&self, kind: ElementKind, raw: &[T], missing: T) -> Vec<T> {
+        if kind == ElementKind::System {
+            return raw.to_vec();
+        }
+        self.to_out[kind as usize].iter().map(|&o| raw.get(o as usize).copied().unwrap_or(missing)).collect()
+    }
+
+    /// Fails when reading `periods` periods would touch more than [`DIRECT_READ_LIMIT`]
+    /// bytes without the cache.
+    pub(crate) fn check_long_read(&self, periods: usize) -> Res<()> {
+        let size = periods as u64 * self.results.out().layout().bytes_per_period();
+        if self.results.cache().is_none() && size > DIRECT_READ_LIMIT {
+            return Err(match &self.cache {
+                CacheState::Building { progress } => {
+                    format!("this needs the results cache, which is being built ({:.0}%)", progress * 100.0)
+                }
+                _ => "this needs the results cache, which is not ready".into(),
+            });
+        }
+        Ok(())
+    }
+
     /// Matches the results again after the network was rebuilt by an edit.
     pub(crate) fn remap(&mut self, net: &Network) {
         (self.to_out, self.matched) = match_results(self.results.meta(), net);
@@ -1212,7 +1265,7 @@ mod tests {
         let f = s.frame(ElementKind::Node, 0, 3).unwrap();
         assert_eq!(f[0], (3000 + layout.series(ElementKind::Node, 1, 0)) as f32);
         assert_eq!(f[3], (3000 + layout.series(ElementKind::Node, 0, 0)) as f32);
-        let mm = s.series(ElementKind::Node, 0, 0, 0, 40, 100).unwrap();
+        let mm = s.series(ElementKind::Node, 0, 0, 0, 40, 100, false).unwrap();
         assert_eq!(mm.len(), 40);
         assert_eq!(mm.max[5], (5000 + layout.series(ElementKind::Node, 1, 0)) as f32);
         assert_eq!(s.time_of_max(ElementKind::Link, 2, 0).unwrap(), 39);

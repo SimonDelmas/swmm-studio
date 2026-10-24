@@ -42,6 +42,23 @@ pub enum OutCmd {
         #[arg(long, default_value_t = 20)]
         top: usize,
     },
+    /// Events above a threshold (e.g. overflows) per object and per year.
+    Events {
+        out: PathBuf,
+        #[arg(long, default_value = "node")]
+        kind: String,
+        #[arg(long, default_value = "total_inflow")]
+        var: String,
+        /// Values strictly above it are in an event.
+        #[arg(long, default_value_t = 0.0)]
+        threshold: f32,
+        /// Minimum inter-event time in hours (closer events are merged).
+        #[arg(long, default_value_t = 6.0)]
+        gap: f64,
+        /// Comma-separated object IDs (default: every object of the kind).
+        #[arg(long, value_delimiter = ',')]
+        ids: Vec<String>,
+    },
     /// Export time series to CSV.
     Export {
         out: PathBuf,
@@ -133,6 +150,7 @@ pub fn run(cmd: &OutCmd) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         OutCmd::Stats { out, kind: k, var, top } => stats(out, kind(k)?, var, *top),
+        OutCmd::Events { out, kind: k, var, threshold, gap, ids } => events(out, kind(k)?, var, *threshold, *gap, ids),
         OutCmd::Export { out, kind: k, ids, vars, from, to, output } => {
             export(out, kind(k)?, ids, vars, from.as_deref(), to.as_deref(), output.as_deref())
         }
@@ -266,6 +284,65 @@ fn stats(path: &Path, kind: ElementKind, var: &str, top: usize) -> Result<ExitCo
             m.time(s.argmax).format("%Y-%m-%d %H:%M").to_string(),
             s.mean,
             100.0 * s.nonzero as f64 / m.n_periods.max(1) as f64
+        );
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn events(
+    path: &Path,
+    kind: ElementKind,
+    var: &str,
+    threshold: f32,
+    gap_hours: f64,
+    ids: &[String],
+) -> Result<ExitCode> {
+    let r = Results::open(path)?;
+    let m = r.meta();
+    let v = m.var_index(kind, var).with_context(|| format!("unknown variable {var:?}: {:?}", m.var_names(kind)))?;
+    if r.cache().is_none() {
+        eprintln!("no results cache: reading the .out directly (build it with `swmm-cli out cache` for speed)");
+    }
+    let objs: Vec<usize> = if ids.is_empty() {
+        (0..m.count(kind)).collect()
+    } else {
+        ids.iter()
+            .map(|id| r.out().object_index(kind, id).with_context(|| format!("no {} {id}", kind.name())))
+            .collect::<Result<_>>()?
+    };
+    let step = m.report_step_secs.max(1) as f64;
+    let params =
+        swmm_analysis::EventParams { threshold, min_gap: ((gap_hours * 3600.0) / step).ceil().max(1.0) as usize };
+    let t0 = std::time::Instant::now();
+    let sums = swmm_analysis::summarize(&r, kind, &objs, v, 0..m.n_periods, params)?;
+    let years = m.n_periods as f64 * step / (365.25 * 86_400.0);
+    let unit = format::unit(kind, v, m.flow_units);
+    let total_unit = swmm_analysis::integral(unit, m.flow_units).map_or("value·s", |f| f.1);
+    println!(
+        "{} {var} > {threshold} {unit}, {gap_hours} h apart, over {years:.2} years ({:.0} ms):",
+        kind.name(),
+        t0.elapsed().as_secs_f64() * 1000.0
+    );
+    println!(
+        "{:<20} {:>8} {:>10} {:>14} {:>12} {:>12}",
+        "id",
+        "events",
+        "per year",
+        format!("total ({total_unit})"),
+        "hours",
+        "max peak"
+    );
+    let mut sums = sums;
+    sums.sort_by(|a, b| b.count.cmp(&a.count));
+    for s in &sums {
+        println!(
+            "{:<20} {:>8} {:>10.2} {:>14.1} {:>12.1} {:>12.4}",
+            m.ids(kind)[s.obj],
+            s.count,
+            s.count as f64 / years.max(1e-9),
+            s.total,
+            s.hours,
+            s.peak
         );
     }
     Ok(ExitCode::SUCCESS)

@@ -41,7 +41,13 @@ fn tokens_of(inp: &InpFile, at: (usize, usize)) -> Vec<String> {
 
 /// Sets one field of the line at `at`, keeping the rest of the line's text when the
 /// layout does not change.
-fn set_field_at(tx: &mut Tx, kind: &SectionKind, at: (usize, usize), field: usize, value: &str) -> EditResult<()> {
+pub(crate) fn set_field_at(
+    tx: &mut Tx,
+    kind: &SectionKind,
+    at: (usize, usize),
+    field: usize,
+    value: &str,
+) -> EditResult<()> {
     let ctx = Context::of(tx.inp());
     let old = tokens_of(tx.inp(), at);
     let t: Vec<&str> = old.iter().map(String::as_str).collect();

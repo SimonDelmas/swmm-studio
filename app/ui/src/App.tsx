@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { onCacheProgress, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
+import { ClimateDialog } from "./components/ClimateDialog";
+import { ComparePanel } from "./components/ComparePanel";
 import { CrsDialog } from "./components/CrsDialog";
+import { EventsPanel } from "./components/EventsPanel";
+import { IssuesPanel } from "./components/IssuesPanel";
+import { ProfilePanel } from "./components/ProfilePanel";
+import { RunsPanel } from "./components/RunsPanel";
+import { SectionsDialog } from "./components/SectionsDialog";
+import { TablePanel } from "./components/TablePanel";
 import { DataPanel } from "./components/DataPanel";
 import { DeleteDialog, EnginesDialog, NewModelDialog, OptionsDialog, refreshEngine } from "./components/Dialogs";
 import { PlotPanel } from "./components/PlotPanel";
@@ -15,7 +23,7 @@ import { Timeline } from "./components/Timeline";
 import { Toolbar } from "./components/Toolbar";
 import { confirmDiscard, deleteObjects, redo, saveModel, undo } from "./edit";
 import { MapView, mapTools } from "./map/MapView";
-import { getState, setState, useStore } from "./store";
+import { getState, setState, useStore, type BottomTab } from "./store";
 
 /** Drag handle that resizes a panel. */
 function Splitter({ vertical, onDrag }: { vertical: boolean; onDrag: (delta: number) => void }) {
@@ -42,12 +50,15 @@ function useEvents() {
     const un = [
       onCacheProgress(({ path, progress }) => {
         const m = getState().model;
-        if (!m?.results || m.results.path !== path) return;
-        setState({ model: { ...m, results: { ...m.results, cache: { state: "building", progress } } } });
+        if (!m) return;
+        const cache = { state: "building" as const, progress };
+        if (m.results?.path === path) setState({ model: { ...m, results: { ...m.results, cache } } });
+        else if (m.compare?.path === path) setState({ model: { ...m, compare: { ...m.compare, cache } } });
       }),
-      onResultsChanged((results) => {
+      onResultsChanged((r) => {
         const m = getState().model;
-        if (m?.results?.path === results.path) setState({ model: { ...m, results } });
+        if (m?.results?.path === r.path) setState({ model: { ...getState().model!, results: r } });
+        if (m?.compare?.path === r.path) setState({ model: { ...getState().model!, compare: r } });
       }),
       onRunProgress(onProgress),
       onRunOutput(onOutput),
@@ -82,7 +93,8 @@ function useEvents() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      const typing = t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA";
+      // The tabular editor keeps its keyboard focus in a hidden text area.
+      const typing = (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") && !t.classList.contains("grid-keys");
       const s = getState();
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
@@ -139,6 +151,41 @@ function useEvents() {
   }, [styles, labels]);
 }
 
+const BOTTOM_TABS: [BottomTab, string][] = [
+  ["plot", "Time series"],
+  ["profile", "Profile"],
+  ["events", "Events"],
+  ["compare", "Compare"],
+  ["runs", "Runs"],
+  ["table", "Table"],
+  ["issues", "Issues"],
+  ["report", "Report"],
+  ["run", "Run"],
+];
+
+function BottomPanel({ tab }: { tab: BottomTab }) {
+  switch (tab) {
+    case "plot":
+      return <PlotPanel />;
+    case "profile":
+      return <ProfilePanel />;
+    case "events":
+      return <EventsPanel />;
+    case "compare":
+      return <ComparePanel />;
+    case "runs":
+      return <RunsPanel />;
+    case "table":
+      return <TablePanel />;
+    case "issues":
+      return <IssuesPanel />;
+    case "report":
+      return <ReportPanel />;
+    case "run":
+      return <RunPanel />;
+  }
+}
+
 export function App() {
   useEvents();
   const crsDialog = useStore((s) => s.crsDialog);
@@ -147,6 +194,8 @@ export function App() {
   const sideTab = useStore((s) => s.sideTab);
   const running = useStore((s) => s.run.running);
   const reportIssues = useStore((s) => (s.model?.report ? s.model.report.errors.length : 0));
+  const modelErrors = useStore((s) => s.issues?.filter((i) => i.severity === "error").length ?? 0);
+  const comparing = useStore((s) => s.model?.compare !== null && s.model?.compare !== undefined);
   const [sideW, setSideW] = useState(360);
   const [bottomH, setBottomH] = useState(260);
 
@@ -160,18 +209,18 @@ export function App() {
           <Splitter vertical={false} onDrag={(d) => setBottomH((h) => Math.max(80, Math.min(window.innerHeight - 250, h - d)))} />
           <div className="bottom" style={{ height: bottomH }}>
             <div className="tabs">
-              <button className={bottomTab === "plot" ? "active" : ""} onClick={() => setState({ bottomTab: "plot" })}>
-                Time series
-              </button>
-              <button className={bottomTab === "report" ? "active" : ""} onClick={() => setState({ bottomTab: "report" })}>
-                Report{reportIssues > 0 && <span className="badge bad">{reportIssues}</span>}
-              </button>
-              <button className={bottomTab === "run" ? "active" : ""} onClick={() => setState({ bottomTab: "run" })}>
-                Run{running && <span className="badge warn">…</span>}
-              </button>
+              {BOTTOM_TABS.map(([t, label]) => (
+                <button key={t} className={bottomTab === t ? "active" : ""} onClick={() => setState({ bottomTab: t })}>
+                  {label}
+                  {t === "issues" && modelErrors > 0 && <span className="badge bad">{modelErrors}</span>}
+                  {t === "compare" && comparing && <span className="badge">B</span>}
+                  {t === "report" && reportIssues > 0 && <span className="badge bad">{reportIssues}</span>}
+                  {t === "run" && running && <span className="badge warn">…</span>}
+                </button>
+              ))}
             </div>
             <div className="tab-body">
-              {bottomTab === "plot" ? <PlotPanel /> : bottomTab === "report" ? <ReportPanel /> : <RunPanel />}
+              <BottomPanel tab={bottomTab} />
             </div>
           </div>
         </div>
@@ -198,6 +247,8 @@ export function App() {
       {dialog === "options" && <OptionsDialog />}
       {dialog === "engines" && <EnginesDialog />}
       {dialog === "new" && <NewModelDialog />}
+      {dialog === "climate" && <ClimateDialog />}
+      {dialog === "sections" && <SectionsDialog />}
       <TableEditor />
       <DeleteDialog />
     </div>

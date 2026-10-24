@@ -23,6 +23,18 @@ fn inp_commands() {
     let o = cli(&["inp", "info", model.to_str().unwrap()], &settings);
     let t = text(&o);
     assert!(t.contains("flow units: LPS") && t.contains("[RDII] 1") && t.contains("storm.dat"), "{t}");
+    let o = cli(&["inp", "validate", model.to_str().unwrap()], &settings);
+    assert!(o.status.success() && text(&o).contains("0 error(s)"), "{}", text(&o));
+    // A conduit to a missing node is an error.
+    let broken = dir.path().join("broken.inp");
+    let src = std::fs::read_to_string(&model)
+        .unwrap()
+        .replace("C3               J3               Out1", "C3               J3               Nowhere");
+    std::fs::write(&broken, src).unwrap();
+    let o = cli(&["inp", "validate", broken.to_str().unwrap()], &settings);
+    let t = text(&o);
+    assert_eq!(o.status.code(), Some(1), "{t}");
+    assert!(t.contains("unknown_reference") && t.contains("Nowhere"), "{t}");
 }
 
 #[test]
@@ -43,6 +55,15 @@ fn out_pipeline() {
     assert!(cli(&["out", "cache", out_s], &settings).status.success());
     let t = text(&cli(&["out", "stats", out_s, "--kind", "link", "--var", "flow", "--top", "2"], &settings));
     assert_eq!(t.lines().filter(|l| l.starts_with('L')).count(), 2, "{t}");
+    let o = cli(
+        &["out", "events", out_s, "--kind", "link", "--var", "flow", "--threshold", "0.1", "--ids", "L1,L2"],
+        &settings,
+    );
+    let t = text(&o);
+    assert!(
+        o.status.success() && t.contains("per year") && t.lines().filter(|l| l.starts_with('L')).count() == 2,
+        "{t}"
+    );
     let csv = dir.path().join("x.csv");
     let o = cli(
         &[

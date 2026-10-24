@@ -5,6 +5,8 @@ import { applyCrs } from "./components/CrsDialog";
 import { startRun } from "./components/RunPanel";
 import { edit, redo, saveModel, tryEdit, undo } from "./edit";
 import { addToPlot } from "./components/PlotPanel";
+import { validateModel } from "./components/IssuesPanel";
+import { profileFromSelection } from "./components/ProfilePanel";
 import { applyStyle } from "./components/StylePanel";
 import { openModel } from "./components/Toolbar";
 import { mapPerf, mapProject } from "./map/MapView";
@@ -28,6 +30,8 @@ import "./styles.css";
   redo,
   saveModel,
   startRun,
+  validateModel,
+  profileFromSelection,
 };
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
+import { exportTable } from "../exporting";
 import { getState, notify, setState, useStore } from "../store";
 import type { BlockDto, MessageDto, ObjRef } from "../types";
 
@@ -211,7 +212,19 @@ export function ReportPanel() {
         )}
         {block && blockIndex >= 0 && (
           <div className="report-block">
-            <h4>{block.title}</h4>
+            <div className="report-block-head">
+              <h4>{block.title}</h4>
+              {(block.kind === "table" || block.kind === "values") && (
+                <button
+                  onClick={() => {
+                    const cols = Array.from({ length: Math.max(block.columns.length, ...block.rows.slice(0, 50).map((r) => r.length)) }, (_, i) => block.columns[i] ?? "");
+                    exportTable(block.title.toLowerCase().replace(/[^a-z0-9]+/g, "_"), block.title, cols, [...block.rows, ...block.footer]);
+                  }}
+                >
+                  Export
+                </button>
+              )}
+            </div>
             {block.notes.length > 0 && <pre className="notes">{block.notes.join("\n")}</pre>}
             {(block.kind === "table" || block.kind === "values") && <Table block={block} />}
           </div>

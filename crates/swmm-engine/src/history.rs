@@ -109,6 +109,25 @@ pub fn list_runs(model: &Path) -> Vec<(PathBuf, RunRecord)> {
     runs
 }
 
+/// Changes the label of a run (its folder keeps its name).
+pub fn set_label(run_dir: &Path, label: Option<&str>) -> Result<RunRecord, EngineError> {
+    let mut r = RunRecord::load(run_dir)?;
+    r.label = label.map(str::trim).filter(|l| !l.is_empty()).map(str::to_string);
+    r.save(run_dir)?;
+    Ok(r)
+}
+
+/// Deletes the folder of a run of `model`. Refuses folders that are not a run of this
+/// model (outside its runs folder, or without a record).
+pub fn delete_run(model: &Path, run_dir: &Path) -> Result<(), EngineError> {
+    let parent = run_dir.parent().and_then(|p| p.canonicalize().ok());
+    let runs = runs_dir(model).canonicalize().ok();
+    if parent.is_none() || parent != runs || RunRecord::load(run_dir).is_err() {
+        return Err(EngineError::Settings(format!("{} is not a run of {}", run_dir.display(), model.display())));
+    }
+    std::fs::remove_dir_all(run_dir).map_err(|e| EngineError::io(run_dir, e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +135,34 @@ mod tests {
     #[test]
     fn runs_dir_name() {
         assert_eq!(runs_dir(Path::new("C:/m/net.inp")), Path::new("C:/m/net_runs"));
+    }
+
+    #[test]
+    fn label_and_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("m.inp");
+        let run = runs_dir(&model).join("20260101_000000");
+        std::fs::create_dir_all(&run).unwrap();
+        let rec = RunRecord {
+            label: None,
+            model: model.clone(),
+            engine: EngineConfig { name: "e".into(), path: "e.exe".into(), version: None },
+            started: "2026-01-01T00:00:00+00:00".into(),
+            seconds: 1.0,
+            status: RunStatus::Success,
+            exit_code: Some(0),
+            errors: 0,
+            warnings: 0,
+            continuity: None,
+            inp: "m.inp".into(),
+            rpt: "m.rpt".into(),
+            out: "m.out".into(),
+        };
+        rec.save(&run).unwrap();
+        assert_eq!(set_label(&run, Some(" base ")).unwrap().label.as_deref(), Some("base"));
+        assert_eq!(list_runs(&model)[0].1.label.as_deref(), Some("base"));
+        assert!(delete_run(&model, dir.path()).is_err());
+        delete_run(&model, &run).unwrap();
+        assert!(list_runs(&model).is_empty());
     }
 }

@@ -363,6 +363,43 @@ Findings that change the spec:
 - A run simulates the model as edited, without saving it first. A cancelled run leaves the loaded results; a failed run shows its report and no results.
 - Not done in M2: validation list (F-EDIT-11), tabular editor (F-EDIT-9), control rules editor (F-EDIT-7), evaporation / climatology editors, streets and inlets, copy / paste of objects, autosave (F-FILE-5); length and area are computed for new objects only (F-EDIT-12); UI still in English only.
 
+### 6.4 M3 status (done, 2026-10-23)
+
+Delivered:
+- `swmm-analysis` (new crate):
+  - `reduce`: max, min, mean, time of max, total (volume of a flow in m³ / ft³, depth of an intensity) and number of periods above a threshold of a series over any range of periods, or of every object of a kind. With the cache, chunks inside the range come from their stored min / max / sum (and, for thresholds, chunks wholly above or below it); only the chunks cut by the range ends are decompressed. Without the cache, all objects are reduced in one pass over the frames.
+  - `calendar`: periods grouped by day, month or year of the model clock.
+  - `events`: event detection with a threshold and a minimum inter-event time (closer events merge), with the volume, duration and peak of each event and per-year counts; chunks below the threshold are skipped without decompression; many objects in parallel.
+  - `profile`: shortest path through a list of nodes (Dijkstra on conduit lengths, links walked in either direction) and the profile along it (stations, inverts, rims, link inverts from depth or elevation offsets, heights).
+- `swmm-model`: `validate` (issue list, see F-EDIT-11), `grid` (a section as rows × columns with the union of the line layouts, many cells set in one transaction, raw text of any section with only the changed lines spliced), `climate` (`[EVAPORATION]`, `[TEMPERATURE]`, `[ADJUSTMENTS]` read into one structure, written back key by key: comments and keys it does not manage stay).
+- `swmm-engine`: run labels and deletion (only folders of the model's run history).
+- `swmm-cli`: `inp validate`, `out events`.
+- App: F-RES-3b (statistic maps over the day / month / year of the current time; daily / monthly / yearly plots), F-RES-3c (Events tab), F-RES-4 (Profile tab: ground, conduits, water line following the timeline, maximum water line, run B), F-RES-5 (statistic maps: max, min, mean, time of max with a date legend, total, duration above a threshold), F-RES-6 (second results set "B": difference maps at the current time or of a statistic, dashed overlaid series, per-object comparison table; runs matched by object name and by time), F-RES-9 (CSV / Excel export of every table, SVG / PNG of plots and profiles), F-SIM-5 (Runs tab: label, load, compare, delete), F-EDIT-5 (climatology dialog; subcatchments, subareas and infiltration in the properties panel since M2 and now in the table editor), F-EDIT-9 (Table tab), F-EDIT-11 (Issues tab, rerun after every edit), F-EDIT-13 (Sections as text). Results caches of both runs are built in the background.
+
+Verification: Rust unit tests for every new module (reductions, events and calendars compared with brute-force results with and without the cache, profiles, validation, grid edits and section text with exact undo, climatology round-trip, exports, CLI). UI test `app/ui/e2e/analysis.mjs` on the release build with EPA SWMM 5.2.4, real mouse and keyboard where the UI matters: two runs (the second with rougher pipes), label and compare in the Runs tab, comparison table and difference maps (+1.78 m max depth at the upstream node), daily envelope map with a time-of-max legend and a threshold, profile drawn by shift-clicking two nodes on the map with the water line moving with the timeline, events at the outfall and jump to one, daily maxima of runs A and B, typing a value and copy / paste in the table editor then undo, a broken reference found by the checks and linked to its conduit, climatology and section text dialogs, CSV / Excel exports. The M1 smoke test and the M2 editing test still pass.
+
+Measured on the same 15 W laptop as §6.1 (release build, `app/ui/e2e/analysis-perf.mjs`, cache built, times seen by the UI including IPC):
+
+| Operation | 112k objects × 400 periods (1 GB) | 450 objects × 105,192 periods (1 year at 5 min, 1 GB) |
+|---|---|---|
+| Model checks | 0.30 s (20,000 issues) | 5 ms |
+| Table view of a section (all rows) | 0.19 s (52,000 conduits) | 5 ms |
+| Statistic map, whole run (max / time of max / time above threshold) | 7–8 ms | 3–7 ms |
+| Total volume of every link over a third of the run | 23 ms | 4 ms |
+| Events of all nodes / of the outfalls | 0.18 s (50,000 rows; 7 ms in Rust) / 5 ms | 4 ms / 4 ms |
+| Daily maxima / monthly volumes of one series | 4 / 3 ms | 10 / 3 ms |
+| Profile across the network (270 links) / its water line at one time | 0.10 s / 3 ms | 3 ms / 3 ms |
+| Difference frame A − B, all nodes | 5 ms | 5 ms |
+
+Target "event statistics on one variable for all outfalls, cache built < 2 s": met by three orders of magnitude.
+
+Findings that change the spec:
+- SWMM reports the state at the end of each step, so period `p` stands for `(time(p) − step, time(p)]`: a value stamped at midnight belongs to the day that ends then. Daily, monthly and yearly statistics, and event years, use this convention.
+- Without the results cache, statistics, events and profiles' maximum water line are refused on files where they would read more than 256 MB (as for long series in M1); the UI says the cache is being built.
+- WebView2 does not grant `navigator.clipboard`: the table editor keeps its keyboard focus in a hidden text area and uses the `copy` / `paste` events. The DevTools protocol cannot trigger the browser's copy and paste commands, so the UI test dispatches those events.
+- The comparison run (B) is not stored in the project file; the loaded run is.
+- Not done in M3: map image export, X-Y scatter plots (F-RES-7), lengths and areas of existing objects from the map (F-EDIT-12), control rules editor (F-EDIT-7), bulk expressions (F-EDIT-10, M4), autosave (F-FILE-5), Parquet export, i18n, dockable panels.
+
 ---
 
 ## 7. Licence

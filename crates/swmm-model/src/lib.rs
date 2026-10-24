@@ -12,12 +12,15 @@
 //! from the changed lines.
 
 mod attributes;
+pub mod climate;
 pub mod edit;
+pub mod grid;
 pub mod ops;
 mod properties;
 pub mod refs;
 pub mod schema;
 pub mod tables;
+pub mod validate;
 
 use std::collections::{HashMap, HashSet};
 

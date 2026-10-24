@@ -38,5 +38,34 @@ const DEFAULT_VAR: Record<string, number> = { node: 0, link: 0, subcatchment: 4,
 export function focusVar(s: State, o: ObjRef): { kind: ElementKind; var: number } | null {
   if (o.kind === "gage") return null;
   const st = s.styles[o.kind];
-  return { kind: o.kind, var: st.source === "result" && st.field !== "" ? Number(st.field) : DEFAULT_VAR[o.kind] };
+  const fromResults = st.source === "result" || st.source === "stat" || st.source === "compare";
+  return { kind: o.kind, var: fromResults && st.field !== "" ? Number(st.field) : DEFAULT_VAR[o.kind] };
+}
+
+/**
+ * First period whose interval starts at or after a time. Values are reported at the end
+ * of each step: period `p` stands for `(time(p) - step, time(p)]` (as in swmm-analysis).
+ */
+function firstAt(r: ResultsInfo, ms: number): number {
+  return Math.max(0, Math.ceil((ms - r.start_ms) / (r.step_secs * 1000) + 1 - 1e-9));
+}
+
+/** Periods `[p0, p1)` of the day, month or year that contains period `p` (model clock). */
+export function bucketRange(r: ResultsInfo, unit: "day" | "month" | "year", p: number): [number, number, number] {
+  const d = new Date(periodMs(r, Math.max(0, Math.min(r.n_periods - 1, p))) - r.step_secs * 1000);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const [a, b] =
+    unit === "day"
+      ? [Date.UTC(y, m, d.getUTCDate()), Date.UTC(y, m, d.getUTCDate() + 1)]
+      : unit === "month"
+        ? [Date.UTC(y, m, 1), Date.UTC(y, m + 1, 1)]
+        : [Date.UTC(y, 0, 1), Date.UTC(y + 1, 0, 1)];
+  return [firstAt(r, a), Math.min(r.n_periods, firstAt(r, b)), a];
+}
+
+/** Label of a calendar interval starting at `ms`. */
+export function bucketLabel(unit: "day" | "month" | "year", ms: number): string {
+  const t = formatDateTime(ms);
+  return unit === "day" ? t.slice(0, 10) : unit === "month" ? t.slice(0, 7) : t.slice(0, 4);
 }

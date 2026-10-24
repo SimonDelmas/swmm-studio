@@ -32,6 +32,14 @@ export const RAMPS: Record<string, RGB[]> = {
     [65, 171, 93],
     [0, 90, 50],
   ],
+  /** For differences: blue below zero, white around it, red above. */
+  diverging: [
+    [33, 102, 172],
+    [103, 169, 207],
+    [247, 247, 247],
+    [239, 138, 98],
+    [178, 24, 43],
+  ],
   magma: [
     [252, 253, 191],
     [254, 159, 109],

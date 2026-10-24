@@ -24,6 +24,17 @@ import type {
   RunProgress,
   Table,
   TableKind,
+  Aggregated,
+  Calendar,
+  Climate,
+  EventDto,
+  EventTable,
+  Grid,
+  Issue,
+  ProfileDto,
+  RunDto,
+  SectionInfo,
+  Stat,
 } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
@@ -92,8 +103,9 @@ export const api = {
     p0: number,
     p1: number,
     buckets: number,
+    b = false,
   ): Promise<MinMaxSeries> => {
-    const buf = await buffer("series", { kind, index, var: v, p0, p1, buckets: Math.max(1, Math.round(buckets)) });
+    const buf = await buffer("series", { kind, index, var: v, p0, p1, buckets: Math.max(1, Math.round(buckets)), b });
     const n = new DataView(buf).getUint32(0, true);
     return {
       periods: new Uint32Array(buf.slice(4, 4 + 4 * n)),
@@ -124,6 +136,41 @@ export const api = {
   setProjectEngine: (name: string | null) => invoke<EnginesDto>("set_project_engine", { name }),
   runStart: (label: string | null) => invoke<void>("run_start", { label }),
   runCancel: () => invoke<void>("run_cancel"),
+  statValues: async (kind: ElementKind, v: number, stat: Stat, p0: number, p1: number, b = false) =>
+    new Float32Array(await buffer("stat_values", { kind, var: v, stat, p0, p1, b })),
+  statUnit: (kind: ElementKind, v: number, stat: Stat, b = false) => invoke<string>("stat_unit", { kind, var: v, stat, b }),
+  compareFrame: async (kind: ElementKind, v: number, period: number) =>
+    new Float32Array(await buffer("compare_frame", { kind, var: v, period })),
+  comparePeriod: (period: number) => invoke<number | null>("compare_period", { period }),
+  openComparison: (path: string) => invoke<ModelInfo>("open_comparison", { path }),
+  closeComparison: () => invoke<ModelInfo>("close_comparison"),
+  aggregate: (kind: ElementKind, index: number, v: number, unit: Calendar, stat: Stat, b = false) =>
+    invoke<Aggregated>("aggregate", { kind, index, var: v, unit, stat, b }),
+  eventStats: (query: {
+    kind: ElementKind;
+    var: number;
+    threshold: number;
+    min_gap_hours: number;
+    objects: number[] | null;
+    outfalls_only: boolean;
+    b: boolean;
+  }) => invoke<EventTable>("event_stats", { query }),
+  objectEvents: (kind: ElementKind, index: number, v: number, threshold: number, minGapHours: number, b = false) =>
+    invoke<EventDto[]>("object_events", { kind, index, var: v, threshold, minGapHours, b }),
+  profile: (nodes: number[]) => invoke<ProfileDto>("profile", { nodes }),
+  heads: async (nodes: number[], period: number, b = false) => new Float32Array(await buffer("heads", { nodes, period, b })),
+  validate: () => invoke<Issue[]>("validate_model"),
+  grid: (section: string) => invoke<Grid>("grid", { section }),
+  climate: () => invoke<Climate>("climate"),
+  sections: () => invoke<SectionInfo[]>("sections"),
+  sectionText: (section: string) => invoke<string>("section_text", { section }),
+  runs: () => invoke<RunDto[]>("runs"),
+  openRun: (dir: string) => invoke<ModelInfo>("open_run", { dir }),
+  compareRun: (dir: string) => invoke<ModelInfo>("compare_run", { dir }),
+  setRunLabel: (dir: string, label: string | null) => invoke<RunDto[]>("set_run_label", { dir, label }),
+  deleteRun: (dir: string) => invoke<ModelInfo>("delete_run", { dir }),
+  exportTable: (path: string, title: string, columns: string[], rows: string[][]) =>
+    invoke<void>("export_table", { path, title, columns, rows }),
 };
 
 export function onRunProgress(f: (p: RunProgress) => void): Promise<UnlistenFn> {

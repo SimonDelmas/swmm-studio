@@ -1,0 +1,20 @@
+[package]
+name = "swmm-analysis"
+description = "Analysis of EPA SWMM results: envelopes, time aggregation, event statistics, longitudinal profiles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+swmm-inp.workspace = true
+swmm-model.workspace = true
+swmm-out.workspace = true
+chrono.workspace = true
+rayon.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

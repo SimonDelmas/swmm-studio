@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { defaultStyle, getState, notify, setState, useStore, type StyledKind } from "../store";
+import { defaultStyle, getState, notify, setState, styleUsable, useStore, type StyledKind } from "../store";
 import type { RunFinished, RunProgress } from "../types";
 
 /** Starts a simulation of the model as it is now (unsaved edits included). */
@@ -39,7 +39,7 @@ export function onFinished(f: RunFinished) {
     // Without results (failed run), layers coloured by a result go back to their default.
     const styles = { ...s.styles };
     for (const k of Object.keys(styles) as StyledKind[]) {
-      if (styles[k].source === "result" && !f.info.results?.variables[k]?.[Number(styles[k].field)]) styles[k] = defaultStyle(k);
+      if (!styleUsable(styles[k], k, f.info)) styles[k] = defaultStyle(k);
     }
     Object.assign(patch, { styles });
   }
