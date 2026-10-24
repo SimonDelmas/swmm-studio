@@ -127,13 +127,92 @@ export function profileSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif">${out.join("")}</svg>`;
 }
 
+/** A profile saved in the project: its control nodes, by ID (indices change with edits). */
+export interface SavedProfile {
+  name: string;
+  nodes: string[];
+}
+
+const NONE: SavedProfile[] = [];
+
+export function savedProfiles(s = getState()): SavedProfile[] {
+  const list = s.model?.project.ui.profiles;
+  return Array.isArray(list) ? (list as SavedProfile[]) : NONE;
+}
+
+function storeProfiles(list: SavedProfile[]) {
+  const m = getState().model;
+  if (!m) return;
+  const ui = { ...m.project.ui, profiles: list };
+  setState({ model: { ...m, project: { ...m.project, ui } } });
+  api.updateProject(undefined, ui).catch((e) => notify(errorText(e), true));
+}
+
+/** Saves the current profile under `name` (replaces a profile of the same name). */
+export function saveProfile(name: string) {
+  const { profile, profileNodes } = getState();
+  if (!profile) return;
+  const idOf = new Map(profile.nodes.map((n) => [n.index, n.id]));
+  const nodes = profileNodes.map((i) => idOf.get(i)).filter((id): id is string => id !== undefined);
+  storeProfiles([...savedProfiles().filter((p) => p.name !== name), { name, nodes }]);
+}
+
+export function deleteProfile(name: string) {
+  storeProfiles(savedProfiles().filter((p) => p.name !== name));
+}
+
+export async function loadProfile(name: string) {
+  const saved = savedProfiles().find((p) => p.name === name);
+  if (!saved) return;
+  const refs = await Promise.all(saved.nodes.map((id) => api.findObject(id).catch(() => null)));
+  const missing = saved.nodes.filter((_, i) => refs[i]?.kind !== "node");
+  if (missing.length > 0) return notify(`Profile “${name}”: node${missing.length > 1 ? "s" : ""} ${missing.join(", ")} no longer in the model.`, true);
+  setState({ profileNodes: refs.map((r) => r!.index), profileStart: null, bottomTab: "profile" });
+}
+
+/** Profile tool: the first click picks the start node, the second draws the profile; Shift+click extends it. */
+export function profileClick(hit: ObjRef | null, shift: boolean) {
+  if (hit?.kind !== "node") return;
+  const { profileStart, profileNodes } = getState();
+  if (shift && profileStart === null && profileNodes.length >= 2) {
+    if (profileNodes[profileNodes.length - 1] !== hit.index) setState({ profileNodes: [...profileNodes, hit.index], bottomTab: "profile" });
+  } else if (profileStart === null || profileStart === hit.index) {
+    setState({ profileStart: hit.index });
+  } else {
+    setState({ profileNodes: [profileStart, hit.index], profileStart: null, bottomTab: "profile" });
+  }
+}
+
+/** Computes the profile path whenever its nodes or the model change (mounted once, in the app). */
+export function useProfile() {
+  const nodes = useStore((s) => s.profileNodes);
+  const revision = useStore((s) => s.model?.revision ?? 0);
+  const resultsPath = useStore((s) => s.model?.results?.path);
+  const cacheState = useStore((s) => s.model?.results?.cache.state);
+  useEffect(() => {
+    setState({ profile: null, profileError: null });
+    if (nodes.length < 2) return;
+    let live = true;
+    const t = setTimeout(() => {
+      api
+        .profile(nodes)
+        .then((profile) => live && setState({ profile }))
+        .catch((e) => live && setState({ profileError: errorText(e) }));
+    }, 100);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [nodes, revision, resultsPath, cacheState]);
+}
+
 /** Sets the profile to go through the selected nodes (in selection order). */
 export function profileFromSelection() {
   const nodes = getState()
     .selection.filter((o) => o.kind === "node")
     .map((o) => o.index);
   if (nodes.length < 2) return notify("Select two nodes or more (Shift+click), in order along the profile.", true);
-  setState({ profileNodes: nodes, bottomTab: "profile" });
+  setState({ profileNodes: nodes, profileStart: null, bottomTab: "profile" });
 }
 
 export function ProfilePanel() {
@@ -142,27 +221,18 @@ export function ProfilePanel() {
   const period = useStore((s) => s.period);
   const results = model?.results ?? null;
   const compare = model?.compare ?? null;
-  const [dto, setDto] = useState<ProfileDto | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const dto = useStore((s) => s.profile);
+  const profileError = useStore((s) => s.profileError);
+  const [headsError, setError] = useState<string | null>(null);
+  const error = profileError ?? headsError;
+  const saved = useStore(savedProfiles);
+  const [savedName, setSavedName] = useState("");
+  const [newName, setNewName] = useState("");
   const [heads, setHeads] = useState<Float32Array | null>(null);
   const [headsB, setHeadsB] = useState<Float32Array | null>(null);
   const [showB, setShowB] = useState(true);
   const [sizeRef, size] = useSize<HTMLDivElement>({ w: 800, h: 220 });
-  const revision = model?.revision ?? 0;
   const unit = model && ["CFS", "GPM", "MGD"].includes(model.flow_units) ? "ft" : "m";
-
-  useEffect(() => {
-    setDto(null);
-    setError(null);
-    if (nodes.length < 2) return;
-    const t = setTimeout(() => {
-      api
-        .profile(nodes)
-        .then(setDto)
-        .catch((e) => setError(errorText(e)));
-    }, 100);
-    return () => clearTimeout(t);
-  }, [nodes, revision, results?.path, results?.cache.state]);
 
   // Heads at the current time (coalesced while playing).
   const busy = useRef(false);
@@ -170,6 +240,7 @@ export function ProfilePanel() {
   const ids = dto?.nodes.map((n) => n.index) ?? null;
   const idsKey = ids?.join(",") ?? "";
   useEffect(() => {
+    setError(null);
     if (!ids || !results) {
       setHeads(null);
       setHeadsB(null);
@@ -204,6 +275,13 @@ export function ProfilePanel() {
     const sel: ObjRef[] = [...dto.links.map((l) => ({ kind: "link" as const, index: l.index })), ...dto.nodes.map((n) => ({ kind: "node" as const, index: n.index }))];
     setState({ selection: sel, fitSelection: getState().fitSelection + 1 });
   };
+  const save = () => {
+    const name = (newName.trim() || title).trim();
+    if (!dto || !name) return;
+    saveProfile(name);
+    setSavedName(name);
+    setNewName("");
+  };
   const exportData = () => {
     if (!dto) return;
     const rows = dto.nodes.map((n, i) => [n.id, n.station, n.invert, n.rim, heads?.[i] ?? null, dto.max_head[i]]);
@@ -227,6 +305,42 @@ export function ProfilePanel() {
             <button onClick={selectPath}>Select on map</button>
           </>
         )}
+        <select
+          value={saved.some((p) => p.name === savedName) ? savedName : ""}
+          title="Profiles saved in the project"
+          onChange={(e) => {
+            setSavedName(e.target.value);
+            if (e.target.value) loadProfile(e.target.value);
+          }}
+        >
+          <option value="">{saved.length ? "Saved profiles…" : "No saved profiles"}</option>
+          {saved.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <input
+          className="narrow-name"
+          disabled={!dto}
+          placeholder={dto ? title : "Profile name"}
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+        />
+        <button disabled={!dto} onClick={save} title="Save this profile in the project (under the name typed, or its start → end)">
+          Save
+        </button>
+        <button
+          disabled={!saved.some((p) => p.name === savedName)}
+          title="Delete the chosen saved profile"
+          onClick={() => {
+            deleteProfile(savedName);
+            setSavedName("");
+          }}
+        >
+          Delete
+        </button>
         {compare && (
           <label>
             <input type="checkbox" checked={showB} onChange={(e) => setShowB(e.target.checked)} /> run B
@@ -250,8 +364,8 @@ export function ProfilePanel() {
       {error && <div className="panel-error">{error}</div>}
       {nodes.length < 2 && (
         <div className="panel-empty">
-          Select a start and an end node (Shift+click; more nodes to force the path), then click “From selected nodes”. The profile follows the
-          shortest path; the water line follows the timeline.
+          With the Profile tool (toolbar), click a start node then an end node; Shift+click extends the profile through another node. Or select nodes
+          in order and click “From selected nodes”. The profile follows the shortest path; the water line follows the timeline.
         </div>
       )}
       <div ref={sizeRef} className="plot-area" onClick={onClick} dangerouslySetInnerHTML={{ __html: svg }} />

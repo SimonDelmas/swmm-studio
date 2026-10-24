@@ -5,6 +5,7 @@ import { COORDINATE_SYSTEM, Deck, OrthographicView, type Layer } from "@deck.gl/
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { api, errorText } from "../api";
+import { profileClick } from "../components/ProfilePanel";
 import { getState, notify, sameRef, setState, useStore } from "../store";
 import type { Geometry, ObjKind, ObjRef } from "../types";
 import { styleObjects } from "./colors";
@@ -20,6 +21,8 @@ export const mapTools: { current: EditTools | null } = { current: null };
 /** Display coordinates → page coordinates on the map (UI tests). */
 export const mapProject: { current: ((p: Pt) => Pt) | null } = { current: null };
 const HIGHLIGHT: [number, number, number, number] = [255, 200, 0, 255];
+/** Path of the current longitudinal profile. */
+const PROFILE: [number, number, number, number] = [230, 40, 150, 210];
 const MAX_LABELS = 400;
 
 type Pt = [number, number];
@@ -199,6 +202,8 @@ export function MapView() {
   const ids = useStore((s) => s.ids);
   const fitExtent = useStore((s) => s.fitExtent);
   const fitSelection = useStore((s) => s.fitSelection);
+  const profile = useStore((s) => s.profile);
+  const profileStart = useStore((s) => s.profileStart);
   const container = useRef<HTMLDivElement>(null);
   const viewer = useRef<Viewer | null>(null);
   const [viewTick, setViewTick] = useState(0);
@@ -219,6 +224,10 @@ export function MapView() {
   mapTools.current = tools;
   const drawingTool = tool.startsWith("add-");
   useEffect(() => viewer.current?.setDoubleClickZoom(!drawingTool), [drawingTool, modelKey]);
+  // Leaving the profile tool forgets a half-picked profile.
+  useEffect(() => {
+    if (tool !== "profile" && getState().profileStart !== null) setState({ profileStart: null });
+  }, [tool]);
 
   const space = g?.space;
   // (Re)create the viewer when the kind of view changes.
@@ -501,6 +510,60 @@ export function MapView() {
     ];
   }, [g, selection, coordSystem, styles.link.size, styles.node.size]);
 
+  // The current profile: its links and nodes, and the start node being picked.
+  const profileLayers = useMemo(() => {
+    if (!g) return [];
+    const common = { coordinateSystem: coordSystem, pickable: false };
+    const nodePt = (i: number): Pt => [g.nodes[2 * i], g.nodes[2 * i + 1]];
+    const paths: Pt[][] = [];
+    const pts: Pt[] = [];
+    if (profile) {
+      for (const l of profile.links) {
+        const path: Pt[] = [];
+        for (let i = g.linkStarts[l.index]; i < g.linkStarts[l.index + 1]; i++) path.push([g.linkPts[2 * i], g.linkPts[2 * i + 1]]);
+        paths.push(path);
+      }
+      for (const n of profile.nodes) pts.push(nodePt(n.index));
+    }
+    const start = profileStart !== null && profileStart < g.nodeTypes.length ? [nodePt(profileStart)] : [];
+    if (paths.length === 0 && pts.length === 0 && start.length === 0) return [];
+    return [
+      new PathLayer<Pt[]>({
+        ...common,
+        id: "profile-links",
+        data: paths,
+        getPath: (p) => p,
+        getColor: PROFILE,
+        getWidth: Math.max(7, styles.link.size + 6),
+        widthUnits: "pixels",
+        capRounded: true,
+        jointRounded: true,
+      }),
+      new ScatterplotLayer<Pt>({
+        ...common,
+        id: "profile-nodes",
+        data: pts,
+        getPosition: (p) => p,
+        getRadius: Math.max(5, styles.node.size + 2),
+        radiusUnits: "pixels",
+        getFillColor: PROFILE,
+      }),
+      new ScatterplotLayer<Pt>({
+        ...common,
+        id: "profile-start",
+        data: start,
+        getPosition: (p) => p,
+        getRadius: Math.max(9, styles.node.size + 6),
+        radiusUnits: "pixels",
+        filled: false,
+        stroked: true,
+        getLineColor: PROFILE,
+        getLineWidth: 3,
+        lineWidthUnits: "pixels",
+      }),
+    ];
+  }, [g, profile, profileStart, coordSystem, styles.link.size, styles.node.size]);
+
   // Labels of the objects in view, when few enough.
   const labelLayer = useMemo(() => {
     const v = viewer.current;
@@ -550,7 +613,7 @@ export function MapView() {
   }, [period]);
 
   useEffect(() => {
-    viewer.current?.setLayers([...baseLayers, ...selectionLayers, ...(labelLayer ? [labelLayer] : []), ...tools.layers]);
+    viewer.current?.setLayers([...baseLayers, ...profileLayers, ...selectionLayers, ...(labelLayer ? [labelLayer] : []), ...tools.layers]);
     const s = stepStart.current;
     if (s) {
       requestAnimationFrame(() => {
@@ -558,7 +621,7 @@ export function MapView() {
         if (mapPerf.steps.length > 500) mapPerf.steps.shift();
       });
     }
-  }, [baseLayers, selectionLayers, labelLayer, tools.layers]);
+  }, [baseLayers, profileLayers, selectionLayers, labelLayer, tools.layers]);
 
   // ---- interaction ----------------------------------------------------------
 
@@ -601,7 +664,7 @@ export function MapView() {
     const [x, y] = v.unproject(p);
     api
       .pick(x, y, 6 * v.unitsPerPixel())
-      .then((hit) => applySelection(hit ? [hit] : [], d.shift))
+      .then((hit) => (tool === "profile" ? profileClick(hit, d.shift) : applySelection(hit ? [hit] : [], d.shift)))
       .catch((err) => notify(errorText(err), true));
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -688,7 +751,7 @@ export function MapView() {
       )}
       {attribution}
       {cursor && <div className="map-cursor">{cursor}</div>}
-      {model && <ToolHint tool={tool} sketching={tools.busy} />}
+      {model && <ToolHint tool={tool} sketching={tools.busy || (tool === "profile" && profileStart !== null)} />}
       {!model && <div className="map-empty">Open a SWMM model (.inp) to start.</div>}
     </div>
   );
@@ -705,6 +768,10 @@ const HINTS: Partial<Record<string, string>> = {
 /** One-line help for the active editing tool. */
 function ToolHint({ tool, sketching }: { tool: string; sketching: boolean }) {
   let text = HINTS[tool];
+  if (tool === "profile")
+    text = sketching
+      ? "Click the end node: the profile is drawn."
+      : "Click the start node of a profile (Shift+click extends the current profile through another node).";
   if (!text && /^add-(junction|outfall|divider|storage)$/.test(tool)) text = `Click to add a ${tool.slice(4)}.`;
   if (!text && tool.startsWith("add-"))
     text = sketching

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { confirmDiscard, redo, saveModel, undo } from "../edit";
@@ -54,13 +54,69 @@ function setBasemap(patch: Partial<Basemap>) {
   api.updateProject(basemap).catch(() => {});
 }
 
-const TOOLS: [Tool, string, string][] = [
+const EDIT_TOOLS: [Tool, string, string][] = [
+  ["move", "✥ Move", "Move: drag nodes and gages, or the selected objects"],
+  ["vertex", "⌖ Vertices", "Edit vertices of the selected link or subcatchment, reconnect link ends"],
+];
+
+const SELECT_TOOLS: [Tool, string, string][] = [
   ["select", "↖", "Select: click an object (Shift adds)"],
   ["box", "▭", "Box selection (Shift adds)"],
   ["lasso", "✎", "Lasso selection (Shift adds)"],
-  ["move", "✥", "Move: drag nodes and gages, or the selected objects"],
-  ["vertex", "⌖", "Edit vertices of the selected link or subcatchment, reconnect link ends"],
 ];
+
+/** The "Project" drop-down: closes on an item click, an outside click or Escape. */
+function ProjectMenu() {
+  const model = useStore((s) => s.model);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  const item = (label: string, action: () => unknown, opts: { title?: string; disabled?: boolean; className?: string } = {}) => (
+    <button
+      className={opts.className}
+      title={opts.title}
+      disabled={opts.disabled}
+      onClick={() => {
+        setOpen(false);
+        action();
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="menu" ref={ref}>
+      <button className={open ? "active" : model?.dirty ? "dirty" : ""} onClick={() => setOpen(!open)} title="Project: new, open, save, projection">
+        Project ▾
+      </button>
+      {open && (
+        <div className="menu-items">
+          {item("New", newModel, { title: "New model" })}
+          {item("Open…", chooseModel, { title: "Open a model (Ctrl+O)" })}
+          {item("Save", () => saveModel(), { title: "Save (Ctrl+S)", disabled: !model, className: model?.dirty ? "dirty" : "" })}
+          {item("Save as…", () => saveModel(true), { title: "Save as (Ctrl+Shift+S)", disabled: !model })}
+          <hr />
+          {item("Open results…", chooseResults, { disabled: !model })}
+          <hr />
+          {item(`Projection: ${model?.crs ? model.crs.id : "none"}…`, () => setState({ crsDialog: true }), {
+            title: "Coordinate system of the model",
+            disabled: !model,
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ADD: [Tool, string][] = [
   ["add-junction", "Junction"],
@@ -93,77 +149,84 @@ export function Toolbar() {
   return (
     <div className="toolbar">
       <span className="brand">SWMM Studio</span>
-      <button onClick={newModel} title="New model">
-        New
-      </button>
-      <button onClick={chooseModel} title="Open a model (Ctrl+O)">
-        Open…
-      </button>
-      <button disabled={!model} onClick={() => saveModel()} title="Save (Ctrl+S)" className={model?.dirty ? "dirty" : ""}>
-        Save
-      </button>
-      <button disabled={!model} onClick={() => saveModel(true)} title="Save as (Ctrl+Shift+S)">
-        Save as…
-      </button>
-      <button disabled={!model} onClick={chooseResults}>
-        Open results…
-      </button>
+      <ProjectMenu />
       <span className="sep" />
-      <button disabled={!model?.undo} onClick={undo} title={model?.undo ? `Undo ${model.undo} (Ctrl+Z)` : "Undo (Ctrl+Z)"}>
-        ↶
-      </button>
-      <button disabled={!model?.redo} onClick={redo} title={model?.redo ? `Redo ${model.redo} (Ctrl+Y)` : "Redo (Ctrl+Y)"}>
-        ↷
-      </button>
+      {/* Edition */}
+      <div className="tb-group" aria-label="Edition">
+        <button disabled={!model?.undo} onClick={undo} title={model?.undo ? `Undo ${model.undo} (Ctrl+Z)` : "Undo (Ctrl+Z)"}>
+          ↶
+        </button>
+        <button disabled={!model?.redo} onClick={redo} title={model?.redo ? `Redo ${model.redo} (Ctrl+Y)` : "Redo (Ctrl+Y)"}>
+          ↷
+        </button>
+        <select
+          disabled={!model}
+          className={adding ? "active" : ""}
+          value={adding ? tool : ""}
+          title="Add objects on the map"
+          onChange={(e) => setState({ tool: (e.target.value || "select") as Tool, selection: [] })}
+        >
+          <option value="">+ Add…</option>
+          {ADD.map(([t, label]) => (
+            <option key={t} value={t}>
+              {label}
+            </option>
+          ))}
+        </select>
+        {EDIT_TOOLS.map(([t, label, title]) => (
+          <button key={t} className={tool === t ? "active" : ""} title={title} disabled={!model} onClick={() => setState({ tool: t })}>
+            {label}
+          </button>
+        ))}
+        <button disabled={!model} title="Zoom to the whole model" onClick={() => setState({ fitExtent: getState().fitExtent + 1 })}>
+          ⤢ Extent
+        </button>
+      </div>
       <span className="sep" />
-      <button disabled={!model} onClick={() => setState({ crsDialog: true })} title="Coordinate system of the model">
-        {model?.crs ? model.crs.id : "No CRS"}
-      </button>
+      {/* Selection */}
+      <div className="tb-group" aria-label="Selection">
+        {SELECT_TOOLS.map(([t, icon, title]) => (
+          <button key={t} className={tool === t ? "active" : ""} title={title} disabled={!model} onClick={() => setState({ tool: t })}>
+            {icon}
+          </button>
+        ))}
+        <button
+          disabled={!model}
+          className={tool === "profile" ? "active" : ""}
+          onClick={() => setState({ tool: tool === "profile" ? "select" : "profile" })}
+          title="Longitudinal profile: click a start node, then an end node"
+        >
+          ⟋ Profile
+        </button>
+      </div>
       {model?.space.kind === "lonlat" && bm && (
         <>
-          <label title="Basemap (OpenStreetMap)">
-            <input type="checkbox" checked={bm.visible} onChange={(e) => setBasemap({ visible: e.target.checked })} />
-            Basemap
-          </label>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={bm.opacity}
-            title="Basemap opacity"
-            onChange={(e) => setBasemap({ opacity: Number(e.target.value) })}
-          />
+          <span className="sep" />
+          <div className="tb-group" aria-label="Basemap">
+            <label title="Basemap (OpenStreetMap)">
+              <input type="checkbox" checked={bm.visible} onChange={(e) => setBasemap({ visible: e.target.checked })} />
+              Basemap
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={bm.opacity}
+              title="Basemap opacity"
+              onChange={(e) => setBasemap({ opacity: Number(e.target.value) })}
+            />
+          </div>
         </>
       )}
       <span className="sep" />
-      {TOOLS.map(([t, icon, title]) => (
-        <button key={t} className={tool === t ? "active" : ""} title={title} disabled={!model} onClick={() => setState({ tool: t })}>
-          {icon}
+      {/* Simulation: run and its settings (more to come) */}
+      <div className="tb-group run-group" aria-label="Simulation">
+        <button disabled={!model} onClick={() => setState({ dialog: "options" })} title="Simulation options">
+          Options
         </button>
-      ))}
-      <select
-        disabled={!model}
-        className={adding ? "active" : ""}
-        value={adding ? tool : ""}
-        title="Add objects on the map"
-        onChange={(e) => setState({ tool: (e.target.value || "select") as Tool, selection: [] })}
-      >
-        <option value="">+ Add…</option>
-        {ADD.map(([t, label]) => (
-          <option key={t} value={t}>
-            {label}
-          </option>
-        ))}
-      </select>
-      <button disabled={!model} title="Zoom to the whole model" onClick={() => setState({ fitExtent: getState().fitExtent + 1 })}>
-        ⤢
-      </button>
-      <span className="sep" />
-      <button disabled={!model} onClick={() => setState({ dialog: "options" })} title="Simulation options">
-        Options
-      </button>
-      <RunControls />
+        <RunControls />
+      </div>
       <span className="grow" />
       <input
         disabled={!model}

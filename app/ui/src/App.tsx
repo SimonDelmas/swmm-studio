@@ -6,7 +6,7 @@ import { ComparePanel } from "./components/ComparePanel";
 import { CrsDialog } from "./components/CrsDialog";
 import { EventsPanel } from "./components/EventsPanel";
 import { IssuesPanel } from "./components/IssuesPanel";
-import { ProfilePanel } from "./components/ProfilePanel";
+import { ProfilePanel, useProfile } from "./components/ProfilePanel";
 import { RunsPanel } from "./components/RunsPanel";
 import { SectionsDialog } from "./components/SectionsDialog";
 import { TablePanel } from "./components/TablePanel";
@@ -129,7 +129,8 @@ function useEvents() {
       else if (e.key === "ArrowLeft" && n > 0) setState({ period: Math.max(0, s.period - s.stride) });
       else if (e.key === "Escape") {
         if (mapTools.current?.cancel()) return;
-        if (s.tool !== "select") setState({ tool: "select" });
+        if (s.profileStart !== null) setState({ profileStart: null });
+        else if (s.tool !== "select") setState({ tool: "select" });
         else setState({ selection: [] });
       }
     };
@@ -188,6 +189,7 @@ function BottomPanel({ tab }: { tab: BottomTab }) {
 
 export function App() {
   useEvents();
+  useProfile();
   const crsDialog = useStore((s) => s.crsDialog);
   const dialog = useStore((s) => s.dialog);
   const bottomTab = useStore((s) => s.bottomTab);

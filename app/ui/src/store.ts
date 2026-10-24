@@ -1,7 +1,7 @@
 // Minimal global store (no dependency): state + subscribe, read with `useStore`.
 
 import { useSyncExternalStore } from "react";
-import type { Calendar, DeletePlan, ElementKind, Geometry, Issue, LinkType, ModelInfo, NodeType, ObjKind, ObjRef, RunFinished, Stat, TableKind } from "./types";
+import type { Calendar, DeletePlan, ElementKind, Geometry, Issue, LinkType, ModelInfo, NodeType, ObjKind, ObjRef, ProfileDto, RunFinished, Stat, TableKind } from "./types";
 
 export type StyledKind = "node" | "link" | "subcatchment";
 export type ClassMethod = "equal" | "quantile" | "custom";
@@ -59,6 +59,8 @@ export type Tool =
   | "move"
   /** Drag, add and remove the vertices of the selected link or subcatchment. */
   | "vertex"
+  /** Click a start and an end node to draw their longitudinal profile. */
+  | "profile"
   | `add-${NodeType}`
   | `add-${LinkType}`
   | "add-subcatchment"
@@ -95,6 +97,11 @@ export interface State {
   bottomTab: BottomTab;
   /** Nodes the profile goes through (in order). */
   profileNodes: number[];
+  /** The profile path computed from `profileNodes` (highlighted on the map). */
+  profile: ProfileDto | null;
+  profileError: string | null;
+  /** Profile tool: start node clicked, waiting for the end node. */
+  profileStart: number | null;
   /** Last model check (null: not run yet). */
   issues: Issue[] | null;
   /** Incremented to ask the map to zoom to the model extent / to the selection. */
@@ -147,6 +154,9 @@ const initial: State = {
   plotAgg: null,
   bottomTab: "plot",
   profileNodes: [],
+  profile: null,
+  profileError: null,
+  profileStart: null,
   issues: null,
   fitExtent: 0,
   fitSelection: 0,
@@ -197,6 +207,9 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     labels: ui.labels ?? true,
     plot: [],
     profileNodes: [],
+    profile: null,
+    profileError: null,
+    profileStart: null,
     issues: null,
     fitExtent: state.fitExtent + 1,
     tool: "select",

@@ -87,6 +87,9 @@ input[type="range"] {
 input.narrow {
   width: 70px;
 }
+input.narrow-name {
+  width: 130px;
+}
 input.wide {
   width: 100%;
   padding: 6px 8px;
@@ -165,6 +168,42 @@ label {
 .brand {
   font-weight: 600;
   margin-right: 8px;
+}
+.tb-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.menu {
+  position: relative;
+}
+.menu-items {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.menu-items button {
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+.menu-items button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.menu-items hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 3px 0;
 }
 
 .main {
@@ -613,7 +652,9 @@ select.active {
   border-color: var(--accent);
 }
 .map.tool-add .maplibregl-canvas-container,
-.map.tool-add canvas {
+.map.tool-add canvas,
+.map.tool-profile .maplibregl-canvas-container,
+.map.tool-profile canvas {
   cursor: crosshair !important;
 }
 .map.tool-move .maplibregl-canvas-container,
