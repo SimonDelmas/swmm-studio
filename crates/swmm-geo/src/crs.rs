@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use proj4rs::proj::Proj;
-use proj4rs::transform::{transform, Transform, TransformClosure};
+use proj4rs::transform::transform;
 
 use crate::GeoError;
 
@@ -137,36 +137,21 @@ impl Crs {
     }
 
     /// Converts WGS 84 longitude/latitude in degrees to model coordinates, in place.
+    /// Points that cannot be converted become NaN.
     pub fn from_lonlat(&self, points: &mut [[f64; 2]]) {
+        // One point at a time, like `to_lonlat`: proj4rs runs a `Transform` once per
+        // pipeline step (datum shift, prime meridian, projection), so a batch adapter
+        // that converts its input would convert it again at every step.
         let geo = self.is_geographic();
-        let mut all = Points(points);
-        let r = transform(&self.wgs84, &self.proj, &mut PreRadians(&mut all));
-        if r.is_err() {
-            all.0.iter_mut().for_each(|p| *p = [f64::NAN, f64::NAN]);
-        } else if geo {
-            all.0.iter_mut().for_each(|p| *p = [p[0].to_degrees(), p[1].to_degrees()]);
+        for p in points.iter_mut() {
+            let mut q = (p[0].to_radians(), p[1].to_radians(), 0.0);
+            match transform(&self.wgs84, &self.proj, &mut q) {
+                Ok(()) if q.0.is_finite() && q.1.is_finite() => {
+                    *p = if geo { [q.0.to_degrees(), q.1.to_degrees()] } else { [q.0, q.1] }
+                }
+                _ => *p = [f64::NAN, f64::NAN],
+            }
         }
-    }
-}
-
-struct Points<'a>(&'a mut [[f64; 2]]);
-
-impl Transform for Points<'_> {
-    fn transform_coordinates<F: TransformClosure>(&mut self, f: &mut F) -> proj4rs::errors::Result<()> {
-        for p in self.0.iter_mut() {
-            let (x, y, _) = f(p[0], p[1], 0.0)?;
-            *p = [x, y];
-        }
-        Ok(())
-    }
-}
-
-/// Feeds degrees to a geographic source as radians.
-struct PreRadians<'a, 'b>(&'a mut Points<'b>);
-
-impl Transform for PreRadians<'_, '_> {
-    fn transform_coordinates<F: TransformClosure>(&mut self, f: &mut F) -> proj4rs::errors::Result<()> {
-        self.0.transform_coordinates(&mut |x: f64, y: f64, z: f64| f(x.to_radians(), y.to_radians(), z))
     }
 }
 
@@ -202,6 +187,23 @@ mod tests {
         let mut m = [[848_500.0, 112_000.0]];
         crs.to_lonlat(&mut m);
         assert!((m[0][0] - 5.38).abs() < 0.05 && (m[0][1] - 43.3).abs() < 0.05, "{m:?}");
+    }
+
+    #[test]
+    fn round_trip() {
+        for (code, p) in [
+            ("EPSG:2154", [892_000.0, 6_247_000.0]),
+            ("EPSG:3944", [1_890_000.0, 3_140_000.0]),
+            ("EPSG:27563", [848_500.0, 112_000.0]),
+            ("EPSG:27572", [848_500.0, 1_812_000.0]),
+            ("EPSG:4326", [5.38, 43.3]),
+        ] {
+            let crs = Crs::parse(code).unwrap();
+            let mut q = [p, [p[0] + 10.0, p[1] + 10.0]];
+            crs.to_lonlat(&mut q);
+            crs.from_lonlat(&mut q);
+            assert!((q[0][0] - p[0]).abs() < 1e-3 && (q[0][1] - p[1]).abs() < 1e-3, "{code}: {p:?} → {q:?}");
+        }
     }
 
     #[test]
