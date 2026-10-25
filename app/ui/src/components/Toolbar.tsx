@@ -3,7 +3,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { confirmDiscard, redo, saveModel, undo } from "../edit";
 import { getState, notify, resetForModel, setState, useStore, type Tool } from "../store";
-import type { Basemap } from "../types";
 import { RunControls } from "./RunPanel";
 
 export async function openModel(path: string) {
@@ -44,14 +43,6 @@ async function chooseResults() {
   } finally {
     setState({ busy: null });
   }
-}
-
-function setBasemap(patch: Partial<Basemap>) {
-  const m = getState().model;
-  if (!m) return;
-  const basemap = { ...m.project.basemap, ...patch };
-  setState({ model: { ...m, project: { ...m.project, basemap } } });
-  api.updateProject(basemap).catch(() => {});
 }
 
 const EDIT_TOOLS: [Tool, string, string][] = [
@@ -144,7 +135,6 @@ export function Toolbar() {
       setState({ selection: [o], fitSelection: getState().fitSelection + 1 });
     });
   };
-  const bm = model?.project.basemap;
   const adding = tool.startsWith("add-");
   return (
     <div className="toolbar">
@@ -199,26 +189,6 @@ export function Toolbar() {
           ⟋ Profile
         </button>
       </div>
-      {model?.space.kind === "lonlat" && bm && (
-        <>
-          <span className="sep" />
-          <div className="tb-group" aria-label="Basemap">
-            <label title="Basemap (OpenStreetMap)">
-              <input type="checkbox" checked={bm.visible} onChange={(e) => setBasemap({ visible: e.target.checked })} />
-              Basemap
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={bm.opacity}
-              title="Basemap opacity"
-              onChange={(e) => setBasemap({ opacity: Number(e.target.value) })}
-            />
-          </div>
-        </>
-      )}
       <span className="sep" />
       {/* Simulation: run and its settings (more to come) */}
       <div className="tb-group run-group" aria-label="Simulation">

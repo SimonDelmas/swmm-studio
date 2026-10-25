@@ -5,6 +5,7 @@ import { formatDateTime, periodAt, periodMs } from "../format";
 import { LINK_TYPE_COLORS, LINK_TYPE_NAMES, NODE_TYPE_COLORS, NODE_TYPE_NAMES, SUB_COLOR } from "../map/colors";
 import { statValues } from "../map/useLayerValues";
 import { getState, makeStat, notify, setState, setStyle, useStore, type LayerStyle, type StatName, type StyledKind } from "../store";
+import type { Basemap } from "../types";
 
 const TITLES: Record<StyledKind, string> = { node: "Nodes", link: "Links", subcatchment: "Subcatchments" };
 
@@ -337,6 +338,39 @@ function LayerSection({ kind }: { kind: StyledKind }) {
   );
 }
 
+function setBasemap(patch: Partial<Basemap>) {
+  const m = getState().model;
+  if (!m) return;
+  const basemap = { ...m.project.basemap, ...patch };
+  setState({ model: { ...m, project: { ...m.project, basemap } } });
+  api.updateProject(basemap).catch(() => {});
+}
+
+/** Basemap tiles: only with a coordinate system (the cartesian view has none). */
+function BasemapSection({ basemap: bm }: { basemap: Basemap }) {
+  return (
+    <div className="style-section">
+      <div className="style-head">
+        <label title="Basemap (OpenStreetMap)">
+          <input type="checkbox" checked={bm.visible} onChange={(e) => setBasemap({ visible: e.target.checked })} />
+          <b>Basemap</b>
+        </label>
+        <label title="Basemap opacity">
+          opacity
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={bm.opacity}
+            onChange={(e) => setBasemap({ opacity: Number(e.target.value) })}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function defaultRamp(kind: StyledKind) {
   return kind === "subcatchment" ? "greens" : "blue-red";
 }
@@ -354,6 +388,7 @@ export function StylePanel() {
       <LayerSection kind="node" />
       <LayerSection kind="link" />
       <LayerSection kind="subcatchment" />
+      {model.space.kind === "lonlat" && <BasemapSection basemap={model.project.basemap} />}
     </div>
   );
 }
