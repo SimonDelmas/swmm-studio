@@ -94,12 +94,13 @@ export function ComparePanel() {
     const index = rows[i][5] as number;
     setState({ selection: [{ kind, index }], fitSelection: getState().fitSelection + 1 });
   };
-  const overlay = () => {
+  // One graph per object, runs A and B on it.
+  const overlay = async () => {
     const sel = getState().selection.filter((o) => o.kind === kind);
     if (sel.length === 0) return notify(`Select ${kind}s first.`);
     for (const o of sel.slice(0, 4)) {
-      addToPlot(kind, o.index, vi);
-      addToPlot(kind, o.index, vi, true);
+      const g = await addToPlot(kind, o.index, vi, false, "new");
+      if (g !== null) await addToPlot(kind, o.index, vi, true, g);
     }
   };
   return (

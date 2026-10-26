@@ -4,7 +4,7 @@
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "./api";
 import { seriesKey } from "./components/PlotPanel";
-import { getState, notify, resetForModel, setState, type State } from "./store";
+import { getState, mapPlotSeries, notify, resetForModel, setState, type State } from "./store";
 import type { EditOutcome, EditRequest, Geometry, GeometryPatch, ObjKind, ObjRef } from "./types";
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -97,11 +97,11 @@ export async function applyOutcome(o: EditOutcome) {
     const ids: State["ids"] = {};
     kinds.forEach((k, i) => (ids[k] = lists[i]));
     patch.ids = ids;
-    patch.plot = s.plot.flatMap((p) => {
-      if (p.kind === "system" || !p.id) return [p];
+    patch.plotViews = mapPlotSeries(s.plotViews, (p) => {
+      if (p.kind === "system" || !p.id) return p;
       const list = ids[p.kind as ObjKind];
       const index = list ? list.findIndex((x) => x.toUpperCase() === p.id!.toUpperCase()) : -1;
-      return index < 0 ? [] : [{ ...p, index, key: seriesKey(p.kind, index, p.var, p.b) }];
+      return index < 0 ? null : { ...p, index, key: seriesKey(p.kind, index, p.var, p.b) };
     });
   }
   setState(patch);

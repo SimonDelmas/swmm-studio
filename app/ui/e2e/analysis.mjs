@@ -220,13 +220,14 @@ await shot("5-events");
 await step("Time series: daily maximum of J1 depth, A and B", async () => {
   await S(async () => {
     const st = window.swmmStudio;
-    st.setState({ plot: [] });
+    const v = st.currentPlotView();
+    st.setState({ plotViews: [{ ...v, graphs: [{ id: -1, series: [] }], target: -1, agg: null, zoom: null }], plotView: v.id });
     await st.addToPlot("node", st.getState().ids.node.indexOf("J1"), 0);
     await st.addToPlot("node", st.getState().ids.node.indexOf("J1"), 0, true);
   });
   await tab("Time series");
   await page.locator('label[title="Time aggregation"] select').selectOption("day");
-  await until(() => window.swmmStudio.getState().plotAgg?.unit === "day");
+  await until(() => window.swmmStudio.currentPlotView().agg?.unit === "day");
   await page.waitForSelector(".plot-area .u-over");
   const agg = await S(async () => {
     const st = window.swmmStudio;
@@ -237,6 +238,32 @@ await step("Time series: daily maximum of J1 depth, A and B", async () => {
   return agg.values.map((v) => +v.toFixed(3));
 });
 await shot("6-plot");
+
+await step("Time series: a second graph, a second view, save and rebuild the first", async () => {
+  // Add J2 depth to a new graph of the view.
+  await page.locator('label[title="Graph the added series go to"] select').selectOption("new");
+  await S(() => window.swmmStudio.setState({ selection: [{ kind: "node", index: window.swmmStudio.getState().ids.node.indexOf("J2") }] }));
+  await page.locator(".plot-panel button", { hasText: "+ Add selected" }).click();
+  await until(() => document.querySelectorAll(".plot-graph .u-over").length === 2);
+  const graphs = await S(() => window.swmmStudio.currentPlotView().graphs.map((g) => g.series.map((p) => p.label)));
+  if (graphs.length !== 2 || graphs[1].length !== 1) fail(`graphs: ${JSON.stringify(graphs)}`);
+  // Save it, open a second (empty) view: the first one stays.
+  await page.locator(".plot-views input.narrow-name").fill("J1 and J2");
+  await page.locator(".plot-views button", { hasText: /^Save$/ }).click();
+  await page.locator('.plot-views button[title^="New view"]').click();
+  await until(() => window.swmmStudio.getState().plotViews.length === 2);
+  await S(() => window.swmmStudio.addToPlot("system", 0, 4));
+  const views = await S(() => window.swmmStudio.getState().plotViews.map((v) => [v.name, v.graphs.length]));
+  // Close the first view, rebuild it from the project.
+  await page.locator(".plot-view-tab", { hasText: "J1 and J2" }).locator('button[title="Close this view"]').click();
+  await page.locator('.plot-views select[title="Views saved in the project"]').selectOption("J1 and J2");
+  await until(() => window.swmmStudio.currentPlotView().name === "J1 and J2" && document.querySelectorAll(".plot-graph .u-over").length === 2);
+  const rebuilt = await S(() => window.swmmStudio.currentPlotView().graphs.map((g) => g.series.map((p) => p.label)));
+  if (JSON.stringify(rebuilt) !== JSON.stringify(graphs)) fail(`rebuilt: ${JSON.stringify(rebuilt)}`);
+  const saved = await S(() => window.swmmStudio.getState().model.project.ui.plotViews.map((v) => v.name));
+  return { views, rebuilt, saved };
+});
+await shot("6b-plot-views");
 
 await step("Table: type a roughness, copy two cells, paste them two rows down, undo", async () => {
   await tab("Table");

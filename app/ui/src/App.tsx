@@ -222,6 +222,7 @@ export function App() {
   const crsDialog = useStore((s) => s.crsDialog);
   const dialog = useStore((s) => s.dialog);
   const bottomTab = useStore((s) => s.bottomTab);
+  const bottomMax = useStore((s) => s.bottomMax);
   const sideTab = useStore((s) => s.sideTab);
   const running = useStore((s) => s.run.running);
   const reportIssues = useStore((s) => (s.model?.report ? s.model.report.errors.length : 0));
@@ -254,11 +255,13 @@ export function App() {
     <div className="app">
       <Toolbar />
       <div className="main">
-        <div className="center">
+        <div className={bottomMax ? "center bottom-max" : "center"}>
           <MapView />
           <Timeline />
-          <Splitter vertical={false} onDrag={(d) => setBottomH((h) => Math.max(80, Math.min(window.innerHeight - 250, h - d)))} />
-          <div className="bottom" style={{ height: bottomH }}>
+          {!bottomMax && (
+            <Splitter vertical={false} onDrag={(d) => setBottomH((h) => Math.max(80, Math.min(window.innerHeight - 250, h - d)))} />
+          )}
+          <div className="bottom" style={{ height: bottomMax ? undefined : bottomH }}>
             <div className="tabs">
               <div className="tab-groups">
                 {BOTTOM_GROUPS.map((g) => (
@@ -279,6 +282,14 @@ export function App() {
                   {badge(t)}
                 </button>
               ))}
+              <span className="grow" />
+              <button
+                className="tabs-tool"
+                title={bottomMax ? "Show the map again" : "Hide the map: the panel fills the window (more room for the graphs)"}
+                onClick={() => setState({ bottomMax: !bottomMax })}
+              >
+                {bottomMax ? "▾ Restore" : "▴ Maximize"}
+              </button>
             </div>
             <div className="tab-body">
               <BottomPanel tab={bottomTab} />

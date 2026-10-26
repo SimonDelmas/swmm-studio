@@ -51,6 +51,59 @@ export interface PlotSeries {
   b?: boolean;
 }
 
+/** Time aggregation of a plot view (null: the series themselves). */
+export type PlotAgg = { unit: Calendar; stat: StatName; threshold: number };
+
+/** One chart of a plot view. */
+export interface PlotGraph {
+  id: number;
+  series: PlotSeries[];
+}
+
+/** A tab of the time series panel: a group of graphs stacked on one time axis. */
+export interface PlotView {
+  id: number;
+  name: string;
+  /** Never empty. */
+  graphs: PlotGraph[];
+  /** Graph new series go to (`new`: each addition opens a new graph). */
+  target: number | "new";
+  agg: PlotAgg | null;
+  /** Zoomed time range in seconds (null: the whole run). */
+  zoom: [number, number] | null;
+}
+
+let plotIds = 0;
+export const newPlotId = () => ++plotIds;
+
+export function newPlotView(name: string, graphs: PlotGraph[] = [], agg: PlotAgg | null = null): PlotView {
+  if (graphs.length === 0) graphs = [{ id: newPlotId(), series: [] }];
+  return { id: newPlotId(), name, graphs, target: graphs[graphs.length - 1].id, agg, zoom: null };
+}
+
+/** The open plot view (there is always one). */
+export function currentPlotView(s: State = state): PlotView {
+  return s.plotViews.find((v) => v.id === s.plotView) ?? s.plotViews[0];
+}
+
+export function updatePlotView(id: number, patch: Partial<PlotView> | ((v: PlotView) => Partial<PlotView>)) {
+  setState((s) => ({
+    plotViews: s.plotViews.map((v) => (v.id === id ? { ...v, ...(typeof patch === "function" ? patch(v) : patch) } : v)),
+  }));
+}
+
+/** Maps every plotted series of every view (null drops it; graphs it leaves empty are removed). */
+export function mapPlotSeries(views: PlotView[], f: (p: PlotSeries) => PlotSeries | null): PlotView[] {
+  return views.map((v) => {
+    const graphs = v.graphs
+      .map((g) => ({ ...g, series: g.series.flatMap((p) => f(p) ?? []) }))
+      .filter((g, i) => g.series.length > 0 || v.graphs[i].series.length === 0);
+    if (graphs.length === 0) graphs.push({ id: newPlotId(), series: [] });
+    const target = v.target === "new" || graphs.some((g) => g.id === v.target) ? v.target : graphs[graphs.length - 1].id;
+    return { ...v, graphs, target };
+  });
+}
+
 export type Tool =
   | "select"
   | "box"
@@ -91,9 +144,12 @@ export interface State {
   tool: Tool;
   styles: Record<StyledKind, LayerStyle>;
   labels: boolean;
-  plot: PlotSeries[];
-  /** Time aggregation of the plot (null: the series themselves). */
-  plotAgg: { unit: Calendar; stat: StatName; threshold: number } | null;
+  /** Tabs of the time series panel. */
+  plotViews: PlotView[];
+  /** Id of the open plot view. */
+  plotView: number;
+  /** The bottom panel fills the centre (the map is hidden). */
+  bottomMax: boolean;
   bottomTab: BottomTab;
   /** Nodes the profile goes through (in order). */
   profileNodes: number[];
@@ -138,6 +194,11 @@ export const defaultStyle = (kind: StyledKind): LayerStyle => ({
   scope: "run",
 });
 
+function firstView(): Pick<State, "plotViews" | "plotView"> {
+  const v = newPlotView("View 1");
+  return { plotViews: [v], plotView: v.id };
+}
+
 const initial: State = {
   model: null,
   geometry: null,
@@ -150,8 +211,8 @@ const initial: State = {
   tool: "select",
   styles: { node: defaultStyle("node"), link: defaultStyle("link"), subcatchment: defaultStyle("subcatchment") },
   labels: true,
-  plot: [],
-  plotAgg: null,
+  ...firstView(),
+  bottomMax: false,
   bottomTab: "plot",
   profileNodes: [],
   profile: null,
@@ -205,7 +266,7 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     playing: false,
     styles,
     labels: ui.labels ?? true,
-    plot: [],
+    ...firstView(),
     profileNodes: [],
     profile: null,
     profileError: null,

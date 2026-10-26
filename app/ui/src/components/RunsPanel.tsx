@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
-import { getState, notify, setState, styleUsable, defaultStyle, useStore, type StyledKind } from "../store";
+import { getState, mapPlotSeries, notify, setState, styleUsable, defaultStyle, useStore, type StyledKind } from "../store";
 import type { ModelInfo, RunDto } from "../types";
 
 /** Applies new model info after results were loaded or unloaded (styles that no longer apply are reset). */
@@ -10,8 +10,8 @@ export function setResultsInfo(model: ModelInfo, resetTime: boolean) {
   const s = getState();
   const styles = { ...s.styles };
   for (const k of Object.keys(styles) as StyledKind[]) if (!styleUsable(styles[k], k, model)) styles[k] = defaultStyle(k);
-  const plot = s.plot.filter((p) => !p.b || model.compare);
-  setState({ model, styles, plot, ...(resetTime ? { period: 0, playing: false } : {}) });
+  const plotViews = mapPlotSeries(s.plotViews, (p) => (!p.b || model.compare ? p : null));
+  setState({ model, styles, plotViews, ...(resetTime ? { period: 0, playing: false } : {}) });
 }
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${v.toFixed(2)} %`);

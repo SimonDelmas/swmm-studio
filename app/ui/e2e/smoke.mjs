@@ -211,7 +211,7 @@ if (hasResults) {
     await S((h) => window.swmmStudio.addToPlot("node", h, 0), 0);
     await S(() => window.swmmStudio.addToPlot("system", 0, 4));
     await page.waitForSelector(".plot-area canvas", { timeout: 15000 });
-    return S(() => window.swmmStudio.getState().plot.map((p) => p.label));
+    return S(() => window.swmmStudio.currentPlotView().graphs.flatMap((g) => g.series.map((p) => p.label)));
   });
   await page.waitForTimeout(800);
   await shot("4-plot");

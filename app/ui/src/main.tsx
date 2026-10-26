@@ -4,13 +4,13 @@ import { api } from "./api";
 import { applyCrs } from "./components/CrsDialog";
 import { startRun } from "./components/RunPanel";
 import { edit, redo, saveModel, tryEdit, undo } from "./edit";
-import { addToPlot } from "./components/PlotPanel";
+import { addToPlot, loadPlotView, savePlotView } from "./components/PlotPanel";
 import { validateModel } from "./components/IssuesPanel";
 import { profileFromSelection } from "./components/ProfilePanel";
 import { applyStyle } from "./components/StylePanel";
 import { openModel } from "./components/Toolbar";
 import { mapPerf, mapProject } from "./map/MapView";
-import { getState, setState } from "./store";
+import { currentPlotView, getState, setState } from "./store";
 import "./styles.css";
 
 // Entry points for automated UI tests (e2e/smoke.mjs drives the app over CDP).
@@ -20,6 +20,9 @@ import "./styles.css";
   applyCrs,
   applyStyle,
   addToPlot,
+  savePlotView,
+  loadPlotView,
+  currentPlotView: () => currentPlotView(getState()),
   getState,
   setState,
   mapPerf,
