@@ -253,6 +253,34 @@ label {
   border-bottom: none;
   border-radius: 4px 4px 0 0;
 }
+/* Bottom panel: the step (model, simulation, results), then the tabs of that step. */
+.tab-groups {
+  display: flex;
+  align-self: center;
+  margin: 0 8px 4px 0;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+.tabs .tab-groups button {
+  border: 1px solid var(--border);
+  border-radius: 0;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tabs .tab-groups button + button {
+  border-left: none;
+}
+.tabs .tab-groups button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.tabs .tab-groups button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.tabs .tab-groups button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .tab-body {
   flex: 1;
   min-height: 0;

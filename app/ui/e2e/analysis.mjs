@@ -42,7 +42,11 @@ const waitIdle = () => until(() => window.swmmStudio.getState().busy === null, n
 const fail = (msg) => {
   throw new Error(msg);
 };
-const tab = (label) => page.locator(".bottom .tabs button", { hasText: label }).first().click();
+const GROUPS = { Table: "Model", Issues: "Model", Runs: "Simulation", Profile: "Results", Events: "Results", "Time series": "Results", Compare: "Results" };
+const tab = async (label) => {
+  await page.locator(".bottom .tab-groups button", { hasText: GROUPS[label] }).click();
+  await page.locator(".bottom .tabs > button", { hasText: label }).first().click();
+};
 const nodeXY = (id) =>
   S((id) => {
     const st = window.swmmStudio.getState();
