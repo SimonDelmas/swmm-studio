@@ -48,6 +48,8 @@ export async function addToPlot(kind: ElementKind, index: number, v: number, b =
 }
 
 interface Built {
+  /** The series `data` was fetched for (`plot` may already have changed). */
+  series: PlotSeries[];
   data: uPlot.AlignedData;
   decimated: boolean;
   units: string[];
@@ -151,7 +153,7 @@ export function PlotPanel() {
         }
         if (id !== req.current) return;
         setError(null);
-        setBuilt({ data: align(tables), decimated, units, stepped: !!agg });
+        setBuilt({ series: plot, data: align(tables), decimated, units, stepped: !!agg });
       } catch (e) {
         if (id === req.current) setError(errorText(e));
       }
@@ -161,11 +163,11 @@ export function PlotPanel() {
 
   // (Re)create the chart when the series, their units or the size change.
   const units = built ? Array.from(new Set(built.units)) : [];
-  const shape = `${plot.map((p) => p.key).join("|")}#${size.w}x${size.h}#${units.join(",")}#${built?.stepped}`;
+  const shape = `${(built?.series ?? []).map((p) => p.key).join("|")}#${size.w}x${size.h}#${units.join(",")}#${built?.stepped}`;
   useEffect(() => {
     chart.current?.destroy();
     chart.current = null;
-    if (!wrap.current || !built || plot.length === 0 || size.h < 60) return;
+    if (!wrap.current || !built || built.series.length === 0 || size.h < 60) return;
     const fg = cssVar("--fg", "#222");
     const stepped = built.stepped ? uPlot.paths.stepped!({ align: 1 }) : undefined;
     const opts: uPlot.Options = {
@@ -187,7 +189,7 @@ export function PlotPanel() {
       ] as uPlot.Axis[],
       series: [
         { value: (_u, v) => (v == null ? "" : formatDateTime(v * 1000)) },
-        ...plot.map((p, i) => ({
+        ...built.series.map((p, i) => ({
           label: p.label,
           scale: built.units[i],
           stroke: COLORS[i % COLORS.length],
@@ -278,7 +280,7 @@ export function PlotPanel() {
     const [x, ...ys] = built.data;
     const head = [
       agg ? agg.unit : "time",
-      ...plot.map((p, i) => `${p.label} (${built.units[i]})${built.decimated ? " [min/max per bucket]" : ""}`),
+      ...built.series.map((p, i) => `${p.label} (${built.units[i]})${built.decimated ? " [min/max per bucket]" : ""}`),
     ];
     const rows = Array.from(x, (t, i) => [timeText(Number(t)), ...ys.map((y) => y[i] ?? null)]);
     exportTable(agg ? `series_${agg.unit}` : "series", "Time series", head, rows);
@@ -287,7 +289,7 @@ export function PlotPanel() {
     if (!built) return null;
     const [x, ...ys] = built.data;
     return chartSvg(
-      plot.map((p, i) => ({
+      built.series.map((p, i) => ({
         label: p.label,
         unit: built.units[i],
         color: COLORS[i % COLORS.length],
