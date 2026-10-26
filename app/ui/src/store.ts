@@ -150,6 +150,8 @@ export interface State {
   plotView: number;
   /** The bottom panel fills the centre (the map is hidden). */
   bottomMax: boolean;
+  /** The timeline strip (overview of a system variable) is shown under the map. */
+  timeline: boolean;
   bottomTab: BottomTab;
   /** Nodes the profile goes through (in order). */
   profileNodes: number[];
@@ -213,6 +215,7 @@ const initial: State = {
   labels: true,
   ...firstView(),
   bottomMax: false,
+  timeline: false,
   bottomTab: "plot",
   profileNodes: [],
   profile: null,

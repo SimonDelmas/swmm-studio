@@ -237,9 +237,15 @@ label {
   background: var(--border);
 }
 .splitter-h {
-  height: 5px;
+  flex: none;
+  height: 6px;
   cursor: row-resize;
+  touch-action: none;
   background: var(--border);
+}
+.splitter-v:hover,
+.splitter-h:hover {
+  background: var(--accent);
 }
 
 .tabs {
@@ -309,7 +315,9 @@ label {
 .map-wrap {
   position: relative;
   flex: 1;
-  min-height: 120px;
+  /* The bottom panel can be dragged up to hide the map. */
+  min-height: 0;
+  overflow: hidden;
 }
 .map {
   position: absolute;

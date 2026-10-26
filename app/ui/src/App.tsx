@@ -230,6 +230,18 @@ export function App() {
   const comparing = useStore((s) => s.model?.compare !== null && s.model?.compare !== undefined);
   const [sideW, setSideW] = useState(360);
   const [bottomH, setBottomH] = useState(260);
+  const centerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  // From the current height (also when maximized), up to hiding the map.
+  const dragBottom = (d: number) => {
+    const c = centerRef.current;
+    const b = bottomRef.current;
+    if (!c || !b) return;
+    const timeline = c.querySelector<HTMLElement>(".timeline")?.offsetHeight ?? 0;
+    const max = c.clientHeight - timeline - 5;
+    if (getState().bottomMax) setState({ bottomMax: false });
+    setBottomH(Math.max(80, Math.min(max, b.offsetHeight - d)));
+  };
   const group = groupOf(bottomTab);
   lastTab[group.id] = bottomTab;
   const badge = (t: BottomTab) =>
@@ -255,13 +267,11 @@ export function App() {
     <div className="app">
       <Toolbar />
       <div className="main">
-        <div className={bottomMax ? "center bottom-max" : "center"}>
+        <div ref={centerRef} className={bottomMax ? "center bottom-max" : "center"}>
           <MapView />
           <Timeline />
-          {!bottomMax && (
-            <Splitter vertical={false} onDrag={(d) => setBottomH((h) => Math.max(80, Math.min(window.innerHeight - 250, h - d)))} />
-          )}
-          <div className="bottom" style={{ height: bottomMax ? undefined : bottomH }}>
+          <Splitter vertical={false} onDrag={dragBottom} />
+          <div ref={bottomRef} className="bottom" style={{ height: bottomMax ? undefined : bottomH }}>
             <div className="tabs">
               <div className="tab-groups">
                 {BOTTOM_GROUPS.map((g) => (

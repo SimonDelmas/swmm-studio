@@ -126,6 +126,8 @@ if (crs) {
 const hasResults = await S(() => !!window.swmmStudio.getState().model.results);
 if (hasResults) {
   await step("mouse: timeline wheel zoom and click", async () => {
+    // Hidden by default.
+    await page.locator(".timeline-controls button", { hasText: "Timeline" }).click();
     const box = await page.locator(".timeline-canvas canvas").boundingBox();
     const before = await S(() => window.swmmStudio.getState().period);
     await page.mouse.move(box.x + box.width / 2, box.y + 20);

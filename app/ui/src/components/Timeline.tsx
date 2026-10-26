@@ -60,6 +60,7 @@ export function Timeline() {
   const fps = useStore((s) => s.fps);
   const stride = useStore((s) => s.stride);
   const selection = useStore((s) => s.selection);
+  const shown = useStore((s) => s.timeline);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [boxRef, box] = useSize<HTMLDivElement>({ w: 800, h: 0 });
   const width = Math.max(100, box.w - 16);
@@ -77,7 +78,7 @@ export function Timeline() {
   // Overview series of a system variable over the visible range (coalesced).
   const sparkReq = useRef(0);
   useEffect(() => {
-    if (!results || n === 0) return;
+    if (!results || n === 0 || !shown) return;
     const id = ++sparkReq.current;
     const t = setTimeout(() => {
       const p0 = Math.max(0, Math.floor(view[0]));
@@ -88,7 +89,7 @@ export function Timeline() {
         .catch(() => id === sparkReq.current && setSpark(null));
     }, 60);
     return () => clearTimeout(t);
-  }, [results?.path, results?.cache.state, view, width, sysVar, n]);
+  }, [results?.path, results?.cache.state, view, width, sysVar, n, shown]);
 
   // Playback.
   useEffect(() => {
@@ -173,7 +174,7 @@ export function Timeline() {
     ctx.lineTo(cx, 50);
     ctx.stroke();
     ctx.lineWidth = 1;
-  }, [results, view, width, period, spark]);
+  }, [results, view, width, period, spark, shown]);
 
   if (!results) return <div className="timeline timeline-empty">No results loaded.</div>;
 
@@ -285,26 +286,39 @@ export function Timeline() {
         </button>
         <input className="narrow" value={threshold} onChange={(e) => setThreshold(e.target.value)} title="Event threshold" />
         <span className="sep" />
-        <label title="System variable drawn in the timeline">
-          Overview
-          <select value={sysVar} onChange={(e) => setSysVar(Number(e.target.value))}>
-            {sysVars.map((v, i) => (
-              <option key={v.name} value={i}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {spark && spark.max.length > 0 && (
-          <span className="muted">max {formatNumber(Math.max(...Array.from(spark.max).filter(Number.isFinite)))}</span>
-        )}
-        <button title="Show the whole run" onClick={() => setView([0, Math.max(1, n - 1)])}>
-          ⤢
+        <button
+          className={shown ? "active" : ""}
+          title={shown ? "Hide the timeline" : "Show the timeline: overview of a system variable, click to set the time"}
+          onClick={() => setState({ timeline: !shown })}
+        >
+          Timeline {shown ? "▴" : "▾"}
         </button>
+        {shown && (
+          <>
+            <label title="System variable drawn in the timeline">
+              Overview
+              <select value={sysVar} onChange={(e) => setSysVar(Number(e.target.value))}>
+                {sysVars.map((v, i) => (
+                  <option key={v.name} value={i}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {spark && spark.max.length > 0 && (
+              <span className="muted">max {formatNumber(Math.max(...Array.from(spark.max).filter(Number.isFinite)))}</span>
+            )}
+            <button title="Show the whole run" onClick={() => setView([0, Math.max(1, n - 1)])}>
+              ⤢
+            </button>
+          </>
+        )}
       </div>
-      <div className="timeline-canvas" ref={boxRef}>
-        <canvas ref={canvas} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />
-      </div>
+      {shown && (
+        <div className="timeline-canvas" ref={boxRef}>
+          <canvas ref={canvas} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />
+        </div>
+      )}
     </div>
   );
 }
