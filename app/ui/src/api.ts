@@ -169,6 +169,7 @@ export const api = {
   compareRun: (dir: string) => invoke<ModelInfo>("compare_run", { dir }),
   setRunLabel: (dir: string, label: string | null) => invoke<RunDto[]>("set_run_label", { dir, label }),
   deleteRun: (dir: string) => invoke<ModelInfo>("delete_run", { dir }),
+  launchFile: () => invoke<string | null>("launch_file"),
   exportTable: (path: string, title: string, columns: string[], rows: string[][]) =>
     invoke<void>("export_table", { path, title, columns, rows }),
 };
@@ -195,4 +196,8 @@ export function onResultsChanged(f: (r: ResultsInfo) => void): Promise<UnlistenF
 
 export function errorText(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
+}
+
+export function onOpenFile(f: (path: string) => void): Promise<UnlistenFn> {
+  return listen<string>("open-file", (e) => f(e.payload));
 }

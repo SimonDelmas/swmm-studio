@@ -9,11 +9,42 @@ mod export;
 mod project;
 mod session;
 
+use tauri::{Emitter, Manager, State};
+
+struct LaunchFile(Option<String>);
+
+/// The model file the app was started with, if any.
+#[tauri::command]
+fn launch_file(f: State<'_, LaunchFile>) -> Option<String> {
+    f.0.clone()
+}
+
+/// The first `.inp` path among the command-line arguments (file association / "Open with").
+fn inp_arg(args: impl IntoIterator<Item = String>) -> Option<String> {
+    args.into_iter().skip(1).find(|a| a.to_ascii_lowercase().ends_with(".inp") && std::path::Path::new(a).is_file())
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            // A second launch (double-click on another .inp) hands its file to this window.
+            let file = inp_arg(args).map(|a| {
+                let p = std::path::PathBuf::from(&a);
+                if p.is_absolute() { a } else { std::path::Path::new(&cwd).join(p).to_string_lossy().into_owned() }
+            });
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+            if let Some(f) = file {
+                let _ = app.emit("open-file", f);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::default())
+        .manage(LaunchFile(inp_arg(std::env::args())))
         .invoke_handler(tauri::generate_handler![
+            launch_file,
             commands::open_model,
             commands::model_info,
             commands::geometry,

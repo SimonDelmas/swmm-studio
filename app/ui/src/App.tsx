@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { onCacheProgress, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
+import { onCacheProgress, onOpenFile, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
 import { ClimateDialog } from "./components/ClimateDialog";
 import { ComparePanel } from "./components/ComparePanel";
 import { CrsDialog } from "./components/CrsDialog";
@@ -20,7 +20,7 @@ import { StatusBar } from "./components/StatusBar";
 import { StylePanel } from "./components/StylePanel";
 import { TableEditor } from "./components/TableEditor";
 import { Timeline } from "./components/Timeline";
-import { Toolbar } from "./components/Toolbar";
+import { openModel, Toolbar } from "./components/Toolbar";
 import { confirmDiscard, deleteObjects, redo, saveModel, undo } from "./edit";
 import { MapView, mapTools } from "./map/MapView";
 import { getState, setState, useStore, type BottomTab } from "./store";
@@ -66,6 +66,20 @@ function useEvents() {
     ];
     refreshEngine();
     return () => un.forEach((p) => p.then((f) => f()));
+  }, []);
+
+  // File association: the model the app was launched with, or sent by a second launch.
+  useEffect(() => {
+    const open = async (path: string) => {
+      if (await confirmDiscard()) await openModel(path);
+    };
+    api.launchFile().then((p) => {
+      if (p) void open(p);
+    });
+    const un = onOpenFile(open);
+    return () => {
+      un.then((f) => f());
+    };
   }, []);
 
   // Unsaved changes are not lost when the window closes.
