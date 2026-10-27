@@ -4,6 +4,7 @@ import { api, errorText } from "../api";
 import { confirmDelete, newModel, tryEdit } from "../edit";
 import { setState, useStore } from "../store";
 import type { EnginesDto } from "../types";
+import { FilesPane, filesError, filesText, parseFiles, parseReport, ReportPane, reportError, reportText, type FilesData, type ReportData } from "./OptionSections";
 
 type Opt = { key: string; label: string; choices?: string[]; kind?: "date" | "time" | "number" | "day" };
 
@@ -85,21 +86,35 @@ function check(o: Opt, v: string): string | null {
   return null;
 }
 
-export function OptionsDialog() {
+/** Tabs of the options dialog that are not plain [OPTIONS] groups. */
+const OTHER_TABS = ["Files", "Results", "Engine", "Title & other"];
+
+/** Simulation options: [OPTIONS], [FILES], [REPORT], title, and the engine that runs the model. */
+export function OptionsDialog({ initialTab = "General" }: { initialTab?: string }) {
   const [values, setValues] = useState<Record<string, string> | null>(null);
   const [orig, setOrig] = useState<Record<string, string>>({});
   const [title, setTitle] = useState("");
   const [origTitle, setOrigTitle] = useState("");
-  const [tab, setTab] = useState(0);
+  const [files, setFiles] = useState<FilesData>({ files: [], other: [] });
+  const [origFiles, setOrigFiles] = useState("");
+  const [report, setReport] = useState<ReportData>(parseReport(""));
+  const [origReport, setOrigReport] = useState("");
+  const [tab, setTab] = useState(initialTab);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api.options().then((o) => {
+    Promise.all([api.options(), api.sectionText("FILES"), api.sectionText("REPORT")]).then(([o, f, r]) => {
       const v: Record<string, string> = {};
       o.values.forEach(([k, x]) => (v[k] = x));
       setValues(v);
       setOrig(v);
       setTitle(o.title);
       setOrigTitle(o.title);
+      const fd = parseFiles(f);
+      setFiles(fd);
+      setOrigFiles(filesText(fd));
+      const rd = parseReport(r);
+      setReport(rd);
+      setOrigReport(reportText(rd));
     });
   }, []);
   const close = () => setState({ dialog: null });
@@ -107,18 +122,30 @@ export function OptionsDialog() {
   const known = new Set(OPTION_GROUPS.flatMap(([, g]) => g.map((o) => o.key)));
   const others = Object.keys(values).filter((k) => !known.has(k));
   const groups: [string, Opt[]][] = [...OPTION_GROUPS, ["Title & other", others.map((k) => ({ key: k, label: k }))]];
+  const tabs = [...OPTION_GROUPS.map(([g]) => g), ...OTHER_TABS];
+  const fail = (t: string, e: string) => {
+    setTab(t);
+    setError(e);
+  };
   const ok = async () => {
-    const all = groups.flatMap(([, g]) => g);
-    for (const o of all) {
-      const e = check(o, values[o.key] ?? "");
-      if (e) return setError(e);
+    for (const [g, opts] of groups) {
+      for (const o of opts) {
+        const e = check(o, values[o.key] ?? "");
+        if (e) return fail(g, e);
+      }
     }
+    const fe = filesError(files);
+    if (fe) return fail("Files", fe);
+    const re = reportError(report);
+    if (re) return fail("Results", re);
     const changed: [string, string][] = Object.keys({ ...values, ...orig })
       .filter((k) => (values[k] ?? "").trim() !== (orig[k] ?? ""))
       .map((k) => [k, (values[k] ?? "").trim()]);
     try {
       if (changed.length) await tryEdit({ op: "set_options", values: changed });
       if (title.trim() !== origTitle.trim()) await tryEdit({ op: "set_title", text: title });
+      if (filesText(files) !== origFiles) await tryEdit({ op: "set_section_text", section: "FILES", text: filesText(files) });
+      if (reportText(report) !== origReport) await tryEdit({ op: "set_section_text", section: "REPORT", text: reportText(report) });
       close();
     } catch (e) {
       setError(errorText(e));
@@ -126,45 +153,51 @@ export function OptionsDialog() {
   };
   const flowChanged = (values.FLOW_UNITS ?? "") !== (orig.FLOW_UNITS ?? "");
   const infilChanged = (values.INFILTRATION ?? "") !== (orig.INFILTRATION ?? "");
+  const group = groups.find(([g]) => g === tab)?.[1];
   return (
     <div className="modal-back">
       <div className="modal wide-modal">
         <h3>Simulation options</h3>
         <div className="tabs">
-          {groups.map(([g], i) => (
-            <button key={g} className={i === tab ? "active" : ""} onClick={() => setTab(i)}>
+          {tabs.map((g) => (
+            <button key={g} className={g === tab ? "active" : ""} onClick={() => setTab(g)}>
               {g}
             </button>
           ))}
         </div>
-        <div className="options-grid">
-          {groups[tab][1].map((o) => (
-            <label key={o.key} className="option">
-              <span>{o.label}</span>
-              {o.choices ? (
-                <select value={values[o.key] ?? ""} onChange={(e) => setValues({ ...values, [o.key]: e.target.value })}>
-                  <option value="">(default)</option>
-                  {o.choices.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                  {values[o.key] && !o.choices.includes(values[o.key]) && <option>{values[o.key]}</option>}
-                </select>
-              ) : (
-                <input
-                  value={values[o.key] ?? ""}
-                  placeholder="(default)"
-                  onChange={(e) => setValues({ ...values, [o.key]: e.target.value })}
-                />
-              )}
-            </label>
-          ))}
-          {tab === groups.length - 1 && (
-            <label className="option title-option">
-              <span>Title / notes</span>
-              <textarea rows={4} value={title} onChange={(e) => setTitle(e.target.value)} />
-            </label>
-          )}
-        </div>
+        {group && (
+          <div className="options-grid">
+            {group.map((o) => (
+              <label key={o.key} className="option">
+                <span>{o.label}</span>
+                {o.choices ? (
+                  <select value={values[o.key] ?? ""} onChange={(e) => setValues({ ...values, [o.key]: e.target.value })}>
+                    <option value="">(default)</option>
+                    {o.choices.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                    {values[o.key] && !o.choices.includes(values[o.key]) && <option>{values[o.key]}</option>}
+                  </select>
+                ) : (
+                  <input
+                    value={values[o.key] ?? ""}
+                    placeholder="(default)"
+                    onChange={(e) => setValues({ ...values, [o.key]: e.target.value })}
+                  />
+                )}
+              </label>
+            ))}
+            {tab === "Title & other" && (
+              <label className="option title-option">
+                <span>Title / notes</span>
+                <textarea rows={4} value={title} onChange={(e) => setTitle(e.target.value)} />
+              </label>
+            )}
+          </div>
+        )}
+        {tab === "Files" && <FilesPane data={files} onChange={setFiles} />}
+        {tab === "Results" && <ReportPane data={report} onChange={setReport} />}
+        {tab === "Engine" && <EnginesPane />}
         {flowChanged && <div className="warn">Changing the flow units does not convert any value of the model.</div>}
         {infilChanged && (
           <div className="warn">The [INFILTRATION] parameters are not converted: check them for the new model.</div>
@@ -191,7 +224,8 @@ export async function refreshEngine(): Promise<EnginesDto | null> {
   }
 }
 
-export function EnginesDialog() {
+/** Registered engines and the one that runs this model; changes apply at once. */
+function EnginesPane() {
   const model = useStore((s) => s.model);
   const [dto, setDto] = useState<EnginesDto | null>(null);
   const [name, setName] = useState("");
@@ -216,7 +250,6 @@ export function EnginesDialog() {
       setBusy(false);
     }
   };
-  const close = () => setState({ dialog: null });
   const browse = async () => {
     const p = await openFile({ filters: [{ name: "SWMM engine", extensions: ["exe"] }] });
     if (typeof p === "string") {
@@ -225,84 +258,77 @@ export function EnginesDialog() {
     }
   };
   return (
-    <div className="modal-back" onClick={close}>
-      <div className="modal wide-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>SWMM engines</h3>
-        <p className="muted">
-          No engine is bundled: register a command-line SWMM executable (EPA <span className="mono">runswmm.exe</span>,
-          OWA or custom builds). Shared with the command-line tool, stored in{" "}
-          <span className="mono">{dto?.settings_path}</span>.
-        </p>
-        {dto?.error && <div className="panel-error">Settings file unreadable: {dto.error}</div>}
-        <table className="kv">
-          <thead>
-            <tr>
-              <th>Default</th>
-              <th>Name</th>
-              <th>Version</th>
-              <th>Executable</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {dto?.engines.map((e) => (
-              <tr key={e.name}>
-                <td>
-                  <input type="radio" checked={dto.default === e.name} onChange={() => run(api.setDefaultEngine(e.name))} />
-                </td>
-                <td>{e.name}</td>
-                <td>{e.version ?? "?"}</td>
-                <td className="mono path">{e.path}</td>
-                <td>
-                  <a onClick={() => run(api.removeEngine(e.name))}>remove</a>
-                </td>
-              </tr>
-            ))}
-            {dto && dto.engines.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted">
-                  No engine yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        <h4>Add an engine</h4>
-        <div className="row">
-          <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className="grow" placeholder="Path to runswmm.exe" value={path} onChange={(e) => setPath(e.target.value)} />
-          <button onClick={browse}>Browse…</button>
-          <button
-            className="primary"
-            disabled={busy || !name.trim() || !path.trim()}
-            onClick={async () => {
-              if (await run(api.addEngine(name, path))) {
-                setName("");
-                setPath("");
-              }
-            }}
-          >
-            {busy ? "Checking…" : "Add"}
-          </button>
-        </div>
-        {model && dto && (
-          <div className="row">
-            <label>
-              Engine for {model.name}
-              <select value={dto.project ?? ""} onChange={(e) => run(api.setProjectEngine(e.target.value || null))}>
-                <option value="">Default engine{dto.default ? ` (${dto.default})` : ""}</option>
-                {dto.engines.map((e) => (
-                  <option key={e.name}>{e.name}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+    <div className="option-pane">
+    <p className="muted">
+      No engine is bundled: register a command-line SWMM executable (EPA <span className="mono">runswmm.exe</span>,
+      OWA or custom builds). Changes apply at once, even on Cancel. Shared with the command-line tool, stored in{" "}
+      <span className="mono">{dto?.settings_path}</span>.
+    </p>
+    {dto?.error && <div className="panel-error">Settings file unreadable: {dto.error}</div>}
+    {model && dto && (
+      <label className="option">
+        <span>Engine for {model.name}</span>
+        <select value={dto.project ?? ""} onChange={(e) => run(api.setProjectEngine(e.target.value || null))}>
+          <option value="">Default engine{dto.default ? ` (${dto.default})` : ""}</option>
+          {dto.engines.map((e) => (
+            <option key={e.name}>{e.name}</option>
+          ))}
+        </select>
+      </label>
+    )}
+    <h4>Registered engines</h4>
+    <table className="kv">
+      <thead>
+        <tr>
+          <th>Default</th>
+          <th>Name</th>
+          <th>Version</th>
+          <th>Executable</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {dto?.engines.map((e) => (
+          <tr key={e.name}>
+            <td>
+              <input type="radio" checked={dto.default === e.name} onChange={() => run(api.setDefaultEngine(e.name))} />
+            </td>
+            <td>{e.name}</td>
+            <td>{e.version ?? "?"}</td>
+            <td className="mono path">{e.path}</td>
+            <td>
+              <a onClick={() => run(api.removeEngine(e.name))}>remove</a>
+            </td>
+          </tr>
+        ))}
+        {dto && dto.engines.length === 0 && (
+          <tr>
+            <td colSpan={5} className="muted">
+              No engine yet.
+            </td>
+          </tr>
         )}
-        {error && <div className="panel-error">{error}</div>}
-        <div className="row end">
-          <button onClick={close}>Close</button>
-        </div>
-      </div>
+      </tbody>
+    </table>
+    <h4>Add an engine</h4>
+    <div className="row">
+      <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      <input className="grow" placeholder="Path to runswmm.exe" value={path} onChange={(e) => setPath(e.target.value)} />
+      <button onClick={browse}>Browse…</button>
+      <button
+        className="primary"
+        disabled={busy || !name.trim() || !path.trim()}
+        onClick={async () => {
+          if (await run(api.addEngine(name, path))) {
+            setName("");
+            setPath("");
+          }
+        }}
+      >
+        {busy ? "Checking…" : "Add"}
+      </button>
+    </div>
+    {error && <div className="panel-error">{error}</div>}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { RunsPanel } from "./components/RunsPanel";
 import { SectionsDialog } from "./components/SectionsDialog";
 import { TablePanel } from "./components/TablePanel";
 import { DataPanel } from "./components/DataPanel";
-import { DeleteDialog, EnginesDialog, NewModelDialog, OptionsDialog, refreshEngine } from "./components/Dialogs";
+import { DeleteDialog, NewModelDialog, OptionsDialog, refreshEngine } from "./components/Dialogs";
 import { PlotPanel } from "./components/PlotPanel";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ReportPanel } from "./components/ReportPanel";
@@ -341,7 +341,7 @@ export function App() {
       <StatusBar />
       {crsDialog && <CrsDialog />}
       {dialog === "options" && <OptionsDialog />}
-      {dialog === "engines" && <EnginesDialog />}
+      {dialog === "engines" && <OptionsDialog initialTab="Engine" />}
       {dialog === "new" && <NewModelDialog />}
       {dialog === "climate" && <ClimateDialog />}
       {dialog === "sections" && <SectionsDialog />}

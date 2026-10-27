@@ -54,16 +54,12 @@ function Category({ kind, title }: { kind: TableKind; title: string }) {
   );
 }
 
-/** Non-visual data of the model, simulation options and title. */
+/** Non-visual data of the model (simulation options are in the header). */
 export function DataPanel() {
   const model = useStore((s) => s.model);
   if (!model) return <div className="panel-empty">Open a model.</div>;
   return (
     <div className="data-panel">
-      <div className="row">
-        <button onClick={() => setState({ dialog: "options" })}>Simulation options…</button>
-        <button onClick={() => setState({ dialog: "engines" })}>Engines…</button>
-      </div>
       <div className="row">
         <button onClick={() => setState({ dialog: "climate" })} title="Evaporation, temperature, wind speed, snowmelt, areal depletion, monthly adjustments">
           Climatology…

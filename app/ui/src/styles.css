@@ -1160,3 +1160,32 @@ textarea.grid-keys {
   overflow: hidden;
   display: block;
 }
+.option-pane h4 {
+  margin: 10px 0 4px;
+}
+.option-pane > label.option {
+  max-width: 420px;
+  margin: 8px 0;
+}
+.option-pane > label.option select {
+  width: 220px;
+}
+table.files-table {
+  width: 100%;
+}
+td.files-path {
+  width: 100%;
+}
+td.files-path input {
+  width: 100%;
+  box-sizing: border-box;
+}
+td.nowrap {
+  white-space: nowrap;
+}
+.report-objects > span {
+  width: 110px;
+}
+.row.report-objects {
+  align-items: center;
+}

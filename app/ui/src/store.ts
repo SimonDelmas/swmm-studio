@@ -127,6 +127,7 @@ export interface RunState {
   last: RunFinished | null;
 }
 
+/** "engines" is the options dialog opened on its engine tab. */
 export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | null;
 
 export type BottomTab = "plot" | "profile" | "events" | "compare" | "runs" | "table" | "issues" | "report" | "run";
