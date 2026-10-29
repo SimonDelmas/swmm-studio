@@ -30,7 +30,11 @@ fn main() {
             // A second launch (double-click on another .inp) hands its file to this window.
             let file = inp_arg(args).map(|a| {
                 let p = std::path::PathBuf::from(&a);
-                if p.is_absolute() { a } else { std::path::Path::new(&cwd).join(p).to_string_lossy().into_owned() }
+                if p.is_absolute() {
+                    a
+                } else {
+                    std::path::Path::new(&cwd).join(p).to_string_lossy().into_owned()
+                }
             });
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();

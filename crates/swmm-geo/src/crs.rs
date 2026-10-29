@@ -130,7 +130,9 @@ impl Crs {
         let geo = self.is_geographic();
         for p in points.iter_mut() {
             let mut q = if geo { (p[0].to_radians(), p[1].to_radians(), 0.0) } else { (p[0], p[1], 0.0) };
-            let on_globe = |q: (f64, f64, f64)| q.0.abs() <= 2.0 * std::f64::consts::PI && q.1.abs() <= std::f64::consts::FRAC_PI_2;
+            let on_globe = |q: (f64, f64, f64)| {
+                q.0.abs() <= 2.0 * std::f64::consts::PI && q.1.abs() <= std::f64::consts::FRAC_PI_2
+            };
             match transform(&self.proj, &self.wgs84, &mut q) {
                 Ok(()) if on_globe(q) => *p = [q.0.to_degrees(), q.1.to_degrees()],
                 _ => *p = [f64::NAN, f64::NAN],
