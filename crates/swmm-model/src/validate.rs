@@ -378,7 +378,7 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
         );
     }
 
-    out.issues.sort_by(|a, b| a.severity.cmp(&b.severity));
+    out.issues.sort_by_key(|a| a.severity);
     out.issues
 }
 

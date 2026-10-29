@@ -348,14 +348,12 @@ fn parse_key_value(line: &str) -> Option<KeyValue> {
     let (key, rest) = if let Some(p) = t.find(" ..") {
         let rest = t[p..].trim_start_matches([' ', '.']);
         (&t[..p], rest)
-    } else if let Some(p) = t.find(':') {
-        let (k, v) = t.split_at(p);
+    } else {
+        let (k, v) = t.split_at(t.find(':')?);
         if !k.ends_with(' ') {
             return None;
         }
         (k, &v[1..])
-    } else {
-        return None;
     };
     Some(KeyValue { key: key.trim().to_string(), values: rest.split_whitespace().map(str::to_string).collect() })
 }

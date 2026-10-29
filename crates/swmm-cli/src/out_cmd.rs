@@ -333,7 +333,7 @@ fn events(
         "max peak"
     );
     let mut sums = sums;
-    sums.sort_by(|a, b| b.count.cmp(&a.count));
+    sums.sort_by_key(|s| std::cmp::Reverse(s.count));
     for s in &sums {
         println!(
             "{:<20} {:>8} {:>10.2} {:>14.1} {:>12.1} {:>12.4}",
