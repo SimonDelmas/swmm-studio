@@ -124,13 +124,15 @@ impl Crs {
     }
 
     /// Converts model coordinates to WGS 84 longitude/latitude in degrees, in place.
-    /// Points that cannot be converted become NaN.
+    /// Points that cannot be converted, or that land off the globe (projected metres
+    /// read as degrees), become NaN.
     pub fn to_lonlat(&self, points: &mut [[f64; 2]]) {
         let geo = self.is_geographic();
         for p in points.iter_mut() {
             let mut q = if geo { (p[0].to_radians(), p[1].to_radians(), 0.0) } else { (p[0], p[1], 0.0) };
+            let on_globe = |q: (f64, f64, f64)| q.0.abs() <= 2.0 * std::f64::consts::PI && q.1.abs() <= std::f64::consts::FRAC_PI_2;
             match transform(&self.proj, &self.wgs84, &mut q) {
-                Ok(()) if q.0.is_finite() && q.1.is_finite() => *p = [q.0.to_degrees(), q.1.to_degrees()],
+                Ok(()) if on_globe(q) => *p = [q.0.to_degrees(), q.1.to_degrees()],
                 _ => *p = [f64::NAN, f64::NAN],
             }
         }
@@ -217,6 +219,10 @@ mod tests {
         let mut q = [[500_000.0, 0.0]];
         utm.to_lonlat(&mut q);
         assert!((q[0][0] - 3.0).abs() < 1e-9 && q[0][1].abs() < 1e-9, "{q:?}");
+        // Projected metres read as degrees are outside the globe.
+        let mut m = [[700_000.0, 6_600_000.0], [2.35, 48.85]];
+        crs.to_lonlat(&mut m);
+        assert!(m[0][0].is_nan() && m[0][1].is_nan() && m[1][0].is_finite(), "{m:?}");
         assert!(Crs::parse("EPSG:1").is_err());
         assert!(Crs::parse("nonsense").is_err());
     }
