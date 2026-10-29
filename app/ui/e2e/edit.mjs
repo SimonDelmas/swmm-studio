@@ -63,7 +63,7 @@ const geometryMatches = () =>
     const a = st.getState().geometry;
     const b = await st.api.geometry();
     const eq = (x, y) => x.length === y.length && x.every((v, i) => v === y[i] || (Number.isNaN(v) && Number.isNaN(y[i])));
-    return ['nodes', 'gages', 'linkStarts', 'linkPts', 'linkEnds', 'subStarts', 'subPts'].filter((k) => !eq(a[k], b[k]));
+    return ['nodes', 'gages', 'linkStarts', 'linkPts', 'linkEnds', 'subStarts', 'subPts', 'subOutlets'].filter((k) => !eq(a[k], b[k]));
   });
 const fieldInput = (name) => page.locator("table.kv.edit tr", { has: page.locator(`td:text-is("${name}")`) }).locator("input, select").first();
 const propValue = (kind, id, section, field) =>

@@ -205,6 +205,8 @@ export interface Geometry {
   linkEnds: Uint32Array;
   subStarts: Uint32Array;
   subPts: Float64Array;
+  /** Outlet per subcatchment: kind (0 node, 1 subcatchment) and index (0xffffffff for both when none). */
+  subOutlets: Uint32Array;
   gages: Float64Array;
 }
 
@@ -251,7 +253,7 @@ export interface GeometryPatch {
   nodes: [number, PPt][];
   gages: [number, PPt][];
   links: [number, [number, number], PPt[]][];
-  subcatchments: [number, PPt[]][];
+  subcatchments: [number, [number, number], PPt[]][];
 }
 
 export interface EditOutcome {

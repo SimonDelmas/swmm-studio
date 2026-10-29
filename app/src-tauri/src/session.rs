@@ -177,7 +177,11 @@ impl Display {
                     (i, [end(l.from), end(l.to)], self.link(i as usize).to_vec())
                 })
                 .collect(),
-            subcatchments: r.subcatchments.iter().map(|&i| (i, self.sub(i as usize).to_vec())).collect(),
+            subcatchments: r
+                .subcatchments
+                .iter()
+                .map(|&i| (i, outlet_of(&net.subcatchments[i as usize]), self.sub(i as usize).to_vec()))
+                .collect(),
         })
     }
 
@@ -283,8 +287,19 @@ pub struct GeometryPatch {
     pub gages: Vec<(u32, [f64; 2])>,
     /// Link index, from/to node indices (`u32::MAX` when unknown), path.
     pub links: Vec<(u32, [u32; 2], Vec<[f64; 2]>)>,
-    /// Closed ring (empty when the subcatchment has no outline).
-    pub subcatchments: Vec<(u32, Vec<[f64; 2]>)>,
+    /// Subcatchment index, outlet (see [`outlet_of`]), closed ring (empty when the
+    /// subcatchment has no outline).
+    pub subcatchments: Vec<(u32, [u32; 2], Vec<[f64; 2]>)>,
+}
+
+/// Outlet of a subcatchment as (kind, index): kind 0 for a node, 1 for a subcatchment;
+/// `u32::MAX` for both when it has none.
+pub(crate) fn outlet_of(s: &swmm_model::Subcatchment) -> [u32; 2] {
+    match s.outlet {
+        Some(ObjRef { kind: ObjKind::Node, index }) => [0, index],
+        Some(ObjRef { kind: ObjKind::Subcatchment, index }) => [1, index],
+        _ => [u32::MAX; 2],
+    }
 }
 
 /// State of the results cache of the open `.out`.
@@ -646,6 +661,7 @@ impl Session {
     /// 64  f64 xy: nodes, link points, subcatchment points (closed rings), gages
     ///     u32 link starts (links + 1), subcatchment starts (subcatchments + 1)
     ///     u32 link end nodes (from, to per link; u32::MAX when unknown)
+    ///     u32 subcatchment outlets (kind, index per subcatchment; see `outlet_of`)
     ///     u8 node types, link types
     /// ```
     pub fn geometry(&self) -> Vec<u8> {
@@ -680,6 +696,9 @@ impl Session {
         for l in &self.net.links {
             b.extend_from_slice(&l.from.unwrap_or(u32::MAX).to_le_bytes());
             b.extend_from_slice(&l.to.unwrap_or(u32::MAX).to_le_bytes());
+        }
+        for o in self.net.subcatchments.iter().flat_map(outlet_of) {
+            b.extend_from_slice(&o.to_le_bytes());
         }
         b.extend(self.net.nodes.iter().map(|n| match n.kind {
             NodeType::Junction => 0u8,
@@ -1322,9 +1341,13 @@ mod tests {
         let floats = 2 * (nodes + link_pts + sub_pts + gages);
         let starts = 64 + 8 * floats;
         assert_eq!(u(starts + 4 * 3), 6);
-        let types = starts + 4 * (links + 1 + subs + 1) + 8 * links;
+        let ends = starts + 4 * (links + 1 + subs + 1);
+        let types = ends + 8 * links + 8 * subs;
         // C1 goes from J1 (node 0) to J2 (node 1).
-        assert_eq!((u(types - 8 * links), u(types - 8 * links + 4)), (0, 1));
+        assert_eq!((u(ends), u(ends + 4)), (0, 1));
+        // S1 drains to J1, S2 to J2 (nodes).
+        let outlets = ends + 8 * links;
+        assert_eq!([u(outlets), u(outlets + 4), u(outlets + 8), u(outlets + 12)], [0, 0, 0, 1]);
         assert_eq!(g.len(), types + nodes + links);
         assert_eq!(g[types + 3], 1); // Out1 is an outfall
     }

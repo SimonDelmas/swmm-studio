@@ -146,7 +146,8 @@ pub struct Gage {
 pub struct Refresh {
     /// The network was rebuilt: indices may differ from before the edit.
     pub rebuilt: bool,
-    /// Objects whose map geometry changed (links attached to moved nodes included).
+    /// Objects whose map geometry changed (links attached to moved nodes included,
+    /// re-routed subcatchments: the map draws their outlet).
     pub nodes: Vec<u32>,
     pub links: Vec<u32>,
     pub subcatchments: Vec<u32>,
@@ -423,6 +424,7 @@ impl Network {
                     .and_then(|o| self.find_ref(ObjKind::Node, o).or_else(|| self.find_ref(ObjKind::Subcatchment, o)));
                 let s = &mut self.subcatchments[i as usize];
                 (s.gage, s.outlet) = (gage, outlet);
+                out.subcatchments.push(i);
             }
         }
         // Geometry, re-read for the objects whose lines changed.
@@ -589,7 +591,7 @@ RG1 -10 10
         assert_eq!((r.rebuilt, r.links.clone()), (false, vec![0]));
         let r =
             check(&mut inp, &mut net, &|tx| ops::set_field(tx, &SectionKind::Subcatchments, &["S2".into()], 2, "J2"));
-        assert!(!r.rebuilt);
+        assert_eq!((r.rebuilt, r.subcatchments.clone()), (false, vec![1]));
         // Rename rebuilds.
         let r = check(&mut inp, &mut net, &|tx| ops::rename(tx, schema::RefKind::Node, "J2", "N2"));
         assert!(r.rebuilt);

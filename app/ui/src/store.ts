@@ -36,6 +36,8 @@ export interface LayerStyle {
   stat: StatName | "value";
   threshold: number;
   scope: Scope;
+  /** Subcatchments: lines from each subcatchment to its outlet. */
+  outletLinks: boolean;
 }
 
 export interface PlotSeries {
@@ -195,6 +197,7 @@ export const defaultStyle = (kind: StyledKind): LayerStyle => ({
   stat: "max",
   threshold: 0,
   scope: "run",
+  outletLinks: false,
 });
 
 function firstView(): Pick<State, "plotViews" | "plotView"> {

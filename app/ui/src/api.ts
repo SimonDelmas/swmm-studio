@@ -70,10 +70,11 @@ export function decodeGeometry(buf: ArrayBuffer): Geometry {
   const linkStarts = u32(nLinks + 1);
   const subStarts = u32(nSubs + 1);
   const linkEnds = u32(2 * nLinks);
+  const subOutlets = u32(2 * nSubs);
   const nodeTypes = new Uint8Array(buf, at, nNodes);
   at += nNodes;
   const linkTypes = new Uint8Array(buf, at, nLinks);
-  return { space, origin, nodes, nodeTypes, linkStarts, linkPts, linkTypes, linkEnds, subStarts, subPts, gages };
+  return { space, origin, nodes, nodeTypes, linkStarts, linkPts, linkTypes, linkEnds, subStarts, subPts, subOutlets, gages };
 }
 
 export const api = {

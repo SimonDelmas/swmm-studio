@@ -190,6 +190,12 @@ function LayerSection({ kind }: { kind: StyledKind }) {
           <input type="checkbox" checked={style.visible} onChange={(e) => setStyle(kind, { visible: e.target.checked })} />
           <b>{TITLES[kind]}</b>
         </label>
+        {kind === "subcatchment" && (
+          <label title="Draw a line from each subcatchment to its outlet (node or subcatchment)">
+            <input type="checkbox" checked={style.outletLinks} onChange={(e) => setStyle(kind, { outletLinks: e.target.checked })} />
+            outlet links
+          </label>
+        )}
         {kind !== "subcatchment" && (
           <label title="Size in pixels">
             size

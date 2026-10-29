@@ -69,7 +69,9 @@ export function applyPatch(g: Geometry, p: GeometryPatch): Geometry {
     out.linkPts = r.pts;
   }
   if (p.subcatchments.length) {
-    const r = splice(g.subStarts, g.subPts, new Map(p.subcatchments));
+    out.subOutlets = g.subOutlets.slice();
+    for (const [i, o] of p.subcatchments) ((out.subOutlets[2 * i] = o[0]), (out.subOutlets[2 * i + 1] = o[1]));
+    const r = splice(g.subStarts, g.subPts, new Map(p.subcatchments.map(([i, , pts]) => [i, pts])));
     out.subStarts = r.starts;
     out.subPts = r.pts;
   }

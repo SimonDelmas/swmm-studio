@@ -23,6 +23,8 @@ export const mapProject: { current: ((p: Pt) => Pt) | null } = { current: null }
 const HIGHLIGHT: [number, number, number, number] = [255, 200, 0, 255];
 /** Path of the current longitudinal profile. */
 const PROFILE: [number, number, number, number] = [230, 40, 150, 210];
+/** Lines from subcatchments to their outlets. */
+const OUTLET_LINK: [number, number, number, number] = [50, 50, 50, 190];
 const MAX_LABELS = 400;
 
 type Pt = [number, number];
@@ -174,6 +176,57 @@ function createDeckViewer(container: HTMLDivElement, onView: () => void): Viewer
     setDoubleClickZoom: (on) => deck.setProps({ controller: { doubleClickZoom: on, inertia: false } }),
     destroy: () => deck.finalize(),
   };
+}
+
+/** Centroid of each subcatchment outline (NaN without one). */
+function subCentroids(g: Geometry): Float64Array {
+  const n = g.subStarts.length - 1;
+  const out = new Float64Array(2 * n).fill(NaN);
+  const p = g.subPts;
+  for (let i = 0; i < n; i++) {
+    const s = g.subStarts[i];
+    const e = g.subStarts[i + 1];
+    if (e - s < 3) continue;
+    // Relative to the first vertex, for precision; the ring is closed.
+    const [x0, y0] = [p[2 * s], p[2 * s + 1]];
+    let a = 0;
+    let cx = 0;
+    let cy = 0;
+    let mx = 0;
+    let my = 0;
+    for (let v = s; v + 1 < e; v++) {
+      const [xa, ya, xb, yb] = [p[2 * v] - x0, p[2 * v + 1] - y0, p[2 * v + 2] - x0, p[2 * v + 3] - y0];
+      const c = xa * yb - xb * ya;
+      a += c;
+      cx += (xa + xb) * c;
+      cy += (ya + yb) * c;
+      mx += xa;
+      my += ya;
+    }
+    // Degenerate outlines: the mean of the vertices.
+    const [x, y] = Math.abs(a) > 1e-12 ? [cx / (3 * a), cy / (3 * a)] : [mx / (e - s - 1), my / (e - s - 1)];
+    out[2 * i] = x0 + x;
+    out[2 * i + 1] = y0 + y;
+  }
+  return out;
+}
+
+/** Segments from each drawn subcatchment's centroid to its outlet (node or subcatchment centroid). */
+function outletSegments(g: Geometry) {
+  const c = subCentroids(g);
+  const n = g.subStarts.length - 1;
+  const src: number[] = [];
+  const tgt: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const [kind, j] = [g.subOutlets[2 * i], g.subOutlets[2 * i + 1]];
+    const to = kind === 0 ? g.nodes : kind === 1 ? c : null;
+    if (!to || j >= to.length / 2) continue;
+    const [x0, y0, x1, y1] = [c[2 * i], c[2 * i + 1], to[2 * j], to[2 * j + 1]];
+    if (![x0, y0, x1, y1].every(Number.isFinite)) continue;
+    src.push(x0, y0);
+    tgt.push(x1, y1);
+  }
+  return { length: src.length / 2, src: new Float64Array(src), tgt: new Float64Array(tgt) };
 }
 
 /** Display-coordinate bounds of a set of objects. */
@@ -356,6 +409,7 @@ export function MapView() {
       outlines: { length: g.subStarts.length - 1, startIndices: g.subStarts, attributes: { getPath: { value: g.subPts, size: 2 } } },
     };
   }, [g]);
+  const outlets = useMemo(() => (g && styles.subcatchment.outletLinks ? outletSegments(g) : null), [g, styles.subcatchment.outletLinks]);
 
   const baseLayers = useMemo(() => {
     if (!g || !geo || !nodeStyled || !linkStyled || !subStyled) return [];
@@ -386,6 +440,29 @@ export function MapView() {
           getColor: [70, 120, 60, 200],
           getWidth: 1,
           widthUnits: "pixels",
+        } as never),
+      );
+    }
+    if (styles.subcatchment.visible && outlets && outlets.length > 0) {
+      layers.push(
+        new LineLayer({
+          ...common,
+          id: "outlet-links",
+          data: {
+            length: outlets.length,
+            attributes: { getSourcePosition: { value: outlets.src, size: 2 }, getTargetPosition: { value: outlets.tgt, size: 2 } },
+          },
+          getColor: OUTLET_LINK,
+          getWidth: 1.5,
+          widthUnits: "pixels",
+        } as never),
+        new ScatterplotLayer({
+          ...common,
+          id: "outlet-links-start",
+          data: { length: outlets.length, attributes: { getPosition: { value: outlets.src, size: 2 } } },
+          getFillColor: OUTLET_LINK,
+          getRadius: 2.5,
+          radiusUnits: "pixels",
         } as never),
       );
     }
@@ -454,7 +531,7 @@ export function MapView() {
       );
     }
     return layers;
-  }, [g, geo, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.link.visible, styles.subcatchment.visible, coordSystem]);
+  }, [g, geo, outlets, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.link.visible, styles.subcatchment.visible, coordSystem]);
 
   const selectionLayers = useMemo(() => {
     if (!g || selection.length === 0) return [];
