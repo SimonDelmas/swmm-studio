@@ -196,6 +196,27 @@ node app/ui/e2e/analysis.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-
 
 Analysis timings on a large model: `node app/ui/e2e/analysis-perf.mjs big.inp EPSG:2154`.
 
+## Releases
+
+Versions follow [SemVer](https://semver.org/). The only version is `workspace.package.version` in
+`Cargo.toml`: the app, its installers and its User-Agent take it from there. To release, set the new
+version, commit, then tag and push:
+
+```bash
+cargo set-version --workspace 0.2.0
+```
+
+```bash
+git commit -am "Release 0.2.0" && git tag v0.2.0 && git push --follow-tags
+```
+
+The tag starts the *Release* workflow, which checks the tag against the version, builds the MSI and
+NSIS installers and attaches them to a **draft** GitHub release with generated notes; review it and
+publish it on GitHub. A tag with a `-` is marked as a pre-release; the MSI installer only accepts
+numeric pre-releases (`v0.2.0-1`, not `v0.2.0-beta.1`).
+
+`cargo set-version` comes from `cargo install cargo-edit`.
+
 ## Licence
 
 MIT

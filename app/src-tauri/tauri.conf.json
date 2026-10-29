@@ -2,7 +2,6 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SWMM Studio",
   "mainBinaryName": "swmm-studio",
-  "version": "0.1.0",
   "identifier": "io.github.simondelmas.swmmstudio",
   "build": {
     "frontendDist": "../ui/dist",
@@ -19,7 +18,7 @@
         "height": 900,
         "minWidth": 900,
         "minHeight": 600,
-        "userAgent": "SwmmStudio/0.1.0 (+https://github.com/SimonDelmas/swmm-studio)"
+        "create": false
       }
     ],
     "security": {

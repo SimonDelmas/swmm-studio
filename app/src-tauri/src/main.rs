@@ -43,6 +43,18 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::default())
         .manage(LaunchFile(inp_arg(std::env::args())))
+        .setup(|app| {
+            // The main window is built here (not from the config) so that its User-Agent, which the
+            // OSM tile policy requires, carries the crate version.
+            let config = app.config().app.windows.iter().find(|w| w.label == "main").expect("main window config");
+            tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+                .user_agent(&format!(
+                    "SwmmStudio/{} (+https://github.com/SimonDelmas/swmm-studio)",
+                    env!("CARGO_PKG_VERSION")
+                ))
+                .build()?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             launch_file,
             commands::open_model,
