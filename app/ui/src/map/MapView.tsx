@@ -3,12 +3,13 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { COORDINATE_SYSTEM, Deck, OrthographicView, type Layer } from "@deck.gl/core";
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { IconLayer, LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { api, errorText } from "../api";
 import { profileClick } from "../components/ProfilePanel";
 import { getState, notify, sameRef, setState, useStore } from "../store";
 import type { Geometry, ObjKind, ObjRef } from "../types";
 import { styleObjects } from "./colors";
+import { ICON_SCALE, LINK_TYPE_SHAPES, NODE_TYPE_SHAPES, SHAPE_SCALE, shapeAtlas, type Shape } from "./shapes";
 import { useEditTools, type EditTools } from "./useEditTools";
 import { useLayerValues } from "./useLayerValues";
 
@@ -229,6 +230,49 @@ function outletSegments(g: Geometry) {
   return { length: src.length / 2, src: new Float64Array(src), tgt: new Float64Array(tgt) };
 }
 
+/**
+ * Symbols tinted per object over a white halo. Sizes are icon heights in pixels (0: not drawn,
+ * as for hidden types, whose colour is also transparent); angles in degrees, counter-clockwise.
+ */
+function shapeLayers(
+  id: string,
+  common: object,
+  length: number,
+  position: { value: Float64Array; size: number },
+  angle: { value: Float32Array; size: number } | null,
+  shapeOf: (i: number) => Shape,
+  colors: Uint8Array,
+  sizes: Float32Array,
+): Layer[] {
+  const { canvas, mapping } = shapeAtlas();
+  const haloColors = new Uint8Array(4 * length);
+  const haloSizes = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const shown = sizes[i] > 0 && colors[4 * i + 3] > 0;
+    haloColors.set([255, 255, 255, shown ? 220 : 0], 4 * i);
+    haloSizes[i] = shown ? sizes[i] + 2.5 : 0;
+  }
+  const layer = (suffix: string, c: Uint8Array, s: Float32Array) =>
+    new IconLayer({
+      ...common,
+      id: id + suffix,
+      data: {
+        length,
+        attributes: {
+          getPosition: position,
+          getColor: { value: c, size: 4, normalized: true },
+          getSize: { value: s, size: 1 },
+          ...(angle && { getAngle: angle }),
+        },
+      },
+      iconAtlas: canvas,
+      iconMapping: mapping,
+      getIcon: (_: unknown, { index }: { index: number }) => shapeOf(index),
+      sizeUnits: "pixels",
+    } as never);
+  return [layer("-halo", haloColors, haloSizes), layer("", colors, sizes)];
+}
+
 /** Display-coordinate bounds of a set of objects. */
 function selectionBounds(g: Geometry, sel: ObjRef[]): [number, number, number, number] | null {
   let b = [Infinity, Infinity, -Infinity, -Infinity];
@@ -398,9 +442,29 @@ export function MapView() {
         segLink[k] = i;
       }
     }
+    // Symbols of the links that have one, on the middle segment, pointing downstream.
+    const sym: number[] = [];
+    const symPos: number[] = [];
+    const symAngle: number[] = [];
+    for (let i = 0; i < nLinks; i++) {
+      const a = g.linkStarts[i];
+      const b = g.linkStarts[i + 1];
+      if (b - a < 2 || !LINK_TYPE_SHAPES[g.linkTypes[i]]) continue;
+      const m = a + Math.floor((b - a - 1) / 2);
+      const [x0, y0, x1, y1] = [g.linkPts[2 * m], g.linkPts[2 * m + 1], g.linkPts[2 * m + 2], g.linkPts[2 * m + 3]];
+      if (![x0, y0, x1, y1].every(Number.isFinite)) continue;
+      // Longitude / latitude: the angle on the (Mercator) screen.
+      const sx = g.space === "lonlat" ? Math.cos((((y0 + y1) / 2) * Math.PI) / 180) : 1;
+      sym.push(i);
+      symPos.push((x0 + x1) / 2, (y0 + y1) / 2);
+      symAngle.push((Math.atan2(y1 - y0, (x1 - x0) * sx) * 180) / Math.PI);
+    }
     return {
       nSeg,
       segLink,
+      symLink: Uint32Array.from(sym),
+      symPos: { value: Float64Array.from(symPos), size: 2 },
+      symAngle: { value: Float32Array.from(symAngle), size: 1 },
       src: { value: src, size: 2 },
       tgt: { value: tgt, size: 2 },
       nodePos: { value: g.nodes, size: 2 },
@@ -493,33 +557,25 @@ export function MapView() {
         } as never),
       );
     }
-    if (styles.node.visible && g.nodeTypes.length > 0) {
-      // Hidden types: no outline either.
-      let lineColors: Uint8Array | null = null;
-      if (styles.node.hiddenTypes.length > 0) {
-        lineColors = new Uint8Array(4 * g.nodeTypes.length);
-        for (let i = 0; i < g.nodeTypes.length; i++) lineColors.set([255, 255, 255, nodeStyled.colors[4 * i + 3] ? 220 : 0], 4 * i);
+    if (styles.link.visible && geo.symLink.length > 0) {
+      const n = geo.symLink.length;
+      const colors = new Uint8Array(4 * n);
+      const sizes = new Float32Array(n);
+      for (let k = 0; k < n; k++) {
+        const i = geo.symLink[k];
+        colors.set(linkStyled.colors.subarray(4 * i, 4 * i + 4), 4 * k);
+        sizes[k] = colors[4 * k + 3] ? 3 * linkStyled.sizes[i] + 8 : 0;
       }
+      const types = g.linkTypes;
       layers.push(
-        new ScatterplotLayer({
-          ...common,
-          id: "nodes",
-          data: {
-            length: g.nodeTypes.length,
-            attributes: {
-              getPosition: geo.nodePos,
-              getFillColor: { value: nodeStyled.colors, size: 4, normalized: true },
-              getRadius: { value: nodeStyled.sizes, size: 1 },
-              ...(lineColors && { getLineColor: { value: lineColors, size: 4, normalized: true } }),
-            },
-          },
-          radiusUnits: "pixels",
-          stroked: true,
-          ...(!lineColors && { getLineColor: [255, 255, 255, 220] }),
-          lineWidthUnits: "pixels",
-          getLineWidth: 0.75,
-        } as never),
+        ...shapeLayers("link-symbols", common, n, geo.symPos, geo.symAngle, (k) => LINK_TYPE_SHAPES[types[geo.symLink[k]]]!, colors, sizes),
       );
+    }
+    if (styles.node.visible && g.nodeTypes.length > 0) {
+      const types = g.nodeTypes;
+      const shapeOf = (i: number) => NODE_TYPE_SHAPES[types[i]] ?? "circle";
+      const sizes = nodeStyled.sizes.map((s, i) => s * ICON_SCALE * (SHAPE_SCALE[shapeOf(i)] ?? 1));
+      layers.push(...shapeLayers("nodes", common, types.length, geo.nodePos, null, shapeOf, nodeStyled.colors, sizes));
     }
     if (g.gages.length > 0) {
       layers.push(
@@ -538,7 +594,7 @@ export function MapView() {
       );
     }
     return layers;
-  }, [g, geo, outlets, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.node.hiddenTypes, styles.link.visible, styles.subcatchment.visible, coordSystem]);
+  }, [g, geo, outlets, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.link.visible, styles.subcatchment.visible, coordSystem]);
 
   const selectionLayers = useMemo(() => {
     if (!g || selection.length === 0) return [];

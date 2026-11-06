@@ -8,13 +8,15 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
-- Map style: show or hide each node and link type (also when coloured by a value); hidden objects
-  are not labelled or selectable on the map.
+- Map style: show or hide each node and link type, whatever the layer is coloured by; hidden
+  objects are not labelled or selectable on the map.
+- One symbol per node type on the map (junction: circle, outfall: triangle, divider: diamond,
+  storage: square) and, mid-link, per link type (pump: arrow, orifice: bar, weir: bow tie, outlet:
+  chevron, pointing downstream); the legend uses the same symbols.
 
 ### Changed
 
 - Map labels are off by default.
-- Map style legends draw nodes as dots and links as lines.
 
 ## [0.1.0] - 2026-10-29
 

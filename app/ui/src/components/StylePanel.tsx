@@ -3,6 +3,7 @@ import { api, errorText } from "../api";
 import { computeBreaks, formatNumber, RAMPS, rampColors, type RGB } from "../classify";
 import { formatDateTime, periodAt, periodMs } from "../format";
 import { LINK_TYPE_COLORS, LINK_TYPE_NAMES, NODE_TYPE_COLORS, NODE_TYPE_NAMES, SUB_COLOR } from "../map/colors";
+import { LINK_TYPE_SHAPES, NODE_TYPE_SHAPES, SHAPE_PATHS, type Shape } from "../map/shapes";
 import { statValues } from "../map/useLayerValues";
 import { getState, makeStat, notify, setState, setStyle, useStore, type LayerStyle, type StatName, type StyledKind } from "../store";
 import type { Basemap } from "../types";
@@ -26,6 +27,8 @@ const SCOPES: [LayerStyle["scope"], string][] = [
 ];
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
+/** Type symbols when the colour comes from a value. */
+const TYPE_NEUTRAL: RGB = [110, 110, 110];
 
 /** Values of a style, for its class limits. Results: each object's maximum over the run, so colours stay comparable while animating. */
 async function styleValues(kind: StyledKind, s: LayerStyle): Promise<Float32Array> {
@@ -89,9 +92,27 @@ function limitFormat(style: LayerStyle): [(v: number) => string, (s: string) => 
   return [formatNumber, (s) => Number(s)];
 }
 
-/** Legend symbol: a dot for nodes, a line for links, an area for subcatchments. */
-function Swatch({ kind, color }: { kind: StyledKind; color: RGB }) {
-  return <span className={`swatch swatch-${kind}`} style={{ background: css(color) }} />;
+/** Legend symbol as on the map: the node type's shape, a line with the link type's symbol, an area. */
+function Swatch({ kind, color, shape }: { kind: StyledKind; color: RGB; shape?: Shape | null }) {
+  const fill = css(color);
+  if (kind === "subcatchment") return <span className="swatch" style={{ background: fill }} />;
+  if (kind === "node") {
+    return (
+      <svg className="swatch-svg" width={22} height={14} viewBox="-28 -6 120 76">
+        <path d={SHAPE_PATHS[shape ?? "circle"]} fill={fill} stroke="rgba(0,0,0,0.35)" strokeWidth={4} />
+      </svg>
+    );
+  }
+  return (
+    <svg className="swatch-svg" width={22} height={14} viewBox="-28 -6 120 76">
+      <rect x={-28} y={26} width={120} height={12} rx={6} fill={fill} />
+      {shape && (
+        <g transform="translate(14 14) scale(0.56)">
+          <path d={SHAPE_PATHS[shape]} fill={fill} stroke="#fff" strokeWidth={6} paintOrder="stroke" />
+        </g>
+      )}
+    </svg>
+  );
 }
 
 function toggleType(kind: StyledKind, style: LayerStyle, t: number, shown: boolean) {
@@ -99,16 +120,18 @@ function toggleType(kind: StyledKind, style: LayerStyle, t: number, shown: boole
   setStyle(kind, { hiddenTypes });
 }
 
-/** Nodes and links coloured by value: the types shown. */
-function TypeFilter({ kind, style }: { kind: StyledKind; style: LayerStyle }) {
+/** Node and link types: their symbol, and whether they are drawn (whatever they are coloured by). */
+function TypeList({ kind, style }: { kind: StyledKind; style: LayerStyle }) {
   if (kind === "subcatchment") return null;
-  const names = kind === "node" ? NODE_TYPE_NAMES : LINK_TYPE_NAMES;
+  const [names, colors, shapes] =
+    kind === "node" ? [NODE_TYPE_NAMES, NODE_TYPE_COLORS, NODE_TYPE_SHAPES] : [LINK_TYPE_NAMES, LINK_TYPE_COLORS, LINK_TYPE_SHAPES];
+  const byType = style.source === "type" || style.field === "";
   return (
-    <div className="type-filter">
+    <div className="legend">
       {names.map((n, t) => (
-        <label key={n}>
+        <label key={n} className="legend-row" title="Show or hide this type on the map">
           <input type="checkbox" checked={!style.hiddenTypes.includes(t)} onChange={(e) => toggleType(kind, style, t, e.target.checked)} />
-          {n}
+          <Swatch kind={kind} color={byType ? colors[t] : TYPE_NEUTRAL} shape={shapes[t]} /> {n}
         </label>
       ))}
     </div>
@@ -117,24 +140,12 @@ function TypeFilter({ kind, style }: { kind: StyledKind; style: LayerStyle }) {
 
 function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerStyle; unit: string }) {
   if (style.source === "type" || style.field === "") {
-    if (kind === "subcatchment") {
-      return (
-        <div className="legend">
-          <div className="legend-row">
-            <Swatch kind={kind} color={SUB_COLOR} /> Subcatchment
-          </div>
-        </div>
-      );
-    }
-    const [names, colors] = kind === "node" ? [NODE_TYPE_NAMES, NODE_TYPE_COLORS] : [LINK_TYPE_NAMES, LINK_TYPE_COLORS];
+    if (kind !== "subcatchment") return null;
     return (
       <div className="legend">
-        {names.map((n, t) => (
-          <label key={n} className="legend-row" title="Show or hide this type on the map">
-            <input type="checkbox" checked={!style.hiddenTypes.includes(t)} onChange={(e) => toggleType(kind, style, t, e.target.checked)} />
-            <Swatch kind={kind} color={colors[t]} /> {n}
-          </label>
-        ))}
+        <div className="legend-row">
+          <Swatch kind={kind} color={SUB_COLOR} /> Subcatchment
+        </div>
       </div>
     );
   }
@@ -149,7 +160,6 @@ function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerStyle; un
   };
   return (
     <div className="legend">
-      <TypeFilter kind={kind} style={style} />
       {colors.map((c, i) => (
         <div key={i} className="legend-row">
           <Swatch kind={kind} color={c} />
@@ -371,6 +381,7 @@ function LayerSection({ kind }: { kind: StyledKind }) {
       {isStat && style.scope !== "run" && style.stat !== "value" && (
         <div className="muted">Follows the current time: the map changes when the timeline enters another {style.scope}.</div>
       )}
+      <TypeList kind={kind} style={style} />
       <Legend kind={kind} style={style} unit={unit} />
     </div>
   );
