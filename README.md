@@ -47,6 +47,13 @@ cd app/src-tauri && cargo tauri dev
 a working `target/release/swmm-studio.exe` once the front-end is built (`npm run build --prefix app/ui`):
 the app embeds `app/ui/dist`.
 
+`scripts/build-exe.ps1` does both steps: it builds the front-end, then `target/release/swmm-studio.exe`
+(`-Installers`: also the installers, in `target/release/bundle/`; `-Out <folder>`: copies them there).
+
+```powershell
+./scripts/build-exe.ps1
+```
+
 - **Open model…** reads the `.inp`, its project file `<model>.swproj` (coordinate system, basemap,
   view, map styles, linked results) and the results found next to it (`<model>.out` / `.rpt`, or
   the latest run in `<model>_runs/`). **Open results…** loads any other `.out` (and the `.rpt`
