@@ -31,6 +31,13 @@ All notable changes to SWMM Studio are recorded here. The format follows
   tab to rename it. When the tabs do not fit, they scroll (mouse wheel; the open one is kept in
   view) and "▾ n" lists them all, to open or close one, or close them all.
 - The console, run history and report moved to a "Simulation" tab of the side panel.
+- Results of a run that did not finish (crashed, stopped or still running) get a results cache
+  too, of the periods written; the status bar says the run is incomplete. Opened again after the
+  file grew, its cache is rebuilt. A simulation that fails after writing results loads them,
+  with its report.
+- Without the results cache (while it is built), a time series too long to read directly opens
+  on the longest readable window around the current time, which follows the current time,
+  instead of failing.
 
 ### Security
 

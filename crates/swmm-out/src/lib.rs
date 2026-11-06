@@ -33,8 +33,6 @@ pub enum OutError {
     Corrupt(String),
     #[error("{} {obj} / variable {var} / period {period} is out of range", kind.name())]
     OutOfRange { kind: ElementKind, obj: usize, var: usize, period: usize },
-    #[error("the simulation did not finish writing this file")]
-    Incomplete,
     #[error("the results cache was built from another version of the .out file")]
     StaleCache,
     #[error("no results cache: build it first")]

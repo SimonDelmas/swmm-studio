@@ -313,10 +313,6 @@ pub enum CacheState {
     Failed {
         message: String,
     },
-    /// The file cannot be cached (simulation still running or crashed).
-    Unavailable {
-        message: String,
-    },
 }
 
 pub struct LoadedResults {
@@ -365,6 +361,8 @@ pub struct ResultsInfo {
     /// Objects in the file, per kind.
     pub in_file: std::collections::BTreeMap<String, usize>,
     pub cache: CacheState,
+    /// Most periods a series can span when read without the cache.
+    pub direct_periods: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1092,14 +1090,9 @@ impl LoadedResults {
         {
             return Err("no object of the results file is in the model".into());
         }
-        let cache = if results.cache().is_some() {
-            CacheState::Ready
-        } else if !meta.complete {
-            CacheState::Unavailable { message: "the simulation did not finish writing this file".into() }
-        } else {
-            // The caller starts the background build.
-            CacheState::Building { progress: 0.0 }
-        };
+        // Without a cache the caller starts the background build (of the periods written,
+        // for a run that did not finish).
+        let cache = if results.cache().is_some() { CacheState::Ready } else { CacheState::Building { progress: 0.0 } };
         Ok(LoadedResults { path: path.to_path_buf(), results, to_out, matched, cache })
     }
 
@@ -1135,6 +1128,7 @@ impl LoadedResults {
             matched,
             in_file,
             cache: lr.cache.clone(),
+            direct_periods: (DIRECT_READ_LIMIT / lr.results.out().layout().bytes_per_period().max(1)) as usize,
         }
     }
 

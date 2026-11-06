@@ -382,7 +382,9 @@ fn groups(n_series: usize, chunk_len: usize, budget: usize) -> Vec<Range<usize>>
     (0..n_series.div_ceil(per_group)).map(|g| g * per_group..((g + 1) * per_group).min(n_series)).collect()
 }
 
-/// Builds the cache of `out` at `path` (written atomically through a temporary file).
+/// Builds the cache of `out` at `path` (written atomically through a temporary file). For
+/// a file the simulation did not finish, it holds the periods written; the fingerprint
+/// makes it stale once the file changes.
 pub fn build(
     out: &OutFile,
     path: &Path,
@@ -391,9 +393,6 @@ pub fn build(
     cancel: &AtomicBool,
 ) -> Result<BuildReport, OutError> {
     let t0 = Instant::now();
-    if !out.meta().complete {
-        return Err(OutError::Incomplete);
-    }
     let layout = *out.layout();
     let n_periods = out.n_periods();
     let n_series = layout.values_per_period();

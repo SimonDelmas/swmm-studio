@@ -72,11 +72,22 @@ fn partial_file_is_readable() {
     let out = OutFile::open(&path).unwrap();
     assert!(!out.meta().complete);
     assert_eq!(out.n_periods(), 39);
-    let cache_path = cache::default_cache_path(&path);
-    assert!(matches!(
-        cache::build(&out, &cache_path, &CacheOptions::default(), |_| {}, &AtomicBool::new(false)),
-        Err(OutError::Incomplete)
-    ));
+    drop(out);
+    // The periods written can be cached.
+    let mut results = Results::open(&path).unwrap();
+    results.build_cache(&CacheOptions { chunk_len: 16, ..Default::default() }, |_| {}, &AtomicBool::new(false)).unwrap();
+    let out = results.out();
+    let cache = results.cache().unwrap();
+    for s in 0..out.layout().values_per_period() {
+        let (kind, obj, var) = out.layout().locate(s).unwrap();
+        assert_eq!(cache.series(s, 0..39).unwrap(), out.series(kind, obj, var, 0..39).unwrap(), "series {s}");
+    }
+    drop(results);
+    // More periods written: the cache is stale.
+    std::fs::write(&path, &full[..full.len() - 24 - 5 * bpp]).unwrap();
+    let results = Results::open(&path).unwrap();
+    assert!(results.cache().is_none());
+    assert!(matches!(results.cache_status(), Err(OutError::StaleCache)));
 }
 
 fn check_cache(spec: &SynthSpec, opts: &CacheOptions) {

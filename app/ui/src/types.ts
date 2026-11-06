@@ -33,8 +33,7 @@ export interface Project {
 export type CacheState =
   | { state: "ready" }
   | { state: "building"; progress: number }
-  | { state: "failed"; message: string }
-  | { state: "unavailable"; message: string };
+  | { state: "failed"; message: string };
 
 export interface VarInfo {
   name: string;
@@ -53,6 +52,8 @@ export interface ResultsInfo {
   matched: Record<string, number>;
   in_file: Record<string, number>;
   cache: CacheState;
+  /** Most periods a series can span when read without the cache. */
+  direct_periods: number;
 }
 
 export interface MessageDto {

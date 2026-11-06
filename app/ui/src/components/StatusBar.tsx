@@ -64,6 +64,11 @@ export function StatusBar() {
           {r.in_file.link ?? 0} links
         </span>
       )}
+      {r && !r.complete && (
+        <span className="warn" title="The simulation did not finish writing this file: only the periods written are shown">
+          Incomplete run
+        </span>
+      )}
       {cache}
       {selection.length > 0 && <span>{selection.length} selected</span>}
       <span className="grow" />

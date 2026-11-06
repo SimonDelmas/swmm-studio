@@ -217,6 +217,14 @@ function zoomPeriods(r: ResultsInfo, zoom: [number, number] | null): [number, nu
   return [Math.max(0, Math.floor(toP(zoom[0]))), Math.min(r.n_periods, Math.ceil(toP(zoom[1])) + 1)];
 }
 
+/** Why the results cache is not ready, for a message. */
+function cacheReason(r: ResultsInfo): string {
+  const c = r.cache;
+  if (c.state === "building") return `being built, ${Math.round(c.progress * 100)}%`;
+  if (c.state === "ready") return "ready";
+  return c.message;
+}
+
 /** One chart of a view; the charts of a view share their cursor and their zoom. */
 function Graph({ view, graph, number, removable }: { view: PlotView; graph: PlotGraph; number: number; removable: boolean }) {
   const plot = graph.series;
@@ -248,6 +256,20 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
     if (v.agg && v.zoom) u.setScale("x", { min: v.zoom[0], max: v.zoom[1] });
   };
 
+  // Without the cache a long run cannot be read whole: unzoomed, show the longest readable
+  // window, around the current time (moved when the current time leaves it).
+  const cap = results && !agg && !zoom && results.cache.state !== "ready" && n > results.direct_periods ? Math.max(2, results.direct_periods) : null;
+  const [win, setWin] = useState<[number, number] | null>(null);
+  useEffect(() => {
+    if (cap === null) {
+      if (win) setWin(null);
+      return;
+    }
+    if (win && win[1] - win[0] === cap && period >= win[0] && period < win[1]) return;
+    const p0 = Math.max(0, Math.min(n - cap, period - Math.floor(cap / 2)));
+    setWin([p0, p0 + cap]);
+  }, [cap, period, n]);
+
   // Fetch: about one min/max pair per pixel over the visible range, or the aggregates.
   const req = useRef(0);
   useEffect(() => {
@@ -255,7 +277,8 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
       setBuilt(null);
       return;
     }
-    const [p0, p1] = agg ? [0, n] : zoomPeriods(results, zoom);
+    if (cap !== null && !win) return;
+    const [p0, p1] = agg ? [0, n] : zoom ? zoomPeriods(results, zoom) : cap !== null && win ? win : [0, n];
     const id = ++req.current;
     const t = setTimeout(async () => {
       try {
@@ -297,7 +320,7 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
       }
     }, 50);
     return () => clearTimeout(t);
-  }, [plot, agg ? null : zoom, size.w, results?.path, results?.cache.state, compare?.path, compare?.cache.state, n, agg]);
+  }, [plot, agg ? null : zoom, size.w, results?.path, results?.cache.state, compare?.path, compare?.cache.state, n, agg, cap !== null ? win : null]);
 
   // (Re)create the chart when the series, their units or the size change.
   const units = built ? Array.from(new Set(built.units)) : [];
@@ -480,6 +503,12 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
         </button>
       </div>
       {error && <div className="panel-error">{error}</div>}
+      {cap !== null && win && results && plot.length > 0 && (
+        <div className="muted plot-window-note">
+          {formatDateTime(periodMs(results, win[0]))} – {formatDateTime(periodMs(results, win[1] - 1))} only: the whole run needs the results
+          cache ({cacheReason(results)}). Move the current time to show another part of the run.
+        </div>
+      )}
       <div ref={setWrap} className="plot-area" />
     </div>
   );

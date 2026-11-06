@@ -550,7 +550,7 @@ pub fn run_start(app: AppHandle, state: State<'_, AppState>, label: Option<Strin
                 let status = format!("{:?}", o.status).to_lowercase();
                 // Load the results into the model they were made from. A cancelled run
                 // leaves the loaded results alone; a failed one shows its report (with
-                // the errors) and no results.
+                // the errors) and the periods it wrote, if any.
                 let info = state
                     .write(|s| {
                         if s.inp_path != path || o.status == RunStatus::Cancelled {
@@ -560,6 +560,15 @@ pub fn run_start(app: AppHandle, state: State<'_, AppState>, label: Option<Strin
                         s.project.results.out = None;
                         if o.out_complete {
                             s.open_results(&o.out)?;
+                        } else if OutFile::open(&o.out).is_ok_and(|f| f.n_periods() > 0) {
+                            match s.open_results(&o.out) {
+                                Ok(_) => {
+                                    let _ = app.emit("run-output", "partial results loaded (periods written before the failure)");
+                                }
+                                Err(e) => {
+                                    let _ = app.emit("run-output", format!("partial results not loaded: {e}"));
+                                }
+                            }
                         }
                         if o.rpt.is_file() {
                             s.open_report(&o.rpt)?;

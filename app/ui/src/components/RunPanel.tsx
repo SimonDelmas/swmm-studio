@@ -51,7 +51,7 @@ export function onFinished(f: RunFinished) {
         ? `Simulation completed with ${f.warnings} warning(s)`
         : f.status === "cancelled"
           ? "Simulation cancelled"
-          : `Simulation failed${f.errors ? ` with ${f.errors} error(s)` : ""}`;
+          : `Simulation failed${f.errors ? ` with ${f.errors} error(s)` : ""}${f.info?.results ? "; partial results loaded" : ""}`;
   notify(`${what} (${f.seconds.toFixed(1)} s)`, f.status === "failed");
   if (f.errors > 0) setState({ sideTab: "simulation", simTab: "report" });
 }
