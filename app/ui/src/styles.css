@@ -1273,3 +1273,53 @@ body.dragging-series * {
   flex: 1;
   min-height: 0;
 }
+
+/* Many time series / profile tabs: they scroll (wheel), the rest of the bar stays in place. */
+.bottom-tabs > :not(.view-tabs):not(.grow) {
+  flex: none;
+}
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.view-tabs::-webkit-scrollbar {
+  display: none;
+}
+.view-tabs.overflow {
+  /* Faded edges: more tabs that way. */
+  mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+}
+.view-tab {
+  flex: none;
+}
+.view-tab-name {
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.menu-items.menu-right {
+  left: auto;
+  right: 0;
+}
+.menu-items.tab-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  max-width: 320px;
+}
+.tab-list .menu-row button:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-list .menu-row.current button:first-child {
+  font-weight: 600;
+  background: var(--accent-bg);
+}

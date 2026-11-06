@@ -28,7 +28,8 @@ All notable changes to SWMM Studio are recorded here. The format follows
   new time series or profile tab, or one rebuilt from a view or profile saved in the project
   (and deletes saved ones). Each profile drawn with the profile tool opens in its own tab;
   clicking a result in the properties panel plots it in a new time series tab. Double-click a
-  tab to rename it.
+  tab to rename it. When the tabs do not fit, they scroll (mouse wheel; the open one is kept in
+  view) and "▾ n" lists them all, to open or close one, or close them all.
 - The console, run history and report moved to a "Simulation" tab of the side panel.
 
 ### Security
