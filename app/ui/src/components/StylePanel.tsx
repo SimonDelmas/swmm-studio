@@ -89,20 +89,51 @@ function limitFormat(style: LayerStyle): [(v: number) => string, (s: string) => 
   return [formatNumber, (s) => Number(s)];
 }
 
+/** Legend symbol: a dot for nodes, a line for links, an area for subcatchments. */
+function Swatch({ kind, color }: { kind: StyledKind; color: RGB }) {
+  return <span className={`swatch swatch-${kind}`} style={{ background: css(color) }} />;
+}
+
+function toggleType(kind: StyledKind, style: LayerStyle, t: number, shown: boolean) {
+  const hiddenTypes = shown ? style.hiddenTypes.filter((h) => h !== t) : [...style.hiddenTypes, t].sort((a, b) => a - b);
+  setStyle(kind, { hiddenTypes });
+}
+
+/** Nodes and links coloured by value: the types shown. */
+function TypeFilter({ kind, style }: { kind: StyledKind; style: LayerStyle }) {
+  if (kind === "subcatchment") return null;
+  const names = kind === "node" ? NODE_TYPE_NAMES : LINK_TYPE_NAMES;
+  return (
+    <div className="type-filter">
+      {names.map((n, t) => (
+        <label key={n}>
+          <input type="checkbox" checked={!style.hiddenTypes.includes(t)} onChange={(e) => toggleType(kind, style, t, e.target.checked)} />
+          {n}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerStyle; unit: string }) {
   if (style.source === "type" || style.field === "") {
-    const items: [string, RGB][] =
-      kind === "node"
-        ? NODE_TYPE_NAMES.map((n, i) => [n, NODE_TYPE_COLORS[i]])
-        : kind === "link"
-          ? LINK_TYPE_NAMES.map((n, i) => [n, LINK_TYPE_COLORS[i]])
-          : [["Subcatchment", SUB_COLOR]];
+    if (kind === "subcatchment") {
+      return (
+        <div className="legend">
+          <div className="legend-row">
+            <Swatch kind={kind} color={SUB_COLOR} /> Subcatchment
+          </div>
+        </div>
+      );
+    }
+    const [names, colors] = kind === "node" ? [NODE_TYPE_NAMES, NODE_TYPE_COLORS] : [LINK_TYPE_NAMES, LINK_TYPE_COLORS];
     return (
       <div className="legend">
-        {items.map(([n, c]) => (
-          <div key={n} className="legend-row">
-            <span className="swatch" style={{ background: css(c) }} /> {n}
-          </div>
+        {names.map((n, t) => (
+          <label key={n} className="legend-row" title="Show or hide this type on the map">
+            <input type="checkbox" checked={!style.hiddenTypes.includes(t)} onChange={(e) => toggleType(kind, style, t, e.target.checked)} />
+            <Swatch kind={kind} color={colors[t]} /> {n}
+          </label>
         ))}
       </div>
     );
@@ -118,9 +149,10 @@ function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerStyle; un
   };
   return (
     <div className="legend">
+      <TypeFilter kind={kind} style={style} />
       {colors.map((c, i) => (
         <div key={i} className="legend-row">
-          <span className="swatch" style={{ background: css(c) }} />
+          <Swatch kind={kind} color={c} />
           {i === 0 ? "≤ " : "> "}
           {i < style.breaks.length ? (
             <input
@@ -138,7 +170,7 @@ function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerStyle; un
         </div>
       ))}
       <div className="legend-row">
-        <span className="swatch" style={{ background: "rgb(150,150,150)" }} /> no data
+        <Swatch kind={kind} color={[150, 150, 150]} /> no data
       </div>
     </div>
   );

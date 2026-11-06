@@ -494,6 +494,12 @@ export function MapView() {
       );
     }
     if (styles.node.visible && g.nodeTypes.length > 0) {
+      // Hidden types: no outline either.
+      let lineColors: Uint8Array | null = null;
+      if (styles.node.hiddenTypes.length > 0) {
+        lineColors = new Uint8Array(4 * g.nodeTypes.length);
+        for (let i = 0; i < g.nodeTypes.length; i++) lineColors.set([255, 255, 255, nodeStyled.colors[4 * i + 3] ? 220 : 0], 4 * i);
+      }
       layers.push(
         new ScatterplotLayer({
           ...common,
@@ -504,11 +510,12 @@ export function MapView() {
               getPosition: geo.nodePos,
               getFillColor: { value: nodeStyled.colors, size: 4, normalized: true },
               getRadius: { value: nodeStyled.sizes, size: 1 },
+              ...(lineColors && { getLineColor: { value: lineColors, size: 4, normalized: true } }),
             },
           },
           radiusUnits: "pixels",
           stroked: true,
-          getLineColor: [255, 255, 255, 220],
+          ...(!lineColors && { getLineColor: [255, 255, 255, 220] }),
           lineWidthUnits: "pixels",
           getLineWidth: 0.75,
         } as never),
@@ -531,7 +538,7 @@ export function MapView() {
       );
     }
     return layers;
-  }, [g, geo, outlets, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.link.visible, styles.subcatchment.visible, coordSystem]);
+  }, [g, geo, outlets, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.node.hiddenTypes, styles.link.visible, styles.subcatchment.visible, coordSystem]);
 
   const selectionLayers = useMemo(() => {
     if (!g || selection.length === 0) return [];
@@ -652,9 +659,14 @@ export function MapView() {
       if (t !== undefined && Number.isFinite(x) && inView(x, y)) items.push({ p: [x, y], t });
     };
     const nNodes = g.nodeTypes.length;
-    for (let i = 0; i < nNodes && items.length <= MAX_LABELS; i++) push(g.nodes[2 * i], g.nodes[2 * i + 1], ids.node[i]);
+    const nodeHidden = styles.node.hiddenTypes;
+    const linkHidden = styles.link.hiddenTypes;
+    for (let i = 0; styles.node.visible && i < nNodes && items.length <= MAX_LABELS; i++) {
+      if (!nodeHidden.includes(g.nodeTypes[i])) push(g.nodes[2 * i], g.nodes[2 * i + 1], ids.node[i]);
+    }
     if (ids.link && styles.link.visible) {
       for (let i = 0; i + 1 < g.linkStarts.length && items.length <= MAX_LABELS; i++) {
+        if (linkHidden.includes(g.linkTypes[i])) continue;
         const a = g.linkStarts[i];
         const b = g.linkStarts[i + 1];
         if (b - a < 2) continue;
@@ -681,7 +693,7 @@ export function MapView() {
       characterSet: "auto",
     });
     // viewTick: recompute when the view moves.
-  }, [labels, g, ids, viewTick, coordSystem, styles.link.visible]);
+  }, [labels, g, ids, viewTick, coordSystem, styles.node.visible, styles.link.visible, styles.node.hiddenTypes, styles.link.hiddenTypes]);
 
   // Time from a period change to the map drawn with it (see `mapPerf`).
   const stepStart = useRef<{ period: number; t0: number } | null>(null);
@@ -702,8 +714,14 @@ export function MapView() {
 
   // ---- interaction ----------------------------------------------------------
 
-  const applySelection = (hits: ObjRef[], add: boolean) => {
-    const cur = getState().selection;
+  const applySelection = (all: ObjRef[], add: boolean) => {
+    const { selection: cur, styles: st, geometry: geom } = getState();
+    // Objects of a hidden type cannot be selected on the map.
+    const typeOf = (h: ObjRef) => (h.kind === "node" ? geom?.nodeTypes[h.index] : h.kind === "link" ? geom?.linkTypes[h.index] : undefined);
+    const hits = all.filter((h) => {
+      const t = typeOf(h);
+      return t === undefined || !st[h.kind as "node" | "link"].hiddenTypes.includes(t);
+    });
     if (!add) return setState({ selection: hits });
     const merged = [...cur];
     for (const h of hits) if (!merged.some((m) => sameRef(m, h))) merged.push(h);

@@ -6,6 +6,16 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Map style: show or hide each node and link type (also when coloured by a value); hidden objects
+  are not labelled or selectable on the map.
+
+### Changed
+
+- Map labels are off by default.
+- Map style legends draw nodes as dots and links as lines.
+
 ## [0.1.0] - 2026-10-29
 
 First release: a Windows desktop app and a command-line tool to visualize, edit, simulate and

@@ -61,8 +61,9 @@ export function styleObjects(
     colors[4 * i] = c[0];
     colors[4 * i + 1] = c[1];
     colors[4 * i + 2] = c[2];
-    colors[4 * i + 3] = alpha;
-    sizes[i] = size;
+    const hidden = types !== null && style.hiddenTypes.includes(types[i]);
+    colors[4 * i + 3] = hidden ? 0 : alpha;
+    sizes[i] = hidden ? 0 : size;
   }
   return { colors, sizes };
 }

@@ -38,6 +38,8 @@ export interface LayerStyle {
   scope: Scope;
   /** Subcatchments: lines from each subcatchment to its outlet. */
   outletLinks: boolean;
+  /** Nodes and links: types not drawn (indices into the type names). */
+  hiddenTypes: number[];
 }
 
 export interface PlotSeries {
@@ -198,6 +200,7 @@ export const defaultStyle = (kind: StyledKind): LayerStyle => ({
   threshold: 0,
   scope: "run",
   outletLinks: false,
+  hiddenTypes: [],
 });
 
 function firstView(): Pick<State, "plotViews" | "plotView"> {
@@ -216,7 +219,7 @@ const initial: State = {
   stride: 1,
   tool: "select",
   styles: { node: defaultStyle("node"), link: defaultStyle("link"), subcatchment: defaultStyle("subcatchment") },
-  labels: true,
+  labels: false,
   ...firstView(),
   bottomMax: false,
   timeline: false,
@@ -272,7 +275,7 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     period: 0,
     playing: false,
     styles,
-    labels: ui.labels ?? true,
+    labels: ui.labels ?? false,
     ...firstView(),
     profileNodes: [],
     profile: null,
