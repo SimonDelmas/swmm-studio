@@ -155,6 +155,8 @@ pub fn run_inp(
     hide_window(&mut cmd);
     let mut child =
         cmd.spawn().map_err(|source| EngineError::Launch { path: engine.path.display().to_string(), source })?;
+    // The engine dies with the application, even if it crashes.
+    crate::job::bind_to_parent(&child);
     on_event(RunEvent::Started { run_dir: run_dir.clone() });
 
     let (tx, rx) = mpsc::channel::<String>();

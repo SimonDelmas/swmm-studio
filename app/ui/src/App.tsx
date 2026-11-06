@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { onCacheProgress, onOpenFile, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
 import { ClimateDialog } from "./components/ClimateDialog";
 import { CrsDialog } from "./components/CrsDialog";
@@ -78,13 +79,26 @@ function useEvents() {
     };
   }, []);
 
-  // Unsaved changes are not lost when the window closes.
+  // A running simulation is not stopped and unsaved changes are not lost by surprise
+  // when the window closes. (The engine is killed with the app process in any case.)
   useEffect(() => {
     const w = getCurrentWindow();
     const un = w.onCloseRequested(async (e) => {
-      if (!getState().model?.dirty) return;
+      const s = getState();
+      if (!s.run.running && !s.model?.dirty) return;
       e.preventDefault();
-      if (await confirmDiscard()) await w.destroy();
+      if (getState().run.running) {
+        const quit = await ask("A simulation is running. Quitting will stop it and its results will be lost.", {
+          title: "SWMM Studio",
+          kind: "warning",
+          okLabel: "Stop and quit",
+          cancelLabel: "Keep running",
+        });
+        if (!quit) return;
+      }
+      if (!(await confirmDiscard())) return;
+      if (getState().run.running) await api.runCancel().catch(() => {});
+      await w.destroy();
     });
     return () => {
       un.then((f) => f());

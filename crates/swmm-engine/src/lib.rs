@@ -8,6 +8,7 @@
 //! - [`history`]: lists previous runs of a model.
 
 pub mod history;
+mod job;
 mod progress;
 mod run;
 mod settings;
