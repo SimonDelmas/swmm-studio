@@ -88,10 +88,12 @@ await step("click J1 then J2: the profile is drawn", async () => {
   return profileIds();
 });
 
-await step("click J2 then J3: a new profile replaces it", async () => {
+await step("click J2 then J3: a new profile opens in a second tab", async () => {
   await clickNode("J2");
   await clickNode("J3");
   await waitProfile("J2", "J3");
+  const tabs = await S(() => window.swmmStudio.getState().profileViews.length);
+  if (tabs !== 2) fail(`${tabs} profile tabs`);
   return profileIds();
 });
 
@@ -140,9 +142,14 @@ const saved = await step("save the profile in the project", async () => {
 await step("reload the model: the saved profile is in the list and loads", async () => {
   await S((p) => window.swmmStudio.openModel(p), model);
   await until(() => window.swmmStudio.getState().busy === null, null, 60000);
-  await S(() => window.swmmStudio.setState({ crsDialog: false, bottomTab: "profile" }));
+  await S(async () => {
+    const st = window.swmmStudio;
+    st.setState({ crsDialog: false, ids: { node: await st.api.ids("node") } });
+  });
   if (await profileIds()) fail("profile kept across models");
-  await page.locator('.plot-panel select[title="Profiles saved in the project"]').selectOption("Main line");
+  await page.locator(".bottom .tab-add").click();
+  await page.locator(".bottom .menu-row button", { hasText: "Main line" }).click();
+  await until(() => document.querySelector(".bottom .view-tab.active")?.textContent.includes("Main line"));
   await waitProfile(saved[0].nodes[0], saved[0].nodes[saved[0].nodes.length - 1]);
   return profileIds();
 });
@@ -161,8 +168,9 @@ await step("Escape drops a half-picked start, then leaves the tool", async () =>
 });
 
 await step("delete the saved profile", async () => {
-  await page.locator('.plot-panel select[title="Profiles saved in the project"]').selectOption("Main line");
-  await page.locator(".plot-panel button", { hasText: "Delete" }).click();
+  await page.locator(".bottom .tab-add").click();
+  await page.locator(".bottom .menu-row", { hasText: "Main line" }).locator(".menu-del").click();
+  await page.keyboard.press("Escape");
   return S(() => window.swmmStudio.getState().model.project.ui.profiles);
 });
 

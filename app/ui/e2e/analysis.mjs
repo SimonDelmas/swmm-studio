@@ -42,10 +42,15 @@ const waitIdle = () => until(() => window.swmmStudio.getState().busy === null, n
 const fail = (msg) => {
   throw new Error(msg);
 };
-const GROUPS = { Table: "Model", Issues: "Model", Runs: "Simulation", Profile: "Results", Events: "Results", "Time series": "Results", Compare: "Results" };
+/** Opens a tab: of the simulation side panel, a new time series / profile tab (+ menu), or a fixed view. */
 const tab = async (label) => {
-  await page.locator(".bottom .tab-groups button", { hasText: GROUPS[label] }).click();
-  await page.locator(".bottom .tabs > button", { hasText: label }).first().click();
+  if (["Console", "Runs", "Report"].includes(label)) {
+    await page.locator(".sidebar .tabs button", { hasText: "Simulation" }).click();
+    await page.locator(".sim-panel .sub-tabs button", { hasText: label }).click();
+  } else if (label === "Time series" || label === "Profile") {
+    await page.locator(".bottom .tab-add").click();
+    await page.locator(".bottom .menu-items > button", { hasText: label }).click();
+  } else await page.locator(".bottom .tabs > button", { hasText: label }).first().click();
 };
 const nodeXY = (id) =>
   S((id) => {
@@ -149,7 +154,7 @@ await step("Map style: envelope map of max depth over the day of the current tim
   await st.selectOption("time_of_max");
   await until(() => window.swmmStudio.getState().styles.node.stat === "time_of_max");
   await page.waitForTimeout(600);
-  const legend = await page.locator(".style-section").first().locator(".legend input").first().inputValue();
+  const legend = await page.locator(".style-section").first().locator(".legend input:not([type=checkbox])").first().inputValue();
   if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(legend)) fail(`time-of-max legend: ${legend}`);
   await st.selectOption("periods_above");
   const th = page.locator(".style-section").first().locator("label.field", { hasText: "Threshold" }).locator("input");
@@ -218,14 +223,13 @@ await step("Events: overflow-like events at the outfall, jump to one", async () 
 await shot("5-events");
 
 await step("Time series: daily maximum of J1 depth, A and B", async () => {
+  // The first opens a time series tab, the second goes to it.
   await S(async () => {
     const st = window.swmmStudio;
-    const v = st.currentPlotView();
-    st.setState({ plotViews: [{ ...v, graphs: [{ id: -1, series: [] }], target: -1, agg: null, zoom: null }], plotView: v.id });
     await st.addToPlot("node", st.getState().ids.node.indexOf("J1"), 0);
     await st.addToPlot("node", st.getState().ids.node.indexOf("J1"), 0, true);
   });
-  await tab("Time series");
+  if ((await S(() => window.swmmStudio.getState().plotViews.length)) !== 1) fail("not one time series tab");
   await page.locator('label[title="Time aggregation"] select').selectOption("day");
   await until(() => window.swmmStudio.currentPlotView().agg?.unit === "day");
   await page.waitForSelector(".plot-area .u-over");
@@ -248,15 +252,16 @@ await step("Time series: a second graph, a second view, save and rebuild the fir
   const graphs = await S(() => window.swmmStudio.currentPlotView().graphs.map((g) => g.series.map((p) => p.label)));
   if (graphs.length !== 2 || graphs[1].length !== 1) fail(`graphs: ${JSON.stringify(graphs)}`);
   // Save it, open a second (empty) view: the first one stays.
-  await page.locator(".plot-views input.narrow-name").fill("J1 and J2");
-  await page.locator(".plot-views button", { hasText: /^Save$/ }).click();
-  await page.locator('.plot-views button[title^="New view"]').click();
+  await page.locator(".plot-panel input.narrow-name").fill("J1 and J2");
+  await page.locator(".plot-panel button", { hasText: /^Save$/ }).click();
+  await tab("Time series");
   await until(() => window.swmmStudio.getState().plotViews.length === 2);
   await S(() => window.swmmStudio.addToPlot("system", 0, 4));
   const views = await S(() => window.swmmStudio.getState().plotViews.map((v) => [v.name, v.graphs.length]));
   // Close the first view, rebuild it from the project.
-  await page.locator(".plot-view-tab", { hasText: "J1 and J2" }).locator('button[title="Close this view"]').click();
-  await page.locator('.plot-views select[title="Views saved in the project"]').selectOption("J1 and J2");
+  await page.locator(".bottom .view-tab", { hasText: "J1 and J2" }).locator(".view-tab-close").click();
+  await page.locator(".bottom .tab-add").click();
+  await page.locator(".bottom .menu-row button", { hasText: "J1 and J2" }).click();
   await until(() => window.swmmStudio.currentPlotView().name === "J1 and J2" && document.querySelectorAll(".plot-graph .u-over").length === 2);
   const rebuilt = await S(() => window.swmmStudio.currentPlotView().graphs.map((g) => g.series.map((p) => p.label)));
   if (JSON.stringify(rebuilt) !== JSON.stringify(graphs)) fail(`rebuilt: ${JSON.stringify(rebuilt)}`);

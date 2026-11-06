@@ -259,34 +259,6 @@ label {
   border-bottom: none;
   border-radius: 4px 4px 0 0;
 }
-/* Bottom panel: the step (model, simulation, results), then the tabs of that step. */
-.tab-groups {
-  display: flex;
-  align-self: center;
-  margin: 0 8px 4px 0;
-  padding-right: 8px;
-  border-right: 1px solid var(--border);
-}
-.tabs .tab-groups button {
-  border: 1px solid var(--border);
-  border-radius: 0;
-  font-weight: 600;
-  color: var(--muted);
-}
-.tabs .tab-groups button + button {
-  border-left: none;
-}
-.tabs .tab-groups button:first-child {
-  border-radius: 4px 0 0 4px;
-}
-.tabs .tab-groups button:last-child {
-  border-radius: 0 4px 4px 0;
-}
-.tabs .tab-groups button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
 .tab-body {
   flex: 1;
   min-height: 0;
@@ -415,31 +387,7 @@ label {
   stroke: #e0a000;
   stroke-width: 2.5;
 }
-/* Time series: tabs of views, then the graphs of the open view stacked. */
-.plot-views {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.plot-view-tab {
-  display: inline-flex;
-}
-.plot-view-tab button:first-child {
-  border-radius: 4px 0 0 4px;
-}
-.plot-view-tab button:last-child {
-  border-left: none;
-  border-radius: 0 4px 4px 0;
-  padding: 0 6px;
-}
-.plot-view-tab.active button {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
+/* Time series: the graphs of the view stacked. */
 .plot-graphs {
   flex: 1;
   min-height: 0;
@@ -1201,4 +1149,127 @@ td.nowrap {
 }
 .row.report-objects {
   align-items: center;
+}
+
+/* Bottom panel: fixed views, then time series and profile tabs, then "+". */
+.tabs .tabs-sep {
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px 4px;
+  background: var(--border);
+}
+.view-tab {
+  display: inline-flex;
+}
+.tabs .view-tab button:first-child {
+  border-radius: 4px 0 0 0;
+  border-right: none;
+}
+.tabs .view-tab .view-tab-close {
+  border-radius: 0 4px 0 0;
+  padding: 0 6px;
+  color: var(--muted);
+}
+.view-tab.active button {
+  background: var(--bg);
+  font-weight: 600;
+}
+.view-tab-icon {
+  margin-right: 4px;
+  color: var(--muted);
+}
+.tabs .menu {
+  align-self: center;
+  margin: 0 0 4px 4px;
+}
+.tabs .tab-add {
+  border-radius: 4px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 9px;
+  font-weight: 600;
+}
+.menu-items .menu-head {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.menu-items .menu-none {
+  padding: 2px 8px;
+  color: var(--muted);
+  font-style: italic;
+}
+.menu-row {
+  display: flex;
+}
+.menu-row button:first-child {
+  flex: 1;
+}
+.menu-items .menu-row .menu-del {
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+/* Results dragged from the properties panel onto a graph or a time series tab. */
+.props a.drag-result {
+  cursor: grab;
+  user-select: none;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 100;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+body.dragging-series,
+body.dragging-series * {
+  cursor: copy !important;
+}
+.drop-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-bg);
+}
+
+/* Side panel "Simulation": console, runs and reports in a narrow column. */
+.sim-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.sub-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.sub-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.sim-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.sim-body .report-panel {
+  flex-direction: column;
+}
+.sim-body .report-side {
+  width: auto;
+  max-height: 35%;
+  flex: none;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+}
+.sim-body .report-main {
+  flex: 1;
+  min-height: 0;
 }

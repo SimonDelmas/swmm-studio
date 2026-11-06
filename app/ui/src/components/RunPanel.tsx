@@ -12,7 +12,7 @@ export async function startRun(label: string | null = null) {
     setState({ dialog: "engines" });
     return;
   }
-  setState({ run: { running: true, progress: null, elapsed: 0, log: [], last: null }, bottomTab: "run" });
+  setState({ run: { running: true, progress: null, elapsed: 0, log: [], last: null }, sideTab: "simulation", simTab: "run" });
   try {
     await api.runStart(label);
   } catch (e) {
@@ -53,7 +53,7 @@ export function onFinished(f: RunFinished) {
           ? "Simulation cancelled"
           : `Simulation failed${f.errors ? ` with ${f.errors} error(s)` : ""}`;
   notify(`${what} (${f.seconds.toFixed(1)} s)`, f.status === "failed");
-  if (f.errors > 0) setState({ bottomTab: "report" });
+  if (f.errors > 0) setState({ sideTab: "simulation", simTab: "report" });
 }
 
 export function RunControls() {
@@ -120,7 +120,7 @@ export function RunPanel() {
           {f.errors + f.warnings > 0 && (
             <>
               {" "}
-              <a onClick={() => setState({ bottomTab: "report" })}>see the report</a>
+              <a onClick={() => setState({ sideTab: "simulation", simTab: "report" })}>see the report</a>
             </>
           )}
         </div>

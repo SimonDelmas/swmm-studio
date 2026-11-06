@@ -17,9 +17,19 @@ All notable changes to SWMM Studio are recorded here. The format follows
   to it when it is out of view (Ctrl+click adds to the selection, double-click zooms to it). The
   selection is highlighted in the profile too.
 
+- Results: drag a result from the properties panel onto a graph (or a time series tab) to add
+  it there.
+
 ### Changed
 
 - Map labels are off by default.
+- Bottom panel: 40 % of the height by default; under the timeline, one row of tabs: Table,
+  Issues, Events and Compare, then time series and profile tabs created as needed. "+" opens a
+  new time series or profile tab, or one rebuilt from a view or profile saved in the project
+  (and deletes saved ones). Each profile drawn with the profile tool opens in its own tab;
+  clicking a result in the properties panel plots it in a new time series tab. Double-click a
+  tab to rename it.
+- The console, run history and report moved to a "Simulation" tab of the side panel.
 
 ### Security
 

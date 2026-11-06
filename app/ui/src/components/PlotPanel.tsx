@@ -11,6 +11,7 @@ import {
   newPlotId,
   newPlotView,
   notify,
+  openPlotView,
   setState,
   updatePlotView,
   useStore,
@@ -22,6 +23,7 @@ import {
 } from "../store";
 import type { Calendar, ElementKind, ResultsInfo } from "../types";
 import { cssVar, useSize } from "../useSize";
+import { setSeriesDropHandler } from "../dragSeries";
 import { STATS } from "./StylePanel";
 
 /** Time axis labels in the model clock (UTC), 24 h. */
@@ -61,16 +63,26 @@ function makeSeries(kind: ElementKind, index: number, v: number, b: boolean): Pl
 }
 
 /**
- * Adds an object (or the system) to the open plot view with variable `v`, from the loaded
- * or the compared results: to graph `target` (default: the view's target; `new`: a new
- * graph). Returns the graph it went to.
+ * Adds an object (or the system) with variable `v`, from the loaded or the compared results,
+ * to plot view `viewId` (default: the time series tab shown, else a new tab; `new`: a new
+ * tab), to graph `target` (default: the view's target; `new`: a new graph). Returns the
+ * graph it went to.
  */
-export async function addToPlot(kind: ElementKind, index: number, v: number, b = false, target?: number | "new"): Promise<number | null> {
+export async function addToPlot(
+  kind: ElementKind,
+  index: number,
+  v: number,
+  b = false,
+  target?: number | "new",
+  viewId?: number | "new",
+): Promise<number | null> {
   await loadIds([kind]);
   const series = makeSeries(kind, index, v, b);
   if (!series) return null;
   const s = getState();
-  const view = currentPlotView(s);
+  const existing =
+    viewId === "new" ? undefined : viewId !== undefined ? s.plotViews.find((x) => x.id === viewId) : s.bottomTab === "plot" ? currentPlotView(s) : undefined;
+  const view = existing ?? newPlotView(series.label);
   const t = target ?? view.target;
   let graphs = view.graphs;
   const last = graphs[graphs.length - 1];
@@ -80,9 +92,13 @@ export async function addToPlot(kind: ElementKind, index: number, v: number, b =
     if (gid !== last.id) graphs = [...graphs, { id: gid, series: [] }];
   } else gid = graphs.some((g) => g.id === t) ? t : last.id;
   graphs = graphs.map((g) => (g.id === gid && !g.series.some((p) => p.key === series.key) ? { ...g, series: [...g.series, series] } : g));
-  setState({ plotViews: s.plotViews.map((x) => (x.id === view.id ? { ...x, graphs } : x)), bottomTab: "plot" });
+  const plotViews = existing ? s.plotViews.map((x) => (x.id === view.id ? { ...x, graphs } : x)) : [...s.plotViews, { ...view, graphs }];
+  setState({ plotViews, plotView: view.id, bottomTab: "plot" });
   return gid;
 }
+
+// A result dragged from the properties panel: to the graph dropped on, or the view's target.
+setSeriesDropHandler((d, t) => void addToPlot(d.kind, d.index, d.var, false, t.graph, t.view));
 
 // ---- Views saved in the project ----
 
@@ -108,10 +124,11 @@ function storePlotViews(list: SavedPlotView[]) {
   api.updateProject(undefined, ui).catch((e) => notify(errorText(e), true));
 }
 
-/** Saves the open view under `name` (replaces a view of the same name) and names its tab so. */
-export function savePlotView(name: string) {
+/** Saves a view (default: the open one) under `name` (replaces a view of the same name) and names its tab so. */
+export function savePlotView(name: string, viewId?: number) {
   const s = getState();
-  const view = currentPlotView(s);
+  const view = viewId !== undefined ? s.plotViews.find((v) => v.id === viewId) : currentPlotView(s);
+  if (!view) return;
   const varName = (p: PlotSeries) => (p.b ? s.model?.compare : s.model?.results)?.variables[p.kind][p.var]?.name ?? "";
   const graphs = view.graphs
     .filter((g) => g.series.length > 0)
@@ -124,7 +141,7 @@ export function deletePlotView(name: string) {
   storePlotViews(savedPlotViews().filter((v) => v.name !== name));
 }
 
-/** Rebuilds a saved view from the current results, in the open tab if it is empty or has that name, else in a new tab. */
+/** Rebuilds a saved view from the current results, in the time series tab shown if it is empty, else in a new tab. */
 export async function loadPlotView(name: string) {
   const saved = savedPlotViews().find((v) => v.name === name);
   const m = getState().model;
@@ -147,10 +164,10 @@ export async function loadPlotView(name: string) {
   }
   const view = newPlotView(name, graphs, saved.agg);
   const s = getState();
-  const cur = currentPlotView(s);
-  const replace = cur.name === name || cur.graphs.every((g) => g.series.length === 0);
-  const plotViews = replace ? s.plotViews.map((v) => (v.id === cur.id ? view : v)) : [...s.plotViews, view];
-  setState({ plotViews, plotView: view.id, bottomTab: "plot" });
+  const cur = s.bottomTab === "plot" ? currentPlotView(s) : undefined;
+  if (cur && cur.graphs.every((g) => g.series.length === 0))
+    setState({ plotViews: s.plotViews.map((v) => (v.id === cur.id ? view : v)), plotView: view.id, bottomTab: "plot" });
+  else openPlotView(view);
   if (missing.length > 0) notify(`View “${name}”: not in these results: ${missing.join(", ")}.`, true);
 }
 
@@ -432,7 +449,7 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
     });
 
   return (
-    <div className={`plot-graph${active ? " active" : ""}`}>
+    <div className={`plot-graph${active ? " active" : ""}`} data-drop-view={view.id} data-drop-graph={graph.id}>
       <div className="plot-graph-head">
         <button
           className="plot-graph-name"
@@ -447,7 +464,7 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
             <button onClick={() => setSeries(plot.filter((q) => q.key !== p.key))}>×</button>
           </span>
         ))}
-        {plot.length === 0 && <span className="muted">Empty graph: select objects and add them.</span>}
+        {plot.length === 0 && <span className="muted">Empty graph: add selected objects, or drag a result from the properties here.</span>}
         <span className="grow" />
         <button disabled={!built} onClick={exportData} title="Export the plotted values (CSV or Excel)">
           Data
@@ -470,112 +487,12 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
 
 // ---- Panel ----
 
-function uniqueName(views: PlotView[]): string {
-  for (let i = views.length + 1; ; i++) if (!views.some((v) => v.name === `View ${i}`)) return `View ${i}`;
-}
-
-/** Tabs of the plot views, and the views saved in the project. */
-function ViewTabs({ view }: { view: PlotView }) {
-  const views = useStore((s) => s.plotViews);
-  const saved = useStore((s) => savedPlotViews(s));
-  const [editing, setEditing] = useState<number | null>(null);
-  const [savedName, setSavedName] = useState("");
-  const [newName, setNewName] = useState("");
-  const open = () => {
-    const v = newPlotView(uniqueName(views));
-    setState({ plotViews: [...views, v], plotView: v.id });
-  };
-  const close = (id: number) => {
-    const rest = views.filter((v) => v.id !== id);
-    if (rest.length === 0) rest.push(newPlotView("View 1"));
-    const i = views.findIndex((v) => v.id === id);
-    setState({ plotViews: rest, plotView: id === view.id ? rest[Math.min(i, rest.length - 1)].id : view.id });
-  };
-  const rename = (id: number, name: string) => {
-    setEditing(null);
-    if (name.trim()) updatePlotView(id, { name: name.trim() });
-  };
-  const save = () => {
-    const name = newName.trim() || view.name;
-    savePlotView(name);
-    setSavedName(name);
-    setNewName("");
-  };
-  const empty = view.graphs.every((g) => g.series.length === 0);
-  return (
-    <div className="plot-views">
-      {views.map((v) =>
-        editing === v.id ? (
-          <input
-            key={v.id}
-            className="narrow-name"
-            autoFocus
-            defaultValue={v.name}
-            onBlur={(e) => rename(v.id, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              else if (e.key === "Escape") setEditing(null);
-            }}
-          />
-        ) : (
-          <span key={v.id} className={`plot-view-tab${v.id === view.id ? " active" : ""}`}>
-            <button title="Double-click to rename" onClick={() => setState({ plotView: v.id })} onDoubleClick={() => setEditing(v.id)}>
-              {v.name}
-            </button>
-            <button title="Close this view" onClick={() => close(v.id)}>
-              ×
-            </button>
-          </span>
-        ),
-      )}
-      <button title="New view (the other views are kept)" onClick={open}>
-        +
-      </button>
-      <span className="grow" />
-      <select
-        value={saved.some((v) => v.name === savedName) ? savedName : ""}
-        title="Views saved in the project"
-        onChange={(e) => {
-          setSavedName(e.target.value);
-          if (e.target.value) loadPlotView(e.target.value);
-        }}
-      >
-        <option value="">{saved.length ? "Saved views…" : "No saved views"}</option>
-        {saved.map((v) => (
-          <option key={v.name} value={v.name}>
-            {v.name}
-          </option>
-        ))}
-      </select>
-      <input
-        className="narrow-name"
-        disabled={empty}
-        placeholder={view.name}
-        value={newName}
-        onChange={(e) => setNewName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && save()}
-      />
-      <button disabled={empty} onClick={save} title="Save this view in the project, to rebuild it later">
-        Save
-      </button>
-      <button
-        disabled={!saved.some((v) => v.name === savedName)}
-        onClick={() => {
-          deletePlotView(savedName);
-          setSavedName("");
-        }}
-      >
-        Delete
-      </button>
-    </div>
-  );
-}
-
-export function PlotPanel() {
-  const view = useStore((s) => currentPlotView(s));
+/** A time series tab: graphs stacked on one time axis. */
+export function PlotPanel({ view }: { view: PlotView }) {
   const results = useStore((s) => s.model?.results ?? null);
   const compare = useStore((s) => s.model?.compare ?? null);
   const selection = useStore((s) => s.selection);
+  const [newName, setNewName] = useState("");
   const [varChoice, setVarChoice] = useState<Record<string, number>>({ node: 0, link: 0, subcatchment: 4, system: 4 });
 
   if (!results) return <div className="panel-empty">Load results to plot time series.</div>;
@@ -592,10 +509,13 @@ export function PlotPanel() {
   const setAgg = (unit: string) =>
     updatePlotView(view.id, { agg: unit ? { unit: unit as Calendar, stat: agg?.stat ?? "max", threshold: agg?.threshold ?? 0 } : null });
   const empty = view.graphs.every((g) => g.series.length === 0);
+  const save = () => {
+    savePlotView(newName.trim() || view.name, view.id);
+    setNewName("");
+  };
 
   return (
     <div className="plot-panel">
-      <ViewTabs view={view} />
       <div className="panel-toolbar">
         {kinds.map((k) => (
           <label key={k}>
@@ -673,12 +593,23 @@ export function PlotPanel() {
         )}
         <span className="grow" />
         {view.zoom && <button onClick={() => updatePlotView(view.id, { zoom: null })}>Whole run</button>}
+        <input
+          className="narrow-name"
+          disabled={empty}
+          placeholder={view.name}
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+        />
+        <button disabled={empty} onClick={save} title="Save this view in the project (under the name typed, or the tab's), to rebuild it later from the + menu">
+          Save
+        </button>
       </div>
       {empty && (
         <div className="panel-empty">
-          Select objects and click “Add selected”, or add a system series; “to a new graph” stacks a new graph in the view. Drag to zoom
-          (all the graphs of the view), double-click to reset. “+” opens another view; “Save” keeps the view in the project. “per day /
-          month / year” plots daily, monthly or yearly statistics.
+          Select objects and click “Add selected”, add a system series, or drag a result from the properties panel onto a graph; “to a new
+          graph” stacks a new graph in the view. Drag to zoom (all the graphs of the view), double-click to reset. “Save” keeps the view in the
+          project. “per day / month / year” plots daily, monthly or yearly statistics.
         </div>
       )}
       <div className="plot-graphs">

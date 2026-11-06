@@ -6,6 +6,7 @@ import { formatDateTime, periodMs } from "../format";
 import { getState, setState, useStore } from "../store";
 import type { ElementKind, Field, ObjectInfo, ObjKind, ObjRef, PropertyGroup, RefKind } from "../types";
 import { addToPlot } from "./PlotPanel";
+import { startSeriesDrag } from "../dragSeries";
 
 const KIND_LABEL: Record<ObjKind, string> = { node: "Nodes", link: "Links", subcatchment: "Subcatchments", gage: "Rain gages" };
 
@@ -372,7 +373,10 @@ export function PropertiesPanel() {
       <div className="row">
         <button onClick={() => setState({ fitSelection: getState().fitSelection + 1 })}>Zoom to</button>
         {results && one.kind !== "gage" && (
-          <button onClick={() => addToPlot(one.kind as ElementKind, one.index, one.kind === "subcatchment" ? 4 : 0)}>
+          <button
+            title="Plot its main result in a new time series tab"
+            onClick={() => addToPlot(one.kind as ElementKind, one.index, one.kind === "subcatchment" ? 4 : 0, false, undefined, "new")}
+          >
             Plot
           </button>
         )}
@@ -433,7 +437,15 @@ export function PropertiesPanel() {
               {info.results.map((v, i) => (
                 <tr key={v.name}>
                   <td>
-                    <a title="Plot" onClick={() => addToPlot(one.kind as ElementKind, one.index, i)}>
+                    <a
+                      className="drag-result"
+                      title="Click: plot in a new time series tab; drag onto a graph (or a time series tab) to add it there"
+                      onPointerDown={(e) =>
+                        startSeriesDrag(e, { kind: one.kind as ElementKind, index: one.index, var: i, label: `${info.id} ${v.name}` }, () =>
+                          addToPlot(one.kind as ElementKind, one.index, i, false, undefined, "new"),
+                        )
+                      }
+                    >
                       {v.name}
                     </a>
                   </td>

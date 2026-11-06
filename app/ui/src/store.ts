@@ -85,9 +85,64 @@ export function newPlotView(name: string, graphs: PlotGraph[] = [], agg: PlotAgg
   return { id: newPlotId(), name, graphs, target: graphs[graphs.length - 1].id, agg, zoom: null };
 }
 
-/** The open plot view (there is always one). */
-export function currentPlotView(s: State = state): PlotView {
-  return s.plotViews.find((v) => v.id === s.plotView) ?? s.plotViews[0];
+/** The last opened plot view (none before a time series tab is created). */
+export function currentPlotView(s: State = state): PlotView | undefined {
+  return s.plotViews.find((v) => v.id === s.plotView);
+}
+
+/** Opens a plot view in a new tab of the bottom panel. */
+export function openPlotView(view: PlotView) {
+  setState((s) => ({ plotViews: [...s.plotViews, view], plotView: view.id, bottomTab: "plot" }));
+}
+
+/** A tab of the bottom panel showing a longitudinal profile. */
+export interface ProfileView {
+  id: number;
+  name: string;
+  /** Nodes the profile goes through (in order; empty: not drawn yet). */
+  nodes: number[];
+}
+
+/** The open profile tab, if the bottom panel shows one. */
+export function currentProfileView(s: State = state): ProfileView | undefined {
+  return s.bottomTab === "profile" ? s.profileViews.find((v) => v.id === s.profileView) : undefined;
+}
+
+function uniqueName(prefix: string, names: string[]): string {
+  for (let i = names.length + 1; ; i++) if (!names.includes(`${prefix} ${i}`)) return `${prefix} ${i}`;
+}
+
+export const newPlotName = (s: State = state) => uniqueName("Time series", s.plotViews.map((v) => v.name));
+
+/** Opens a profile through `nodes` in a new tab. */
+export function openProfileView(nodes: number[], name?: string) {
+  setState((s) => {
+    const v: ProfileView = { id: newPlotId(), name: name ?? uniqueName("Profile", s.profileViews.map((p) => p.name)), nodes };
+    return { profileViews: [...s.profileViews, v], profileView: v.id, profileNodes: nodes, profileStart: null, bottomTab: "profile" };
+  });
+}
+
+/** Shows a profile tab (its path is computed and highlighted on the map). */
+export function selectProfileView(id: number) {
+  const v = state.profileViews.find((p) => p.id === id);
+  if (v) setState({ profileView: id, profileNodes: v.nodes, bottomTab: "profile" });
+}
+
+export function updateProfileView(id: number, patch: Partial<ProfileView>) {
+  setState((s) => ({
+    profileViews: s.profileViews.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+    ...(patch.nodes && s.profileView === id ? { profileNodes: patch.nodes, profileStart: null } : {}),
+  }));
+}
+
+/**
+ * Draws a profile through `nodes`: in the open profile tab when it is still empty (or
+ * `here`), else in a new tab.
+ */
+export function showProfile(nodes: number[], here = false) {
+  const cur = currentProfileView();
+  if (cur && (here || cur.nodes.length < 2)) updateProfileView(cur.id, { nodes });
+  else openProfileView(nodes);
 }
 
 export function updatePlotView(id: number, patch: Partial<PlotView> | ((v: PlotView) => Partial<PlotView>)) {
@@ -134,7 +189,11 @@ export interface RunState {
 /** "engines" is the options dialog opened on its engine tab. */
 export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | null;
 
-export type BottomTab = "plot" | "profile" | "events" | "compare" | "runs" | "table" | "issues" | "report" | "run";
+/** Tabs of the bottom panel: fixed views, then time series (`plotView`) and profile (`profileView`) tabs. */
+export type BottomTab = "table" | "issues" | "events" | "compare" | "plot" | "profile";
+
+/** Tabs of the simulation side panel. */
+export type SimTab = "run" | "runs" | "report";
 
 export interface State {
   model: ModelInfo | null;
@@ -149,16 +208,20 @@ export interface State {
   tool: Tool;
   styles: Record<StyledKind, LayerStyle>;
   labels: boolean;
-  /** Tabs of the time series panel. */
+  /** Time series tabs of the bottom panel. */
   plotViews: PlotView[];
-  /** Id of the open plot view. */
+  /** Id of the open (or last opened) plot view. */
   plotView: number;
+  /** Profile tabs of the bottom panel. */
+  profileViews: ProfileView[];
+  /** Id of the open (or last opened) profile view. */
+  profileView: number;
   /** The bottom panel fills the centre (the map is hidden). */
   bottomMax: boolean;
   /** The timeline strip (overview of a system variable) is shown under the map. */
   timeline: boolean;
   bottomTab: BottomTab;
-  /** Nodes the profile goes through (in order). */
+  /** Nodes the profile of the open profile tab goes through (in order). */
   profileNodes: number[];
   /** The profile path computed from `profileNodes` (highlighted on the map). */
   profile: ProfileDto | null;
@@ -183,7 +246,8 @@ export interface State {
   run: RunState;
   /** Engine a run would use (null: none configured). */
   engine: string | null;
-  sideTab: "props" | "style" | "data";
+  sideTab: "props" | "style" | "data" | "simulation";
+  simTab: SimTab;
   /** Incremented when a model is opened (the map view is rebuilt). */
   modelSeq: number;
 }
@@ -205,9 +269,9 @@ export const defaultStyle = (kind: StyledKind): LayerStyle => ({
   hiddenTypes: [],
 });
 
-function firstView(): Pick<State, "plotViews" | "plotView"> {
-  const v = newPlotView("View 1");
-  return { plotViews: [v], plotView: v.id };
+/** No time series or profile tab: they are opened as needed. */
+function noViews(): Pick<State, "plotViews" | "plotView" | "profileViews" | "profileView"> {
+  return { plotViews: [], plotView: 0, profileViews: [], profileView: 0 };
 }
 
 const initial: State = {
@@ -222,10 +286,10 @@ const initial: State = {
   tool: "select",
   styles: { node: defaultStyle("node"), link: defaultStyle("link"), subcatchment: defaultStyle("subcatchment") },
   labels: false,
-  ...firstView(),
+  ...noViews(),
   bottomMax: false,
   timeline: false,
-  bottomTab: "plot",
+  bottomTab: "table",
   profileNodes: [],
   profile: null,
   profileError: null,
@@ -243,6 +307,7 @@ const initial: State = {
   run: { running: false, progress: null, elapsed: 0, log: [], last: null },
   engine: null,
   sideTab: "props",
+  simTab: "run",
   modelSeq: 0,
 };
 
@@ -279,11 +344,12 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     playing: false,
     styles,
     labels: ui.labels ?? false,
-    ...firstView(),
+    ...noViews(),
     profileNodes: [],
     profile: null,
     profileError: null,
     profileStart: null,
+    bottomTab: state.bottomTab === "plot" || state.bottomTab === "profile" ? "table" : state.bottomTab,
     issues: null,
     fitExtent: state.fitExtent + 1,
     tool: "select",

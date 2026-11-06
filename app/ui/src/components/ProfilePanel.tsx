@@ -3,7 +3,17 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { esc, exportTable, savePng, saveSvg, ticks } from "../exporting";
 import { formatDateTime, periodMs } from "../format";
-import { getState, notify, setState, useStore } from "../store";
+import {
+  currentProfileView,
+  getState,
+  notify,
+  openProfileView,
+  setState,
+  showProfile,
+  updateProfileView,
+  useStore,
+  type ProfileView,
+} from "../store";
 import type { ObjRef, ProfileDto } from "../types";
 import { useSize } from "../useSize";
 
@@ -186,25 +196,33 @@ export function deleteProfile(name: string) {
   storeProfiles(savedProfiles().filter((p) => p.name !== name));
 }
 
+/** Opens a saved profile: in the profile tab shown if it is still empty, else in a new tab. */
 export async function loadProfile(name: string) {
   const saved = savedProfiles().find((p) => p.name === name);
   if (!saved) return;
   const refs = await Promise.all(saved.nodes.map((id) => api.findObject(id).catch(() => null)));
   const missing = saved.nodes.filter((_, i) => refs[i]?.kind !== "node");
   if (missing.length > 0) return notify(`Profile “${name}”: node${missing.length > 1 ? "s" : ""} ${missing.join(", ")} no longer in the model.`, true);
-  setState({ profileNodes: refs.map((r) => r!.index), profileStart: null, bottomTab: "profile" });
+  const nodes = refs.map((r) => r!.index);
+  const cur = currentProfileView();
+  if (cur && cur.nodes.length < 2) updateProfileView(cur.id, { nodes, name });
+  else openProfileView(nodes, name);
 }
 
-/** Profile tool: the first click picks the start node, the second draws the profile; Shift+click extends it. */
+/**
+ * Profile tool: the first click picks the start node, the second draws the profile in a new
+ * tab (or the profile tab shown, if still empty); Shift+click extends the profile shown.
+ */
 export function profileClick(hit: ObjRef | null, shift: boolean) {
   if (hit?.kind !== "node") return;
-  const { profileStart, profileNodes } = getState();
-  if (shift && profileStart === null && profileNodes.length >= 2) {
-    if (profileNodes[profileNodes.length - 1] !== hit.index) setState({ profileNodes: [...profileNodes, hit.index], bottomTab: "profile" });
+  const { profileStart } = getState();
+  const cur = currentProfileView();
+  if (shift && profileStart === null && cur && cur.nodes.length >= 2) {
+    if (cur.nodes[cur.nodes.length - 1] !== hit.index) updateProfileView(cur.id, { nodes: [...cur.nodes, hit.index] });
   } else if (profileStart === null || profileStart === hit.index) {
     setState({ profileStart: hit.index });
   } else {
-    setState({ profileNodes: [profileStart, hit.index], profileStart: null, bottomTab: "profile" });
+    showProfile([profileStart, hit.index]);
   }
 }
 
@@ -231,16 +249,17 @@ export function useProfile() {
   }, [nodes, revision, resultsPath, cacheState]);
 }
 
-/** Sets the profile to go through the selected nodes (in selection order). */
+/** Draws the profile through the selected nodes (in selection order), in the profile tab shown or a new one. */
 export function profileFromSelection() {
   const nodes = getState()
     .selection.filter((o) => o.kind === "node")
     .map((o) => o.index);
   if (nodes.length < 2) return notify("Select two nodes or more (Shift+click), in order along the profile.", true);
-  setState({ profileNodes: nodes, profileStart: null, bottomTab: "profile" });
+  showProfile(nodes, true);
 }
 
-export function ProfilePanel() {
+/** A profile tab. */
+export function ProfilePanel({ view }: { view: ProfileView }) {
   const nodes = useStore((s) => s.profileNodes);
   const model = useStore((s) => s.model);
   const period = useStore((s) => s.period);
@@ -251,8 +270,6 @@ export function ProfilePanel() {
   const profileError = useStore((s) => s.profileError);
   const [headsError, setError] = useState<string | null>(null);
   const error = profileError ?? headsError;
-  const saved = useStore(savedProfiles);
-  const [savedName, setSavedName] = useState("");
   const [newName, setNewName] = useState("");
   const [heads, setHeads] = useState<Float32Array | null>(null);
   const [headsB, setHeadsB] = useState<Float32Array | null>(null);
@@ -309,7 +326,7 @@ export function ProfilePanel() {
     const name = (newName.trim() || title).trim();
     if (!dto || !name) return;
     saveProfile(name);
-    setSavedName(name);
+    updateProfileView(view.id, { name });
     setNewName("");
   };
   const exportData = () => {
@@ -356,21 +373,6 @@ export function ProfilePanel() {
             <button onClick={selectPath}>Select on map</button>
           </>
         )}
-        <select
-          value={saved.some((p) => p.name === savedName) ? savedName : ""}
-          title="Profiles saved in the project"
-          onChange={(e) => {
-            setSavedName(e.target.value);
-            if (e.target.value) loadProfile(e.target.value);
-          }}
-        >
-          <option value="">{saved.length ? "Saved profiles…" : "No saved profiles"}</option>
-          {saved.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
-            </option>
-          ))}
-        </select>
         <input
           className="narrow-name"
           disabled={!dto}
@@ -379,18 +381,8 @@ export function ProfilePanel() {
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && save()}
         />
-        <button disabled={!dto} onClick={save} title="Save this profile in the project (under the name typed, or its start → end)">
+        <button disabled={!dto} onClick={save} title="Save this profile in the project (under the name typed, or its start → end), to reopen it later from the + menu">
           Save
-        </button>
-        <button
-          disabled={!saved.some((p) => p.name === savedName)}
-          title="Delete the chosen saved profile"
-          onClick={() => {
-            deleteProfile(savedName);
-            setSavedName("");
-          }}
-        >
-          Delete
         </button>
         {compare && (
           <label>

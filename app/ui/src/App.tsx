@@ -2,17 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { onCacheProgress, onOpenFile, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
 import { ClimateDialog } from "./components/ClimateDialog";
-import { ComparePanel } from "./components/ComparePanel";
 import { CrsDialog } from "./components/CrsDialog";
-import { EventsPanel } from "./components/EventsPanel";
-import { IssuesPanel } from "./components/IssuesPanel";
-import { ProfilePanel, useProfile } from "./components/ProfilePanel";
+import { BottomPanel } from "./components/BottomPanel";
+import { useProfile } from "./components/ProfilePanel";
 import { RunsPanel } from "./components/RunsPanel";
 import { SectionsDialog } from "./components/SectionsDialog";
-import { TablePanel } from "./components/TablePanel";
 import { DataPanel } from "./components/DataPanel";
 import { DeleteDialog, NewModelDialog, OptionsDialog, refreshEngine } from "./components/Dialogs";
-import { PlotPanel } from "./components/PlotPanel";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ReportPanel } from "./components/ReportPanel";
 import { onFinished, onOutput, onProgress, RunPanel, startRun } from "./components/RunPanel";
@@ -23,7 +19,7 @@ import { Timeline } from "./components/Timeline";
 import { openModel, Toolbar } from "./components/Toolbar";
 import { confirmDiscard, deleteObjects, redo, saveModel, undo } from "./edit";
 import { MapView, mapTools } from "./map/MapView";
-import { getState, setState, useStore, type BottomTab } from "./store";
+import { getState, setState, useStore, type SimTab } from "./store";
 
 /** Drag handle that resizes a panel. */
 function Splitter({ vertical, onDrag }: { vertical: boolean; onDrag: (delta: number) => void }) {
@@ -166,68 +162,31 @@ function useEvents() {
   }, [styles, labels]);
 }
 
-type BottomGroup = "model" | "simulation" | "results";
-
-/** The bottom tabs, grouped by step of the work: edit and check the model, run it, analyse the results. */
-const BOTTOM_GROUPS: { id: BottomGroup; label: string; title: string; tabs: [BottomTab, string][] }[] = [
-  {
-    id: "model",
-    label: "Model",
-    title: "Edit and check the model data",
-    tabs: [
-      ["table", "Table"],
-      ["issues", "Issues"],
-    ],
-  },
-  {
-    id: "simulation",
-    label: "Simulation",
-    title: "Run the model, previous runs and their reports",
-    tabs: [
-      ["run", "Console"],
-      ["runs", "Runs"],
-      ["report", "Report"],
-    ],
-  },
-  {
-    id: "results",
-    label: "Results",
-    title: "Analyse the results",
-    tabs: [
-      ["plot", "Time series"],
-      ["profile", "Profile"],
-      ["events", "Events"],
-      ["compare", "Compare"],
-    ],
-  },
+const SIM_TABS: [SimTab, string, string][] = [
+  ["run", "Console", "Run the model and follow its output"],
+  ["runs", "Runs", "Previous runs: load or compare their results"],
+  ["report", "Report", "Report of the loaded results"],
 ];
 
-const groupOf = (tab: BottomTab) => BOTTOM_GROUPS.find((g) => g.tabs.some(([t]) => t === tab))!;
-
-/** Last tab shown in each group, reopened when going back to the group. */
-const lastTab: Record<BottomGroup, BottomTab> = { model: "table", simulation: "run", results: "plot" };
-
-function BottomPanel({ tab }: { tab: BottomTab }) {
-  switch (tab) {
-    case "plot":
-      return <PlotPanel />;
-    case "profile":
-      return <ProfilePanel />;
-    case "events":
-      return <EventsPanel />;
-    case "compare":
-      return <ComparePanel />;
-    case "runs":
-      return <RunsPanel />;
-    case "table":
-      return <TablePanel />;
-    case "issues":
-      return <IssuesPanel />;
-    case "report":
-      return <ReportPanel />;
-    case "run":
-      return <RunPanel />;
-  }
+/** Side panel tab: run the model, previous runs and their reports. */
+function SimulationPanel() {
+  const simTab = useStore((s) => s.simTab);
+  const running = useStore((s) => s.run.running);
+  const reportIssues = useStore((s) => (s.model?.report ? s.model.report.errors.length : 0));
+  return (
+    <div className="sim-panel">
+      <div className="sub-tabs">
+        {SIM_TABS.map(([t, label, title]) => (
+          <button key={t} className={simTab === t ? "active" : ""} title={title} onClick={() => setState({ simTab: t })}>
+            {label}
+            {t === "run" && running && <span className="badge warn">…</span>}
+            {t === "report" && reportIssues > 0 && <span className="badge bad">{reportIssues}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="sim-body">{simTab === "run" ? <RunPanel /> : simTab === "runs" ? <RunsPanel /> : <ReportPanel />}</div>
+    </div>
+  );
 }
 
 export function App() {
@@ -235,15 +194,13 @@ export function App() {
   useProfile();
   const crsDialog = useStore((s) => s.crsDialog);
   const dialog = useStore((s) => s.dialog);
-  const bottomTab = useStore((s) => s.bottomTab);
   const bottomMax = useStore((s) => s.bottomMax);
   const sideTab = useStore((s) => s.sideTab);
   const running = useStore((s) => s.run.running);
   const reportIssues = useStore((s) => (s.model?.report ? s.model.report.errors.length : 0));
-  const modelErrors = useStore((s) => s.issues?.filter((i) => i.severity === "error").length ?? 0);
-  const comparing = useStore((s) => s.model?.compare !== null && s.model?.compare !== undefined);
   const [sideW, setSideW] = useState(360);
-  const [bottomH, setBottomH] = useState(260);
+  // Null: 40 % of the centre (60 % for the map) until dragged.
+  const [bottomH, setBottomH] = useState<number | null>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // From the current height (also when maximized), up to hiding the map.
@@ -256,26 +213,12 @@ export function App() {
     if (getState().bottomMax) setState({ bottomMax: false });
     setBottomH(Math.max(80, Math.min(max, b.offsetHeight - d)));
   };
-  const group = groupOf(bottomTab);
-  lastTab[group.id] = bottomTab;
-  const badge = (t: BottomTab) =>
-    t === "issues" && modelErrors > 0 ? (
-      <span key={t} className="badge bad">
-        {modelErrors}
-      </span>
-    ) : t === "compare" && comparing ? (
-      <span key={t} className="badge">
-        B
-      </span>
-    ) : t === "report" && reportIssues > 0 ? (
-      <span key={t} className="badge bad">
-        {reportIssues}
-      </span>
-    ) : t === "run" && running ? (
-      <span key={t} className="badge warn">
-        …
-      </span>
-    ) : null;
+  const sideTabs: [typeof sideTab, string][] = [
+    ["props", "Properties"],
+    ["data", "Data"],
+    ["style", "Map style"],
+    ["simulation", "Simulation"],
+  ];
 
   return (
     <div className="app">
@@ -285,56 +228,31 @@ export function App() {
           <MapView />
           <Timeline />
           <Splitter vertical={false} onDrag={dragBottom} />
-          <div ref={bottomRef} className="bottom" style={{ height: bottomMax ? undefined : bottomH }}>
-            <div className="tabs">
-              <div className="tab-groups">
-                {BOTTOM_GROUPS.map((g) => (
-                  <button
-                    key={g.id}
-                    className={group.id === g.id ? "active" : ""}
-                    title={g.title}
-                    onClick={() => setState({ bottomTab: lastTab[g.id] })}
-                  >
-                    {g.label}
-                    {g.tabs.map(([t]) => group.id !== g.id && badge(t))}
-                  </button>
-                ))}
-              </div>
-              {group.tabs.map(([t, label]) => (
-                <button key={t} className={bottomTab === t ? "active" : ""} onClick={() => setState({ bottomTab: t })}>
-                  {label}
-                  {badge(t)}
-                </button>
-              ))}
-              <span className="grow" />
-              <button
-                className="tabs-tool"
-                title={bottomMax ? "Show the map again" : "Hide the map: the panel fills the window (more room for the graphs)"}
-                onClick={() => setState({ bottomMax: !bottomMax })}
-              >
-                {bottomMax ? "▾ Restore" : "▴ Maximize"}
-              </button>
-            </div>
-            <div className="tab-body">
-              <BottomPanel tab={bottomTab} />
-            </div>
+          <div ref={bottomRef} className="bottom" style={{ height: bottomMax ? undefined : (bottomH ?? "40%") }}>
+            <BottomPanel />
           </div>
         </div>
         <Splitter vertical onDrag={(d) => setSideW((w) => Math.max(240, Math.min(760, w - d)))} />
         <div className="sidebar" style={{ width: sideW }}>
           <div className="tabs">
-            <button className={sideTab === "props" ? "active" : ""} onClick={() => setState({ sideTab: "props" })}>
-              Properties
-            </button>
-            <button className={sideTab === "data" ? "active" : ""} onClick={() => setState({ sideTab: "data" })}>
-              Data
-            </button>
-            <button className={sideTab === "style" ? "active" : ""} onClick={() => setState({ sideTab: "style" })}>
-              Map style
-            </button>
+            {sideTabs.map(([t, label]) => (
+              <button key={t} className={sideTab === t ? "active" : ""} onClick={() => setState({ sideTab: t })}>
+                {label}
+                {t === "simulation" && sideTab !== t && running && <span className="badge warn">…</span>}
+                {t === "simulation" && sideTab !== t && !running && reportIssues > 0 && <span className="badge bad">{reportIssues}</span>}
+              </button>
+            ))}
           </div>
           <div className="tab-body">
-            {sideTab === "props" ? <PropertiesPanel /> : sideTab === "data" ? <DataPanel /> : <StylePanel />}
+            {sideTab === "props" ? (
+              <PropertiesPanel />
+            ) : sideTab === "data" ? (
+              <DataPanel />
+            ) : sideTab === "style" ? (
+              <StylePanel />
+            ) : (
+              <SimulationPanel />
+            )}
           </div>
         </div>
       </div>

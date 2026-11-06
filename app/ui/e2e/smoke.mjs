@@ -232,7 +232,7 @@ if (hasResults) {
 
 if (await S(() => !!window.swmmStudio.getState().model.report)) {
   await step("report", async () => {
-    await S(() => window.swmmStudio.setState({ bottomTab: "report" }));
+    await S(() => window.swmmStudio.setState({ sideTab: "simulation", simTab: "report" }));
     await page.waitForSelector(".report-panel", { timeout: 5000 });
     const blocks = await page.$$eval(".summary-item", (els) => els.length);
     // Open the first table block.
