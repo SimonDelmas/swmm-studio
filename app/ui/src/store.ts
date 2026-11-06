@@ -170,6 +170,8 @@ export interface State {
   /** Incremented to ask the map to zoom to the model extent / to the selection. */
   fitExtent: number;
   fitSelection: number;
+  /** Incremented to ask the map to pan (without zooming) to the selection when it is out of view. */
+  panSelection: number;
   message: { text: string; error: boolean } | null;
   busy: string | null;
   crsDialog: boolean;
@@ -231,6 +233,7 @@ const initial: State = {
   issues: null,
   fitExtent: 0,
   fitSelection: 0,
+  panSelection: 0,
   message: null,
   busy: null,
   crsDialog: false,

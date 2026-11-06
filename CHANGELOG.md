@@ -13,6 +13,9 @@ All notable changes to SWMM Studio are recorded here. The format follows
 - One symbol per node type on the map (junction: circle, outfall: triangle, divider: diamond,
   storage: square) and, mid-link, per link type (pump: arrow, orifice: bar, weir: bow tie, outlet:
   chevron, pointing downstream); the legend uses the same symbols.
+- Profile: click a conduit or a node in the profile to select it; the map highlights it and pans
+  to it when it is out of view (Ctrl+click adds to the selection, double-click zooms to it). The
+  selection is highlighted in the profile too.
 
 ### Changed
 

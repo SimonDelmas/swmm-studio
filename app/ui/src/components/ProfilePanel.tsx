@@ -9,6 +9,17 @@ import { useSize } from "../useSize";
 
 const fin = (v: number | null | undefined): v is number => v !== null && v !== undefined && Number.isFinite(v);
 
+/** Objects drawn highlighted in the panel, which also makes conduits and nodes clickable (exports leave it out). */
+export interface Selected {
+  nodes: Set<number>;
+  links: Set<number>;
+}
+
+// The map highlights the selection in yellow (255, 200, 0): darker here, on white.
+const SEL_STROKE = "#e0a000";
+const SEL_FILL = "rgba(255,200,0,0.3)";
+const SEL_HALO = "#ffe58a";
+
 /** The profile as an SVG document: ground, conduits, node walls, HGL now and its maximum. */
 export function profileSvg(
   p: ProfileDto,
@@ -16,8 +27,9 @@ export function profileSvg(
   headsB: Float32Array | null,
   W: number,
   H: number,
-  opts: { title?: string; unit: string },
+  opts: { title?: string; unit: string; selected?: Selected },
 ): string {
+  const sel = opts.selected;
   // Legend in the top margin, node names above the ground.
   const m = { l: 60, r: 14, t: (opts.title ? 24 : 4) + 20, b: 34 };
   const pw = Math.max(10, W - m.l - m.r);
@@ -70,18 +82,24 @@ export function profileSvg(
     return poly + (line ? `<path d="${line}" fill="none" stroke="${stroke}" stroke-width="1.6"${dash ? ` stroke-dasharray="${dash}"` : ""}/>` : "");
   };
   if (heads) out.push(water(heads, "rgba(80,150,230,0.35)", "#1f6fd1", ""));
-  // Conduits.
+  // Conduits. In the panel each one catches clicks: by an invisible fill, or a wide invisible line without a height.
   for (const l of p.links) {
     if (!fin(l.invert_start) || !fin(l.invert_end)) continue;
     const a = `${f(X(l.start))},${f(Y(l.invert_start))}`;
     const b = `${f(X(l.end))},${f(Y(l.invert_end))}`;
+    const on = sel?.links.has(l.index) ?? false;
+    const look = `stroke="${on ? SEL_STROKE : "#555"}" stroke-width="${on ? 2.5 : 1}"`;
+    let shape: string;
     if (fin(l.height)) {
       const c = `${f(X(l.end))},${f(Y(l.invert_end + l.height))}`;
       const d = `${f(X(l.start))},${f(Y(l.invert_start + l.height))}`;
-      out.push(`<polygon points="${a} ${b} ${c} ${d}" fill="none" stroke="#555" stroke-width="1"/>`);
+      const fill = on ? `fill="${SEL_FILL}"` : sel ? `fill="#fff" fill-opacity="0"` : `fill="none"`;
+      shape = `<polygon class="pf-shape" points="${a} ${b} ${c} ${d}" ${fill} ${look}/>`;
     } else {
-      out.push(`<polyline points="${a} ${b}" fill="none" stroke="#555" stroke-dasharray="2 2"/>`);
+      shape = `<polyline class="pf-shape" points="${a} ${b}" fill="none" ${look} stroke-dasharray="${on ? "6 3" : "2 2"}"/>`;
+      if (sel) shape = `<polyline points="${a} ${b}" fill="none" stroke="#fff" stroke-opacity="0" stroke-width="10"/>${shape}`;
     }
+    out.push(sel ? `<g data-link="${l.index}" class="pf-pick"><title>${esc(l.id)}</title>${shape}</g>` : shape);
   }
   // Max HGL, run B HGL.
   const maxLine = p.nodes
@@ -98,15 +116,22 @@ export function profileSvg(
   p.nodes.forEach((n, i) => {
     const px = X(n.station);
     const x = f(px);
-    if (fin(n.invert) && fin(n.rim)) out.push(`<line x1="${x}" x2="${x}" y1="${f(Y(n.invert))}" y2="${f(Y(n.rim))}" stroke="#999"/>`);
+    const on = sel?.nodes.has(n.index) ?? false;
+    if (fin(n.invert) && fin(n.rim)) {
+      const ys = `y1="${f(Y(n.invert))}" y2="${f(Y(n.rim))}"`;
+      const wall = `<line class="pf-shape" x1="${x}" x2="${x}" ${ys} stroke="${on ? SEL_STROKE : "#999"}" stroke-width="${on ? 3 : 1}"/>`;
+      const hit = `<line x1="${x}" x2="${x}" ${ys} stroke="#fff" stroke-opacity="0" stroke-width="9"/>`;
+      out.push(sel ? `<g data-node="${n.index}" class="pf-pick"><title>${esc(n.id)}</title>${hit}${wall}</g>` : wall);
+    }
     const w = 6 * n.id.length + 8;
     const isLast = i === p.nodes.length - 1;
-    if (px - lastX < w && !isLast) return;
+    // A selected node always gets its name.
+    if (px - lastX < w && !isLast && !on) return;
     const top = Math.max(...[n.rim, n.invert, p.max_head[i], heads?.[i]].filter(fin));
     const y = Math.max(m.t + 10, Y(Number.isFinite(top) ? top : lo) - 5);
     const anchor = i === 0 ? "start" : isLast ? "end" : "middle";
     out.push(
-      `<g data-node="${n.index}" style="cursor:pointer"><text x="${x}" y="${f(y)}" text-anchor="${anchor}" font-size="10" fill="#222" paint-order="stroke" stroke="#fff" stroke-width="3">${esc(n.id)}</text></g>`,
+      `<g data-node="${n.index}" style="cursor:pointer"><text x="${x}" y="${f(y)}" text-anchor="${anchor}" font-size="10" fill="#222"${on ? ` font-weight="bold"` : ""} paint-order="stroke" stroke="${on ? SEL_HALO : "#fff"}" stroke-width="3">${esc(n.id)}</text></g>`,
     );
     lastX = px;
   });
@@ -222,6 +247,7 @@ export function ProfilePanel() {
   const results = model?.results ?? null;
   const compare = model?.compare ?? null;
   const dto = useStore((s) => s.profile);
+  const selection = useStore((s) => s.selection);
   const profileError = useStore((s) => s.profileError);
   const [headsError, setError] = useState<string | null>(null);
   const error = profileError ?? headsError;
@@ -269,7 +295,11 @@ export function ProfilePanel() {
   if (!model) return <div className="panel-empty">Open a model first.</div>;
   const title = dto ? `${dto.nodes[0]?.id} → ${dto.nodes[dto.nodes.length - 1]?.id}` : "";
   const when = results ? formatDateTime(periodMs(results, period)) : "";
-  const svg = dto ? profileSvg(dto, heads, headsB, size.w, Math.max(120, size.h - 4), { unit }) : "";
+  const selected: Selected = {
+    nodes: new Set(selection.filter((o) => o.kind === "node").map((o) => o.index)),
+    links: new Set(selection.filter((o) => o.kind === "link").map((o) => o.index)),
+  };
+  const svg = dto ? profileSvg(dto, heads, headsB, size.w, Math.max(120, size.h - 4), { unit, selected }) : "";
   const selectPath = () => {
     if (!dto) return;
     const sel: ObjRef[] = [...dto.links.map((l) => ({ kind: "link" as const, index: l.index })), ...dto.nodes.map((n) => ({ kind: "node" as const, index: n.index }))];
@@ -287,9 +317,30 @@ export function ProfilePanel() {
     const rows = dto.nodes.map((n, i) => [n.id, n.station, n.invert, n.rim, heads?.[i] ?? null, dto.max_head[i]]);
     exportTable("profile", "Profile", ["Node", `Distance (${unit})`, `Invert (${unit})`, `Ground (${unit})`, `Head at ${when} (${unit})`, `Max head (${unit})`], rows);
   };
+  /** The node or conduit under the pointer. */
+  const hitOf = (e: React.MouseEvent): ObjRef | null => {
+    const g = (e.target as Element).closest("[data-node], [data-link]");
+    if (!g) return null;
+    const node = g.getAttribute("data-node");
+    return node !== null ? { kind: "node", index: Number(node) } : { kind: "link", index: Number(g.getAttribute("data-link")) };
+  };
+  // Click: select it and show it on the map (panned to when out of view); Ctrl/Shift+click: add or remove it.
   const onClick = (e: React.MouseEvent) => {
-    const g = (e.target as Element).closest("[data-node]");
-    if (g) setState({ selection: [{ kind: "node", index: Number(g.getAttribute("data-node")) }] });
+    const hit = hitOf(e);
+    const st = getState();
+    if (!hit) {
+      if (!e.ctrlKey && !e.shiftKey && !e.metaKey) setState({ selection: [] });
+      return;
+    }
+    const same = (o: ObjRef) => o.kind === hit.kind && o.index === hit.index;
+    let next: ObjRef[] = [hit];
+    if (e.ctrlKey || e.shiftKey || e.metaKey) next = st.selection.some(same) ? st.selection.filter((o) => !same(o)) : [...st.selection, hit];
+    setState({ selection: next, panSelection: st.panSelection + 1 });
+  };
+  // Double-click: zoom the map to it.
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const hit = hitOf(e);
+    if (hit) setState({ selection: [hit], fitSelection: getState().fitSelection + 1 });
   };
   return (
     <div className="plot-panel">
@@ -368,7 +419,14 @@ export function ProfilePanel() {
           in order and click “From selected nodes”. The profile follows the shortest path; the water line follows the timeline.
         </div>
       )}
-      <div ref={sizeRef} className="plot-area" onClick={onClick} dangerouslySetInnerHTML={{ __html: svg }} />
+      <div
+        ref={sizeRef}
+        className="plot-area profile-area"
+        title={dto ? "Click a conduit or a node to select it on the map (Ctrl+click: add to the selection, double-click: zoom to it)" : undefined}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
     </div>
   );
 }

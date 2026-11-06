@@ -103,7 +103,8 @@ Analysis (bottom tabs; every table has an **Export** button, CSV or Excel):
   run B** overlays the same objects from the compared run (dashed). **Data**, **SVG**, **PNG** export.
 - **Profile**: select two nodes or more (Shift+click, in order) and click *From selected nodes*: the
   shortest path, with ground, conduits, the water line at the current time (it moves with the
-  timeline), the maximum water line of the run and the water line of run B. SVG / PNG / data export.
+  timeline), the maximum water line of the run and the water line of run B. Click a conduit or a
+  node in the profile to select it and find it on the map. SVG / PNG / data export.
 - **Events**: events of a variable above a threshold, closer than a minimum inter-event time merged
   (e.g. outfall inflow above 0, 6 h apart): count, events per year, volume, duration and peak per
   object, a per-year table and the list of events (click one to jump to it on the timeline).

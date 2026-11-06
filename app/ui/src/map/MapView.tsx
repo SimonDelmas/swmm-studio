@@ -43,6 +43,8 @@ interface Viewer {
   /** Size of a screen pixel in spatial-index units (Web Mercator metres or model units). */
   unitsPerPixel(): number;
   fit(b: [number, number, number, number]): void;
+  /** Pans to a point (display coordinates), keeping the zoom. */
+  center(p: Pt): void;
   /** Visible extent in display coordinates. */
   extent(): [number, number, number, number];
   /** Double-click zoom gets in the way while drawing. */
@@ -122,6 +124,7 @@ function createMapViewer(container: HTMLDivElement, onView: () => void): Viewer 
         ],
         { padding: 40, duration: 0, maxZoom: 19 },
       ),
+    center: (p) => map.easeTo({ center: p, duration: 300 }),
     extent: () => {
       const b = map.getBounds();
       return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
@@ -168,6 +171,11 @@ function createDeckViewer(container: HTMLDivElement, onView: () => void): Viewer
       const sy = Math.max(b[3] - b[1], 1e-6);
       const zoom = Math.log2(Math.min((w - 80) / sx, (h - 80) / sy));
       viewState = { ...viewState, target: [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2, 0], zoom };
+      deck.setProps({ initialViewState: { ...viewState } });
+      onView();
+    },
+    center: (p) => {
+      viewState = { ...viewState, target: [p[0], p[1], 0] };
       deck.setProps({ initialViewState: { ...viewState } });
       onView();
     },
@@ -303,6 +311,7 @@ export function MapView() {
   const ids = useStore((s) => s.ids);
   const fitExtent = useStore((s) => s.fitExtent);
   const fitSelection = useStore((s) => s.fitSelection);
+  const panSelection = useStore((s) => s.panSelection);
   const profile = useStore((s) => s.profile);
   const profileStart = useStore((s) => s.profileStart);
   const container = useRef<HTMLDivElement>(null);
@@ -384,6 +393,19 @@ export function MapView() {
     const b = selectionBounds(st.geometry, st.selection);
     if (b) viewer.current.fit(b);
   }, [fitSelection]);
+
+  // Pans to the selection when it is not entirely in view (zooms out only if it does not fit).
+  useEffect(() => {
+    const st = getState();
+    const v = viewer.current;
+    if (!panSelection || !st.geometry || !v) return;
+    const b = selectionBounds(st.geometry, st.selection);
+    if (!b) return;
+    const e = v.extent();
+    if (b[0] >= e[0] && b[1] >= e[1] && b[2] <= e[2] && b[3] <= e[3]) return;
+    if (b[2] - b[0] > e[2] - e[0] || b[3] - b[1] > e[3] - e[1]) return v.fit(b);
+    v.center([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
+  }, [panSelection]);
 
   // Remember the view in the project (debounced).
   useEffect(() => {

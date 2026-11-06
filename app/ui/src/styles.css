@@ -407,6 +407,14 @@ label {
   min-height: 0;
   overflow: hidden;
 }
+/* Profile: conduits and nodes can be clicked. */
+.profile-area .pf-pick {
+  cursor: pointer;
+}
+.profile-area .pf-pick:hover .pf-shape {
+  stroke: #e0a000;
+  stroke-width: 2.5;
+}
 /* Time series: tabs of views, then the graphs of the open view stacked. */
 .plot-views {
   display: flex;

@@ -112,6 +112,23 @@ await step("the path is highlighted on the map", async () => {
 await page.waitForTimeout(600);
 await shot("1-profile");
 
+await step("click a conduit then Ctrl+click a node in the profile: both selected", async () => {
+  const link = await S(() => window.swmmStudio.getState().profile.links[0].index);
+  const node = await S(() => window.swmmStudio.getState().profile.nodes[1].index);
+  await page.locator(`.plot-area [data-link="${link}"] .pf-shape`).click({ force: true });
+  await page.locator(`.plot-area [data-node="${node}"] .pf-shape`).first().click({ force: true, modifiers: ["Control"] });
+  const sel = await S(() => window.swmmStudio.getState().selection);
+  const want = JSON.stringify([
+    { kind: "link", index: link },
+    { kind: "node", index: node },
+  ]);
+  if (JSON.stringify(sel) !== want) fail(JSON.stringify(sel));
+  if ((await S(() => window.swmmStudio.getState().panSelection)) < 2) fail("map not asked to show the selection");
+  return sel;
+});
+await page.waitForTimeout(400);
+await shot("1b-profile-selection");
+
 const saved = await step("save the profile in the project", async () => {
   await page.locator(".plot-panel input.narrow-name").fill("Main line");
   await page.locator(".plot-panel button", { hasText: /^Save$/ }).click();
