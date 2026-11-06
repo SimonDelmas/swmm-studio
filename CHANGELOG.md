@@ -18,6 +18,11 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 - Map labels are off by default.
 
+### Security
+
+- MapLibre GL JS 6.16 (from 5.24), for an XSS sanitizer bypass in versions up to 6.4
+  (GHSA-jrc7-96c5-q579) that `npm ci` reported as critical.
+
 ## [0.1.0] - 2026-10-29
 
 First release: a Windows desktop app and a command-line tool to visualize, edit, simulate and

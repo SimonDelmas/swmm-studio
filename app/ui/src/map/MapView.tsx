@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import maplibreWorker from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { COORDINATE_SYSTEM, Deck, OrthographicView, type Layer } from "@deck.gl/core";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { IconLayer, LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
@@ -14,6 +15,9 @@ import { useEditTools, type EditTools } from "./useEditTools";
 import { useLayerValues } from "./useLayerValues";
 
 const EARTH = 40075016.686;
+
+// MapLibre looks for its worker next to its own module, which is not where Vite serves or bundles it.
+maplibregl.setWorkerUrl(maplibreWorker);
 
 /** Rendering measurements, read by the UI tests. */
 export const mapPerf = { steps: [] as { period: number; ms: number }[] };
