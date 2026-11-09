@@ -10,10 +10,13 @@ export interface DraggedSeries {
   label: string;
 }
 
-/** Where a dragged series can go: `data-drop-view` (a time series tab) and, inside it, `data-drop-graph`. */
+/**
+ * Where a dragged series can go: `data-drop-view` (a time series tab) and, inside it,
+ * `data-drop-graph` (a graph id, or `new` for a new graph).
+ */
 export interface DropTarget {
   view: number;
-  graph?: number;
+  graph?: number | "new";
 }
 
 type DropHandler = (s: DraggedSeries, t: DropTarget) => void;
@@ -30,7 +33,7 @@ function targetAt(x: number, y: number): { el: HTMLElement; t: DropTarget } | nu
   if (!el) return null;
   const view = Number(el.dataset.dropView);
   const g = el.dataset.dropGraph;
-  return { el, t: { view, graph: g !== undefined ? Number(g) : undefined } };
+  return { el, t: { view, graph: g === undefined ? undefined : g === "new" ? "new" : Number(g) } };
 }
 
 /**
@@ -73,10 +76,10 @@ export function startSeriesDrag(e: React.PointerEvent, item: DraggedSeries, clic
       if (drop) click();
       return;
     }
+    // Hit-test before leaving the drag state: drop zones shown only while dragging hide then.
+    const hit = drop ? targetAt(ev.clientX, ev.clientY) : null;
     ghost.remove();
     document.body.classList.remove("dragging-series");
-    if (!drop) return;
-    const hit = targetAt(ev.clientX, ev.clientY);
     if (hit) onDrop?.(item, hit.t);
   };
   const up = (ev: PointerEvent) => end(ev, true);

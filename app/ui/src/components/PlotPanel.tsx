@@ -645,6 +645,12 @@ export function PlotPanel({ view }: { view: PlotView }) {
         {view.graphs.map((g, i) => (
           <Graph key={g.id} view={view} graph={g} number={i + 1} removable={view.graphs.length > 1} />
         ))}
+        {/* Shown while a result is dragged (an empty last graph takes it already). */}
+        {view.graphs[view.graphs.length - 1].series.length > 0 && (
+          <div className="plot-new-graph" data-drop-view={view.id} data-drop-graph="new">
+            + Drop here for a new graph
+          </div>
+        )}
       </div>
     </div>
   );

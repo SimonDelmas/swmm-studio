@@ -406,6 +406,26 @@ label {
 .plot-graph.active {
   border-left-color: var(--accent);
 }
+/* Below the last graph, while a result is dragged: a drop there makes a new graph
+   (stuck to the bottom when the graphs scroll). */
+.plot-new-graph {
+  display: none;
+  position: sticky;
+  bottom: 4px;
+  z-index: 1;
+  background: var(--bg);
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  margin: 2px 8px 4px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+body.dragging-series .plot-new-graph {
+  display: flex;
+}
 .plot-graph-head {
   display: flex;
   align-items: center;
