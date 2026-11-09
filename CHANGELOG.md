@@ -19,6 +19,8 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 - Results: drag a result from the properties panel onto a graph (or a time series tab) to add
   it there.
+- An error in the interface shows its message and stack, with "Try again", "Save" (unsaved
+  changes), "Copy the error" and "Reload", instead of leaving the window empty.
 
 ### Changed
 

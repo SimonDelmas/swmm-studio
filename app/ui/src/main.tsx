@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { api } from "./api";
 import { applyCrs } from "./components/CrsDialog";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { startRun } from "./components/RunPanel";
 import { edit, redo, saveModel, tryEdit, undo } from "./edit";
 import { addToPlot, loadPlotView, savePlotView } from "./components/PlotPanel";
@@ -37,4 +38,9 @@ import "./styles.css";
   profileFromSelection,
 };
 
-createRoot(document.getElementById("root")!).render(<App />);
+// A render error shows its message (ErrorBoundary) instead of an empty window.
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+);

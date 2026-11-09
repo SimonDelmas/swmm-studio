@@ -42,6 +42,8 @@ function Splitter({ vertical, onDrag }: { vertical: boolean; onDrag: (delta: num
   );
 }
 
+let launchFileOpened = false;
+
 function useEvents() {
   useEffect(() => {
     const un = [
@@ -70,9 +72,13 @@ function useEvents() {
     const open = async (path: string) => {
       if (await confirmDiscard()) await openModel(path);
     };
-    api.launchFile().then((p) => {
-      if (p) void open(p);
-    });
+    // Once per page load: not again when the app is rendered anew after an error.
+    if (!launchFileOpened) {
+      launchFileOpened = true;
+      api.launchFile().then((p) => {
+        if (p) void open(p);
+      });
+    }
     const un = onOpenFile(open);
     return () => {
       un.then((f) => f());

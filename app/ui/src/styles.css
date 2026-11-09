@@ -369,6 +369,43 @@ label {
   color: var(--bad);
   background: color-mix(in srgb, var(--bad) 10%, transparent);
 }
+/* Render error caught by ErrorBoundary, in place of the app. */
+.crash {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px 32px;
+  color: var(--fg);
+}
+.crash h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--bad);
+}
+.crash p {
+  margin: 0;
+  max-width: 760px;
+}
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.crash-text {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  font: 12px/1.4 Consolas, monospace;
+  white-space: pre-wrap;
+  user-select: text;
+}
 .plot-panel {
   display: flex;
   flex-direction: column;
