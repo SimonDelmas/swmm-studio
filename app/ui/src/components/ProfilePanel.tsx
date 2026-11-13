@@ -109,7 +109,7 @@ export function profileSvg(
       shape = `<polyline class="pf-shape" points="${a} ${b}" fill="none" ${look} stroke-dasharray="${on ? "6 3" : "2 2"}"/>`;
       if (sel) shape = `<polyline points="${a} ${b}" fill="none" stroke="#fff" stroke-opacity="0" stroke-width="10"/>${shape}`;
     }
-    out.push(sel ? `<g data-link="${l.index}" class="pf-pick"><title>${esc(l.id)}</title>${shape}</g>` : shape);
+    out.push(sel ? `<g data-link="${l.index}" class="pf-pick">${shape}</g>` : shape);
   }
   // Max HGL, run B HGL.
   const maxLine = p.nodes
@@ -131,7 +131,7 @@ export function profileSvg(
       const ys = `y1="${f(Y(n.invert))}" y2="${f(Y(n.rim))}"`;
       const wall = `<line class="pf-shape" x1="${x}" x2="${x}" ${ys} stroke="${on ? SEL_STROKE : "#999"}" stroke-width="${on ? 3 : 1}"/>`;
       const hit = `<line x1="${x}" x2="${x}" ${ys} stroke="#fff" stroke-opacity="0" stroke-width="9"/>`;
-      out.push(sel ? `<g data-node="${n.index}" class="pf-pick"><title>${esc(n.id)}</title>${hit}${wall}</g>` : wall);
+      out.push(sel ? `<g data-node="${n.index}" class="pf-pick">${hit}${wall}</g>` : wall);
     }
     const w = 6 * n.id.length + 8;
     const isLast = i === p.nodes.length - 1;
@@ -160,6 +160,39 @@ export function profileSvg(
     out.push(`<text x="${lx + 22}" y="${ly + 4}" font-size="10">${t}</text>`);
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif">${out.join("")}</svg>`;
+}
+
+const ROUND = new Set(["CIRCULAR", "FORCE_MAIN", "FILLED_CIRCULAR"]);
+
+/** Geometry of a profile node or link, for the hover tooltip: a title, a subtitle and label / value rows. */
+export function profileInfo(p: ProfileDto, hit: ObjRef, unit: string): { title: string; sub: string; rows: [string, string][] } | null {
+  const v = (x: number | null | undefined, u = unit) => (fin(x) ? `${formatNumber(x)} ${u}` : "–");
+  if (hit.kind === "node") {
+    const n = p.nodes.find((n) => n.index === hit.index);
+    if (!n) return null;
+    return {
+      title: n.id,
+      sub: "Node",
+      rows: [
+        ["Rim", v(n.rim)],
+        ["Invert", v(n.invert)],
+        ["Depth", fin(n.rim) && fin(n.invert) ? v(n.rim - n.invert) : "–"],
+        ["Distance", v(n.station)],
+      ],
+    };
+  }
+  const l = p.links.find((l) => l.index === hit.index);
+  if (!l) return null;
+  const len = l.end - l.start;
+  const kind = l.kind[0].toUpperCase() + l.kind.slice(1);
+  const rows: [string, string][] = [];
+  if (l.kind === "conduit") rows.push(["Length", v(len)]);
+  if (fin(l.height)) rows.push([ROUND.has(l.shape) ? "Diameter" : "Height", v(l.height)]);
+  rows.push(["Invert", fin(l.invert_start) || fin(l.invert_end) ? `${v(l.invert_start)} → ${v(l.invert_end)}` : "–"]);
+  if (l.kind === "conduit" && len > 0 && fin(l.invert_start) && fin(l.invert_end)) {
+    rows.push(["Slope", `${formatNumber(((l.invert_start - l.invert_end) / len) * 100)} %`]);
+  }
+  return { title: l.id, sub: l.shape ? `${kind} · ${l.shape.toLowerCase().replace(/_/g, " ")}` : kind, rows };
 }
 
 /** A profile saved in the project: its control nodes, by ID (indices change with edits). */
@@ -275,6 +308,7 @@ export function ProfilePanel({ view }: { view: ProfileView }) {
   const [headsB, setHeadsB] = useState<Float32Array | null>(null);
   const [showB, setShowB] = useState(true);
   const [sizeRef, size] = useSize<HTMLDivElement>({ w: 800, h: 220 });
+  const [tip, setTip] = useState<{ x: number; y: number; hit: ObjRef } | null>(null);
   const unit = model && ["CFS", "GPM", "MGD"].includes(model.flow_units) ? "ft" : "m";
 
   // Heads at the current time (coalesced while playing).
@@ -354,6 +388,12 @@ export function ProfilePanel({ view }: { view: ProfileView }) {
     if (e.ctrlKey || e.shiftKey || e.metaKey) next = st.selection.some(same) ? st.selection.filter((o) => !same(o)) : [...st.selection, hit];
     setState({ selection: next, panSelection: st.panSelection + 1 });
   };
+  // Hover: the geometry of the node or conduit under the pointer.
+  const onMouseMove = (e: React.MouseEvent) => {
+    const hit = hitOf(e);
+    setTip(hit ? { x: e.clientX, y: e.clientY, hit } : null);
+  };
+  const info = tip && dto ? profileInfo(dto, tip.hit, unit) : null;
   // Double-click: zoom the map to it.
   const onDoubleClick = (e: React.MouseEvent) => {
     const hit = hitOf(e);
@@ -414,11 +454,39 @@ export function ProfilePanel({ view }: { view: ProfileView }) {
       <div
         ref={sizeRef}
         className="plot-area profile-area"
-        title={dto ? "Click a conduit or a node to select it on the map (Ctrl+click: add to the selection, double-click: zoom to it)" : undefined}
         onClick={onClick}
+        onMouseMove={onMouseMove}
+        onMouseLeave={() => setTip(null)}
         onDoubleClick={onDoubleClick}
         dangerouslySetInnerHTML={{ __html: svg }}
       />
+      {info && tip && (
+        <div
+          className="profile-tip"
+          style={{
+            // Beside the pointer, flipped to the other side near the window's right / bottom edge.
+            left: tip.x + 14 + 220 > window.innerWidth ? undefined : tip.x + 14,
+            right: tip.x + 14 + 220 > window.innerWidth ? window.innerWidth - tip.x + 14 : undefined,
+            top: tip.y + 14 + 140 > window.innerHeight ? undefined : tip.y + 14,
+            bottom: tip.y + 14 + 140 > window.innerHeight ? window.innerHeight - tip.y + 14 : undefined,
+          }}
+        >
+          <div className="profile-tip-title">
+            <b>{info.title}</b> <span className="muted">{info.sub}</span>
+          </div>
+          <table>
+            <tbody>
+              {info.rows.map(([k, val]) => (
+                <tr key={k}>
+                  <td className="muted">{k}</td>
+                  <td>{val}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="profile-tip-hint muted">Click: select · Ctrl+click: add · Double-click: zoom</div>
+        </div>
+      )}
     </div>
   );
 }

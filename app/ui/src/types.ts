@@ -438,6 +438,9 @@ export interface ProfileNode {
 export interface ProfileLink {
   index: number;
   id: string;
+  kind: LinkType;
+  /** Cross-section shape (e.g. "CIRCULAR"; empty without one). */
+  shape: string;
   start: number;
   end: number;
   invert_start: number | null;

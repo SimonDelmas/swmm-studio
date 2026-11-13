@@ -102,6 +102,9 @@ pub struct ProfileNode {
 pub struct ProfileLink {
     pub index: u32,
     pub id: String,
+    pub kind: LinkType,
+    /// Cross-section shape (e.g. `CIRCULAR`; empty without one).
+    pub shape: String,
     pub start: f64,
     pub end: f64,
     /// Bottom of the link at the start and end of its span on the profile.
@@ -131,6 +134,12 @@ impl Profile {
         let elevation_offsets = inp.option("LINK_OFFSETS").is_some_and(|o| o.eq_ignore_ascii_case("ELEVATION"));
         // Inlet / outlet offsets of every link (raw tokens, `None` when absent).
         let mut offsets: Vec<(Option<String>, Option<String>)> = vec![(None, None); net.links.len()];
+        let mut shapes = vec![String::new(); net.links.len()];
+        for l in inp.rows(&SectionKind::Xsections) {
+            if let (Some(i), Some(s)) = (l.token(0).and_then(|id| net.find(ObjKind::Link, id)), l.token(1)) {
+                shapes[i as usize] = s.to_ascii_uppercase();
+            }
+        }
         for (section, a, b) in [
             (SectionKind::Conduits, Some(5), Some(6)),
             (SectionKind::Orifices, Some(4), None),
@@ -176,6 +185,8 @@ impl Profile {
             links.push(ProfileLink {
                 index: li,
                 id: l.id.clone(),
+                kind: l.kind,
+                shape: shapes[li as usize].clone(),
                 start: station,
                 end: station + len,
                 invert_start: za,
@@ -245,6 +256,7 @@ CO CIRCULAR 0.8 0 0 0 1
         assert!(prof.nodes[3].rim.is_nan());
         assert_eq!((prof.links[0].invert_start, prof.links[0].invert_end, prof.links[0].height), (100.5, 99.0, 0.5));
         assert!((prof.links[2].invert_end - 97.2).abs() < 1e-9);
+        assert_eq!((prof.links[0].kind, prof.links[0].shape.as_str()), (LinkType::Conduit, "CIRCULAR"));
         assert!(shortest_path(&net, &lengths, id("A"), 99).is_none());
     }
 }

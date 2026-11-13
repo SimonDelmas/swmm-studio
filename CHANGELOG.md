@@ -8,6 +8,8 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Profile: hovering a conduit shows its length, diameter or height, inverts at both ends and
+  slope; hovering a node shows its rim, invert and depth.
 - Map style: show or hide each node and link type, whatever the layer is coloured by; hidden
   objects are not labelled or selectable on the map.
 - One symbol per node type on the map (junction: circle, outfall: triangle, divider: diamond,

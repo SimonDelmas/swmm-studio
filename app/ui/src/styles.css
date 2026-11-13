@@ -424,6 +424,38 @@ label {
   stroke: #e0a000;
   stroke-width: 2.5;
 }
+/* Profile: geometry of the node or conduit under the pointer. */
+.profile-tip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+}
+.profile-tip-title {
+  margin-bottom: 3px;
+}
+.profile-tip table {
+  border-collapse: collapse;
+}
+.profile-tip td {
+  padding: 0 10px 0 0;
+  white-space: nowrap;
+}
+.profile-tip td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.profile-tip-hint {
+  margin-top: 4px;
+  font-size: 11px;
+}
 /* Time series: the graphs of the view stacked. */
 .plot-graphs {
   flex: 1;

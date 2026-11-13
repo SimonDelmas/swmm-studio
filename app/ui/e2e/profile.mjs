@@ -131,6 +131,21 @@ await step("click a conduit then Ctrl+click a node in the profile: both selected
 await page.waitForTimeout(400);
 await shot("1b-profile-selection");
 
+await step("hover a conduit then a node: their geometry in a tooltip", async () => {
+  const link = await S(() => window.swmmStudio.getState().profile.links[0]);
+  const node = await S(() => window.swmmStudio.getState().profile.nodes[1]);
+  await page.locator(`.plot-area [data-link="${link.index}"] .pf-shape`).hover({ force: true });
+  const a = await page.locator(".profile-tip").innerText();
+  for (const w of [link.id, "Length", "Invert", "Slope"]) if (!a.includes(w)) fail(`conduit tooltip: ${a}`);
+  await shot("1c-profile-tip-link");
+  await page.locator(`.plot-area [data-node="${node.index}"] .pf-shape`).first().hover({ force: true });
+  const b = await page.locator(".profile-tip").innerText();
+  for (const w of [node.id, "Rim", "Invert", "Depth"]) if (!b.includes(w)) fail(`node tooltip: ${b}`);
+  await page.mouse.move(2, 2);
+  if (await page.locator(".profile-tip").count()) fail("tooltip left after the pointer left");
+  return [a, b];
+});
+
 const saved = await step("save the profile in the project", async () => {
   await page.locator(".plot-panel input.narrow-name").fill("Main line");
   await page.locator(".plot-panel button", { hasText: /^Save$/ }).click();
