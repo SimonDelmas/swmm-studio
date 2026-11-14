@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { api, errorText } from "../api";
+import { Linkified } from "../objects";
 import { notify, setState, useStore } from "../store";
 
 export function StatusBar() {
@@ -72,7 +73,7 @@ export function StatusBar() {
       {cache}
       {selection.length > 0 && <span>{selection.length} selected</span>}
       <span className="grow" />
-      {message && <span className={message.error ? "bad" : ""}>{message.text}</span>}
+      {message && <span className={message.error ? "bad" : ""}><Linkified text={message.text} /></span>}
     </div>
   );
 }

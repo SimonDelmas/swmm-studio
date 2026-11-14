@@ -3,6 +3,7 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { esc, exportTable, savePng, saveSvg, ticks } from "../exporting";
 import { formatDateTime, periodMs } from "../format";
+import { ObjLink } from "../objects";
 import {
   currentProfileView,
   getState,
@@ -408,7 +409,15 @@ export function ProfilePanel({ view }: { view: ProfileView }) {
         {dto && (
           <>
             <span>
-              <b>{title}</b> · {dto.links.length} links · {formatNumber(dto.nodes[dto.nodes.length - 1].station)} {unit}
+              <b title={title}>
+                {dto.nodes.length > 0 && (
+                  <>
+                    <ObjLink obj={{ kind: "node", index: dto.nodes[0].index }}>{dto.nodes[0].id}</ObjLink> →{" "}
+                    <ObjLink obj={{ kind: "node", index: dto.nodes[dto.nodes.length - 1].index }}>{dto.nodes[dto.nodes.length - 1].id}</ObjLink>
+                  </>
+                )}
+              </b>{" "}
+              · {dto.links.length} links · {formatNumber(dto.nodes[dto.nodes.length - 1].station)} {unit}
             </span>
             <button onClick={selectPath}>Select on map</button>
           </>

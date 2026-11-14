@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { defaultStyle, getState, notify, setState, styleUsable, useStore, type StyledKind } from "../store";
+import { Linkified } from "../objects";
 import type { RunFinished, RunProgress } from "../types";
 
 /** Starts a simulation of the model as it is now (unsaved edits included). */
@@ -115,7 +116,12 @@ export function RunPanel() {
         <div className={`run-result ${f.status}`}>
           <b>{f.status}</b> in {f.seconds.toFixed(1)} s{f.errors > 0 && `, ${f.errors} error(s)`}
           {f.warnings > 0 && `, ${f.warnings} warning(s)`}
-          {f.message && ` — ${f.message}`}
+          {f.message && (
+            <>
+              {" — "}
+              <Linkified text={f.message} />
+            </>
+          )}
           {f.run_dir && <span className="muted mono"> {f.run_dir}</span>}
           {f.errors + f.warnings > 0 && (
             <>
@@ -126,7 +132,7 @@ export function RunPanel() {
         </div>
       )}
       <pre className="run-log" ref={logRef}>
-        {(run.log.length ? run.log : f?.console ?? []).join("\n")}
+        {run.running ? run.log.join("\n") : <Linkified text={(run.log.length ? run.log : (f?.console ?? [])).join("\n")} />}
       </pre>
     </div>
   );

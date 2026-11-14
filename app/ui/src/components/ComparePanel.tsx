@@ -4,6 +4,7 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
 import { formatDateTime, periodMs } from "../format";
+import { ObjLink } from "../objects";
 import { getState, makeStat, notify, setState, useStore, type StatName } from "../store";
 import { addToPlot } from "./PlotPanel";
 import { setResultsInfo } from "./RunsPanel";
@@ -160,7 +161,7 @@ export function ComparePanel() {
       </div>
       {error && <div className="panel-error">{error}</div>}
       <VirtualTable
-        columns={[{ title: headers[0] }, ...headers.slice(1).map((t) => ({ title: t, numeric: true, format: num }))]}
+        columns={[{ title: headers[0], format: (v, i) => <ObjLink obj={{ kind, index: rows[i][5] as number }}>{v}</ObjLink> }, ...headers.slice(1).map((t) => ({ title: t, numeric: true, format: num }))]}
         rows={rows}
         onRow={pick}
         resetKey={values}

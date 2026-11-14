@@ -4,6 +4,7 @@ import "uplot/dist/uPlot.min.css";
 import { api, errorText } from "../api";
 import { chartSvg, exportTable, savePng, saveSvg } from "../exporting";
 import { bucketLabel, formatDateTime, periodAt, periodMs } from "../format";
+import { ObjLink } from "../objects";
 import {
   currentPlotView,
   getState,
@@ -483,7 +484,14 @@ function Graph({ view, graph, number, removable }: { view: PlotView; graph: Plot
         </button>
         {plot.map((p, i) => (
           <span key={p.key} className="chip" style={{ borderColor: COLORS[i % COLORS.length], borderStyle: p.b ? "dashed" : undefined }}>
-            {p.label}
+            {p.kind !== "system" && p.id && p.label.startsWith(p.id) ? (
+              <>
+                <ObjLink obj={{ kind: p.kind, index: p.index }}>{p.id}</ObjLink>
+                {p.label.slice(p.id.length)}
+              </>
+            ) : (
+              p.label
+            )}
             <button onClick={() => setSeries(plot.filter((q) => q.key !== p.key))}>×</button>
           </span>
         ))}

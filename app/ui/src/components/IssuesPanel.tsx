@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
+import { Linkified } from "../objects";
 import { getState, setState, useStore } from "../store";
 import type { Issue } from "../types";
 import { VirtualTable, type CellValue } from "./VirtualTable";
@@ -74,7 +75,7 @@ export function IssuesPanel() {
           columns={[
             { title: "", format: (v) => <span className={v === "error" ? "bad" : "warn"}>{v === "error" ? "●" : "▲"}</span> },
             { title: "Check" },
-            { title: "Message" },
+            { title: "Message", format: (v, k) => <Linkified text={String(v ?? "")} hint={shown[k].object} /> },
             { title: "Section" },
           ]}
           rows={rows}

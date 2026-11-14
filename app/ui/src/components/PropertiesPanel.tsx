@@ -3,6 +3,7 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { deleteObjects, edit, tryEdit } from "../edit";
 import { formatDateTime, periodMs } from "../format";
+import { NameLink, ObjLink, resolveName, useNameIndex } from "../objects";
 import { getState, setState, useStore } from "../store";
 import type { ElementKind, Field, ObjectInfo, ObjKind, ObjRef, PropertyGroup, RefKind } from "../types";
 import { addToPlot } from "./PlotPanel";
@@ -13,8 +14,17 @@ const KIND_LABEL: Record<ObjKind, string> = { node: "Nodes", link: "Links", subc
 /** Kinds whose names are offered in a list (the network kinds can be far too many). */
 const LISTED: RefKind[] = ["gage", "curve", "timeseries", "pattern", "hydrograph", "transect", "street", "snowpack"];
 
-function select(o: ObjRef) {
-  setState({ selection: [o] });
+/** Reference kinds naming objects of the network (an outlet is a node or a subcatchment). */
+const OBJECT_REF: Partial<Record<RefKind, ObjKind | null>> = { node: "node", link: "link", subcatchment: "subcatchment", gage: "gage", outlet: null };
+
+/** Selects the object a reference field names, when there is one. */
+function RefJump({ name, kind }: { name: string; kind: ObjKind | null | undefined }) {
+  const o = resolveName(useNameIndex(), name, kind);
+  return o ? (
+    <ObjLink obj={o} zoom={false} title={`Select ${name}`}>
+      ➜
+    </ObjLink>
+  ) : null;
 }
 
 /** Names of objects of a kind, reloaded when the model changes. */
@@ -126,7 +136,7 @@ function GroupEditor({ g, info }: { g: PropertyGroup; info: ObjectInfo }) {
                 <td title={f.key ?? undefined}>{f.name}</td>
                 <td>
                   {!g.editable || f.key === null ? (
-                    <span className="mono">{f.value}</span>
+                    <span className="mono">{f.type === "ref" && OBJECT_REF[f.to] !== undefined ? <NameLink name={f.value} kind={OBJECT_REF[f.to]} /> : f.value}</span>
                   ) : f.type === "id" ? (
                     <ValueInput
                       field={f}
@@ -140,7 +150,10 @@ function GroupEditor({ g, info }: { g: PropertyGroup; info: ObjectInfo }) {
                     />
                   )}
                 </td>
-                <td className="muted unit">{f.unit}</td>
+                <td className="muted unit">
+                  {f.unit}
+                  {g.editable && f.key !== null && f.type === "ref" && OBJECT_REF[f.to] !== undefined && f.value && <RefJump name={f.value} kind={OBJECT_REF[f.to]} />}
+                </td>
               </tr>
             );
           })}
@@ -314,9 +327,9 @@ function MultiSelection({ selection }: { selection: ObjRef[] }) {
       <h4>Objects</h4>
       <div className="id-list">
         {selection.slice(0, 300).map((o) => (
-          <a key={`${o.kind}${o.index}`} onClick={() => select(o)}>
+          <ObjLink key={`${o.kind}${o.index}`} obj={o} zoom={false}>
             {ids[o.kind]?.[o.index] ?? `${o.kind} #${o.index + 1}`}
-          </a>
+          </ObjLink>
         ))}
         {selection.length > 300 && <span className="muted">… {selection.length - 300} more</span>}
       </div>
@@ -413,7 +426,9 @@ export function PropertiesPanel() {
                 <tr key={i}>
                   <td>{c.role}</td>
                   <td>
-                    <a onClick={() => select(c.object)}>{c.id}</a>
+                    <ObjLink obj={c.object} zoom={false}>
+                      {c.id}
+                    </ObjLink>
                   </td>
                 </tr>
               ))}

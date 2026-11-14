@@ -3,8 +3,9 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
 import { formatDateTime, periodMs } from "../format";
+import { ObjLink } from "../objects";
 import { getState, setState, useStore } from "../store";
-import type { ElementKind, EventDto, EventTable } from "../types";
+import type { ElementKind, EventDto, EventTable, ObjKind } from "../types";
 import { addToPlot } from "./PlotPanel";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 
@@ -175,7 +176,9 @@ export function EventsPanel() {
             {r ? (
               <>
                 <div className="panel-toolbar">
-                  <b>{r.id}</b>
+                  <b>
+                    <ObjLink obj={{ kind: kind as ObjKind, index: r.index }}>{r.id}</ObjLink>
+                  </b>
                   <span className="muted">{r.count} events</span>
                   <span className="grow" />
                   <button onClick={() => addToPlot(kind as ElementKind, r.index, varIndex, b)}>Plot</button>
