@@ -10,10 +10,25 @@ export function indexOfId(list: string[] | undefined, id: string): number {
   return list ? list.findIndex((x) => x.toUpperCase() === up) : -1;
 }
 
+/** Loads in progress, by model and kinds: many components ask for the same names at once. */
+const loading = new Map<string, Promise<void>>();
+
 /** Loads the names of the kinds that are not in the store yet (`system` has none). */
-export async function ensureIds(kinds: readonly (ObjKind | ElementKind)[]): Promise<void> {
-  const missing = Array.from(new Set(kinds)).filter((k): k is ObjKind => k !== "system" && !getState().ids[k]);
-  if (missing.length === 0) return;
+export function ensureIds(kinds: readonly (ObjKind | ElementKind)[]): Promise<void> {
+  const missing = Array.from(new Set(kinds))
+    .filter((k): k is ObjKind => k !== "system" && !getState().ids[k])
+    .sort();
+  if (missing.length === 0) return Promise.resolve();
+  const key = `${getState().model?.path}|${missing.join(",")}`;
+  let load = loading.get(key);
+  if (!load) {
+    load = loadIds(missing).finally(() => loading.delete(key));
+    loading.set(key, load);
+  }
+  return load;
+}
+
+async function loadIds(missing: ObjKind[]): Promise<void> {
   // The names must be those of the model as it is when they arrive: after an edit they
   // are asked again, and those of another model are dropped.
   let lists: string[][] = [];

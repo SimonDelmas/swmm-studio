@@ -84,7 +84,7 @@ pub fn rebuild_cache(app: AppHandle, state: State<'_, AppState>) -> Res<ModelInf
     let path = state.read(|s| s.results_path().map(Path::to_path_buf).ok_or("no results loaded".into()))?;
     let info = state.write(|s| {
         // Reopen without the cache (its file must not be mapped), then build it again.
-        s.close_results();
+        s.release_results();
         let _ = std::fs::remove_file(cache::default_cache_path(&path));
         s.open_results(&path)?;
         Ok(s.info())

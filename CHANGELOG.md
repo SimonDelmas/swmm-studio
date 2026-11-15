@@ -72,7 +72,8 @@ All notable changes to SWMM Studio are recorded here. The format follows
   other than Paris (Ferro, Lisbon, Madrid, Rome, Bern, Oslo…) or given as the centre of an
   oblique projection is found too.
 - Object names shown as links are read from the names the app already keeps for the map
-  labels and the plots, instead of being asked again from the back-end after every edit.
+  labels and the plots, asked once however many links are on screen, instead of being asked
+  again from the back-end after every edit.
 
 - The model is shown as saved again when undo brings it back to the saved state, also after
   older edits have left the undo history.

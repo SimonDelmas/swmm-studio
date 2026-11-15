@@ -95,6 +95,8 @@ export function Timeline() {
   const [boxRef, box] = useSize<HTMLDivElement>({ w: 800, h: 0 });
   const width = Math.max(100, box.w - 16);
   const [sysVar, setSysVar] = useState(4); // runoff
+  // Kept here: the event threshold outlives the results it was typed for.
+  const [threshold, setThreshold] = useState("0");
   const { view, showAll, handlers } = useView(results, period, canvas);
   const overview = useOverview(results, sysVar, view, width, shown);
   usePlayback();
@@ -110,7 +112,7 @@ export function Timeline() {
       <div className="timeline-controls">
         <TransportControls results={results} />
         <span className="sep" />
-        <JumpButtons />
+        <JumpButtons threshold={threshold} setThreshold={setThreshold} />
         <span className="sep" />
         <button
           className={shown ? "active" : ""}

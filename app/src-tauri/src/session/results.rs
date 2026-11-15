@@ -102,8 +102,13 @@ impl Session {
 
     /// Unloads the results (their files are no longer open) and forgets them in the project.
     pub fn close_results(&mut self) {
-        self.results = None;
+        self.release_results();
         self.project.results.out = None;
+    }
+
+    /// Lets go of the files of the results, to open them again: the project still names them.
+    pub fn release_results(&mut self) {
+        self.results = None;
     }
 
     /// Unloads the compared results.

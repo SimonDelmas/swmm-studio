@@ -25,12 +25,15 @@ function build(names: string[][]): NameIndex {
 }
 
 /** The index of the names last seen in the store: built once for all the components that read it. */
-let built: { ids: State["ids"]; index: NameIndex | null } = { ids: {}, index: null };
+let built: { path: string; ids: State["ids"]; index: NameIndex | null } = { path: "", ids: {}, index: null };
 
-function indexOf(ids: State["ids"]): NameIndex | null {
-  if (built.ids !== ids) {
+function indexOf(path: string, ids: State["ids"]): NameIndex | null {
+  if (built.ids !== ids || built.path !== path) {
     const names = KINDS.map((k) => ids[k]);
-    built = { ids, index: names.every((n) => n !== undefined) ? build(names as string[][]) : null };
+    const complete = names.every((n) => n !== undefined);
+    // While names of this model are loaded again (after an edit), the previous index still serves.
+    const previous = built.path === path ? built.index : null;
+    built = { path, ids, index: complete ? build(names as string[][]) : previous };
   }
   return built.index;
 }
@@ -42,11 +45,13 @@ function indexOf(ids: State["ids"]): NameIndex | null {
 export function useNameIndex(): NameIndex | null {
   const ids = useStore((s) => s.ids);
   const model = useStore((s) => s.model?.path ?? null);
+  const revision = useStore((s) => s.model?.revision ?? 0);
   useEffect(() => {
-    // Without the names the text is shown as it is, without links.
+    // Without the names the text is shown as it is, without links; a load that failed
+    // is tried again after the next edit.
     if (model) ensureIds(KINDS).catch(() => {});
-  }, [model, ids]);
-  return model ? indexOf(ids) : null;
+  }, [model, ids, revision]);
+  return model ? indexOf(model, ids) : null;
 }
 
 /** The object a name refers to, preferring kind `prefer` when several share it. */

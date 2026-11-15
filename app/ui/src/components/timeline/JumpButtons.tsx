@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { api, errorText } from "../../api";
 import { focusVar, parseNumber } from "../../format";
 import { getState, notify, setState, useStore } from "../../store";
@@ -7,12 +6,11 @@ import { getState, notify, setState, useStore } from "../../store";
  * Jumps in time for the selected object, on the variable its layer is coloured by: to
  * its maximum, or to the next time it rises above a threshold.
  */
-export function JumpButtons() {
+export function JumpButtons({ threshold, setThreshold }: { threshold: string; setThreshold: (t: string) => void }) {
   const styles = useStore((s) => s.styles);
   const results = useStore((s) => s.model?.results ?? null);
   const period = useStore((s) => s.period);
   const selected = useStore((s) => s.selection[0]);
-  const [threshold, setThreshold] = useState("0");
   const target = selected ? focusVar({ styles }, selected) : null;
   const varLabel = target && results ? results.variables[target.kind][target.var] : null;
 
