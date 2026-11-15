@@ -114,7 +114,7 @@ impl FlowUnits {
 }
 
 /// Unit label of a pollutant variable.
-pub fn pollutant_unit(kind: ElementKind) -> &'static str {
+pub(crate) fn pollutant_unit(kind: ElementKind) -> &'static str {
     if kind == ElementKind::Subcatchment {
         "mass/time"
     } else {

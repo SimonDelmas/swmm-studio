@@ -62,7 +62,7 @@ export function SectionsDialog() {
   };
   const list = sections.filter((s) => all || s.present);
   return (
-    <Modal title="Sections as text" onClose={leave} modal className="wide-modal sections-modal">
+    <Modal title="Sections as text" className="wide-modal sections-modal">
         <div className="sections-body">
           <div className="sections-list">
             <label className="muted">

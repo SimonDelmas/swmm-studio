@@ -7,10 +7,9 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
 import { formatDateTime, parseNumber, periodMs } from "../format";
-import { getState, makeStat, notify, setState, useStore, type StatName } from "../store";
+import { getState, makeStat, notify, setState, STATS, useStore, type StatName } from "../store";
 import { addToPlot } from "../plot/series";
 import { applyStyle } from "../actions/style";
-import { STATS } from "../store";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 
 type Kind = "node" | "link" | "subcatchment";

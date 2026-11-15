@@ -80,7 +80,7 @@ export function TableEditor() {
         </>
       }
       // Changes are dropped with the Discard button only, not by a click outside or Escape.
-      onClose={() => !dirty && close()}
+      onClose={dirty ? undefined : close}
       className="wide-modal"
     >
         {!table && !error && <div className="muted">Loading…</div>}

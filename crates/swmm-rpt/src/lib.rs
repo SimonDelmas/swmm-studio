@@ -34,44 +34,49 @@ impl Message {
     /// The object ID quoted by a SWMM message, e.g. the `J9` in `undefined object J9 at
     /// line…` or the `C1` in `... used for Conduit C1`. A capitalised type is the one of
     /// the object the message is about (`invalid pump curve assigned to Pump P1` is about
-    /// `P1`); without one, a type in lower case counts (`… for RDII at node N1`). A type
-    /// may be followed by a more precise one (`Weir Divider D1`, `Storage node N1`).
+    /// `P1`); it may be followed by a more precise one (`Weir Divider D1`, `Storage node
+    /// N1`). Without one, a type in lower case counts when a preposition introduces it
+    /// (`… for RDII at node N1`), not as a word of the sentence (`the outlet of a …`).
     pub fn object(&self) -> Option<&str> {
         let words: Vec<&str> = self.text.split_whitespace().collect();
-        let is_type = |w: &str, any_case: bool| {
-            let lw = w.to_ascii_lowercase();
-            matches!(
-                lw.as_str(),
-                "object"
-                    | "conduit"
-                    | "node"
-                    | "link"
-                    | "subcatchment"
-                    | "junction"
-                    | "outfall"
-                    | "storage"
-                    | "pump"
-                    | "orifice"
-                    | "weir"
-                    | "outlet"
-                    | "divider"
-                    | "gage"
-                    | "curve"
-                    | "timeseries"
-                    | "pattern"
-            ) && (any_case || lw == "object" || w.starts_with(|c: char| c.is_ascii_uppercase()))
+        let id_after = |i: usize| {
+            // The name follows the type words (one, or several: `Storage node N1`).
+            let rest = words[i + 1..].iter().find(|w| !is_type_word(w))?;
+            Some(rest.trim_end_matches([',', '.', ':']))
         };
-        for any_case in [false, true] {
-            for (i, w) in words.iter().enumerate() {
-                if is_type(w, any_case) {
-                    if let Some(id) = words.get(i + 1).filter(|next| !is_type(next, true)) {
-                        return Some(id.trim_end_matches([',', '.', ':']));
-                    }
-                }
-            }
+        let capitalised = |w: &str| w.eq_ignore_ascii_case("object") || w.starts_with(|c: char| c.is_ascii_uppercase());
+        if let Some(i) = (0..words.len()).find(|&i| is_type_word(words[i]) && capitalised(words[i])) {
+            return id_after(i);
         }
-        None
+        let introduced = |i: usize| {
+            i > 0 && matches!(words[i - 1].to_ascii_lowercase().as_str(), "at" | "for" | "to" | "from" | "in")
+        };
+        (0..words.len()).find(|&i| is_type_word(words[i]) && introduced(i)).and_then(id_after)
     }
+}
+
+/// A word naming a kind of object in SWMM messages, in any case.
+fn is_type_word(w: &str) -> bool {
+    matches!(
+        w.to_ascii_lowercase().as_str(),
+        "object"
+            | "conduit"
+            | "node"
+            | "link"
+            | "subcatchment"
+            | "junction"
+            | "outfall"
+            | "storage"
+            | "pump"
+            | "orifice"
+            | "weir"
+            | "outlet"
+            | "divider"
+            | "gage"
+            | "curve"
+            | "timeseries"
+            | "pattern"
+    )
 }
 
 /// A `label ...... value value` line.

@@ -28,12 +28,21 @@ function savedView(space: string): Extent | null {
   return view?.space === space && view.extent?.length === 4 && view.extent.every(Number.isFinite) ? (view.extent as Extent) : null;
 }
 
+/** Latitude in degrees → Web Mercator ordinate, in degrees of longitude at the equator. */
+function mercatorY(lat: number): number {
+  const clamped = Math.max(-85, Math.min(85, lat));
+  return (Math.log(Math.tan(Math.PI / 4 + (clamped * Math.PI) / 360)) * 180) / Math.PI;
+}
+
 /**
  * The view is the saved one as the map restores it: the saved extent, centred, filling
  * the map in one direction. In a window of another shape the map shows more in the other
  * direction, which is not a change of view to save.
  */
-function isSavedView(saved: Extent, now: Extent): boolean {
+function isSavedView(space: string, savedView: Extent, view: Extent): boolean {
+  // On the basemap the view is centred in map (Mercator) units, not in degrees.
+  const flat = (e: Extent): Extent => (space === "lonlat" ? [e[0], mercatorY(e[1]), e[2], mercatorY(e[3])] : e);
+  const [saved, now] = [flat(savedView), flat(view)];
   const [w, h] = [saved[2] - saved[0], saved[3] - saved[1]];
   const [nw, nh] = [now[2] - now[0], now[3] - now[1]];
   const tol = 1e-3 * Math.max(w, h);
@@ -152,7 +161,7 @@ export function MapView() {
       if (!viewer.current) return;
       const extent = viewer.current.extent();
       const saved = savedView(space);
-      if (!saved || !isSavedView(saved, extent)) updateProjectUi({ view: { space, extent } }, path);
+      if (!saved || !isSavedView(space, saved, extent)) updateProjectUi({ view: { space, extent } }, path);
     }, 1500);
     return () => clearTimeout(t);
   }, [viewTick, space]);

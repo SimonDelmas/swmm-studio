@@ -14,11 +14,17 @@ export function indexOfId(list: string[] | undefined, id: string): number {
 export async function ensureIds(kinds: readonly (ObjKind | ElementKind)[]): Promise<void> {
   const missing = Array.from(new Set(kinds)).filter((k): k is ObjKind => k !== "system" && !getState().ids[k]);
   if (missing.length === 0) return;
-  const before = getState().model;
-  const lists = await Promise.all(missing.map((k) => api.ids(k)));
-  // Names of another model, or of the objects as they were before an edit, are dropped.
-  const now = getState().model;
-  if (now?.path !== before?.path || now?.revision !== before?.revision) return;
+  // The names must be those of the model as it is when they arrive: after an edit they
+  // are asked again, and those of another model are dropped.
+  let lists: string[][] = [];
+  for (let attempt = 0; ; attempt++) {
+    const before = getState().model;
+    lists = await Promise.all(missing.map((k) => api.ids(k)));
+    const now = getState().model;
+    if (now?.path !== before?.path) return;
+    if (now?.revision === before?.revision) break;
+    if (attempt === 3) return;
+  }
   const ids = { ...getState().ids };
   missing.forEach((k, i) => (ids[k] = lists[i]));
   setState({ ids });

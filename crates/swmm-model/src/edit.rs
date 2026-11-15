@@ -107,16 +107,8 @@ impl<'a> Tx<'a> {
         if remove == 0 && lines.is_empty() {
             return;
         }
-        // Lines put after the last line of a file that does not end with a line break
-        // would be glued to it: give that line its ending first.
-        if !lines.is_empty() {
-            let before = at.checked_sub(1).and_then(|i| self.inp.sections()[section].lines().get(i));
-            if let Some(prev) = before.filter(|l| l.ending() == LineEnding::None) {
-                let mut fixed = prev.clone();
-                fixed.set_ending(self.inp.line_ending());
-                self.push(Op::Splice { section, at: at - 1, remove: 1, lines: vec![fixed] });
-            }
-        }
+        // (A line put after the last line of a file without a final line break is not
+        // glued to it: the writer gives every line but the last its ending.)
         self.push(Op::Splice { section, at, remove, lines });
     }
 
@@ -284,11 +276,6 @@ impl History {
 
     pub fn mark_saved(&mut self) {
         self.saved = self.current();
-    }
-
-    /// Number of edits since the model was opened (changes on every edit, undo or redo).
-    pub fn state_id(&self) -> (usize, u64) {
-        (self.undo.len(), self.undo.last().map_or(0, |t| t.id))
     }
 }
 

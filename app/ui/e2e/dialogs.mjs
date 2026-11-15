@@ -52,6 +52,9 @@ await step("Escape closes the delete confirmation and keeps the selection", asyn
 await step("Escape does not discard the options dialog; Tab stays inside it", async () => {
   await S(() => window.swmmStudio.setState({ dialog: "options" }));
   await page.waitForSelector(".modal .options-grid", { timeout: 5000 });
+  // Right after the dialog opens, going backwards must not land on the page behind.
+  await page.keyboard.press("Shift+Tab");
+  if (!(await S(() => !!document.activeElement?.closest(".modal")))) fail("Shift+Tab left the dialog as it opened");
   await page.locator(".modal .options-grid input").first().fill("12");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(200);

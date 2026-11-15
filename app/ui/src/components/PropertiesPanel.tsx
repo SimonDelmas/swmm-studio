@@ -58,6 +58,8 @@ export function PropertiesPanel() {
   if (!info || info.object.kind !== one.kind || info.object.index !== one.index)
     return <div className="panel-empty">Loading…</div>;
 
+  /** Plots result variable `v` of the object in a new time series tab. */
+  const plotNew = (v: number) => void addToPlot(one.kind as ElementKind, one.index, v, false, undefined, "new");
   const refKinds = new Set<RefKind>();
   info.groups.forEach((g) => g.fields.forEach((f) => f.type === "ref" && LISTED.includes(f.to) && refKinds.add(f.to)));
 
@@ -139,11 +141,9 @@ export function PropertiesPanel() {
                       className="drag-result"
                       title="Click: plot in a new time series tab; drag onto a graph (or a time series tab) to add it there"
                       onPointerDown={(e) =>
-                        startSeriesDrag(e, { kind: one.kind as ElementKind, index: one.index, var: i, label: `${info.id} ${v.name}` }, () =>
-                          addToPlot(one.kind as ElementKind, one.index, i, false, undefined, "new"),
-                        )
+                        startSeriesDrag(e, { kind: one.kind as ElementKind, index: one.index, var: i, label: `${info.id} ${v.name}` }, () => plotNew(i))
                       }
-                      onActivate={() => void addToPlot(one.kind as ElementKind, one.index, i, false, undefined, "new")}
+                      onActivate={() => plotNew(i)}
                     >
                       {v.name}
                     </LinkButton>

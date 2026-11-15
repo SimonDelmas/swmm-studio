@@ -45,8 +45,9 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 - Shortcuts: Ctrl+O opens a model, Ctrl+N creates one, Home / End jump to the start / end of
   the run; Space at the end of the run plays again from the start. Escape cancels a drag on
-  the map and closes the dialogs that hold no unsaved input (the others are closed by their
-  own buttons). In a dialog, Tab stays within the dialog.
+  the map and closes the confirmations and the dialogs that edit nothing; the options,
+  climatology and section dialogs are closed by their own buttons, and the table editor by
+  Escape only while it has no change. In a dialog, Tab and Shift+Tab stay within the dialog.
 - Thresholds accept a decimal comma (events, statistics, timeline, plots, comparison).
 - Opening a model no longer rewrites its project file when its map styles and its view are
   unchanged, also in a window of another shape.

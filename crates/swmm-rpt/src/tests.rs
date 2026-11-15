@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn message_object_is_the_capitalised_type() {
+fn message_object() {
     let object = |text: &str| {
         Message { code: String::new(), text: text.into(), line: None, section: None, context: None }
             .object()
@@ -13,6 +13,9 @@ fn message_object_is_the_capitalised_type() {
     assert_eq!(object("undefined object J9 at line 12").as_deref(), Some("J9"));
     assert_eq!(object("invalid sewer area for RDII at node N1.").as_deref(), Some("N1"));
     assert_eq!(object("Storage node N1 has negative volume").as_deref(), Some("N1"));
+    // A type word that is part of the sentence names nothing.
+    assert_eq!(object("regulator is the outlet of a non-storage node.").as_deref(), None);
+    assert_eq!(object("no acceptable outlet nodes").as_deref(), None);
 }
 
 #[test]

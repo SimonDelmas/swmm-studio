@@ -67,7 +67,7 @@ export function ClimateDialog() {
     set({ evap_source: s, evap_values: values });
   };
   return (
-    <Modal title="Climatology" onClose={close} modal className="wide-modal">
+    <Modal title="Climatology" className="wide-modal">
         <div className="tabs">
           {TABS.map((t) => (
             <button key={t} className={t === tab ? "active" : ""} onClick={() => setTab(t)}>

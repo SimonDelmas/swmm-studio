@@ -155,7 +155,7 @@ export function OptionsDialog({ initialTab = "General" }: { initialTab?: string 
   const infilChanged = (values.INFILTRATION ?? "") !== (orig.INFILTRATION ?? "");
   const group = groups.find(([g]) => g === tab)?.[1];
   return (
-    <Modal title="Simulation options" onClose={close} modal className="wide-modal">
+    <Modal title="Simulation options" className="wide-modal">
         <div className="tabs">
           {tabs.map((g) => (
             <button key={g} className={g === tab ? "active" : ""} onClick={() => setTab(g)}>

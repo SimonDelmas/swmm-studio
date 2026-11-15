@@ -1,9 +1,8 @@
-import { STATS } from "../store";
 import { NumberInput } from "./CommitInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { RAMPS } from "../classify";
-import { makeStat, setState, setStyle, useStore, type LayerStyle, type StyledKind } from "../store";
+import { makeStat, setState, setStyle, STATS, useStore, type LayerStyle, type StyledKind } from "../store";
 import { applyStyle } from "../actions/style";
 import { BasemapSection } from "./style/BasemapSection";
 import { Legend, TypeList } from "./style/Legend";

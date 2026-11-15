@@ -123,19 +123,32 @@ impl Crs {
         Ok(Crs { id: format!("EPSG:{code}"), name: info_of(&def).name, definition, proj, wgs84 })
     }
 
-    /// Longitude / latitude of the natural origin of a projected system (`+lon_0`,
-    /// `+lat_0`), to show an empty model near where it will be drawn: the centre of a
-    /// national grid, the central meridian (at the equator) of a UTM zone. `None` for
-    /// geographic systems and for projections that name no origin.
+    /// Longitude / latitude (from Greenwich) of the natural origin of a projected
+    /// system, to show an empty model near where it will be drawn: the centre of a
+    /// national grid (`+lon_0`, `+lat_0`, counted from the prime meridian `+pm`), the
+    /// central meridian of a UTM zone at the equator. `None` for geographic systems and
+    /// for projections that name no origin.
     pub fn origin(&self) -> Option<[f64; 2]> {
         if self.is_geographic() {
             return None;
         }
-        let param = |key: &str| -> Option<f64> {
-            self.definition.split_whitespace().find_map(|p| p.strip_prefix(key).and_then(|v| v.parse().ok()))
+        let text = |key: &str| self.definition.split_whitespace().find_map(|p| p.strip_prefix(key));
+        let number = |key: &str| text(key).and_then(|v| v.parse::<f64>().ok());
+        if text("+proj=") == Some("utm") {
+            // Zones are 6° wide, zone 1 starting at 180°W.
+            return number("+zone=").map(|zone| [6.0 * zone - 183.0, 0.0]);
+        }
+        let (lon, lat) = (number("+lon_0="), number("+lat_0="));
+        if lon.is_none() && lat.is_none() {
+            return None;
+        }
+        // Longitudes of older national grids are counted from their own meridian.
+        let prime_meridian = match text("+pm=") {
+            Some("paris") => 2.337_229_166_667,
+            Some(value) => value.parse().unwrap_or(0.0),
+            None => 0.0,
         };
-        let (lon, lat) = (param("+lon_0="), param("+lat_0="));
-        (lon.is_some() || lat.is_some()).then(|| [lon.unwrap_or(0.0), lat.unwrap_or(0.0)])
+        Some([lon.unwrap_or(0.0) + prime_meridian, lat.unwrap_or(0.0)])
     }
 
     pub fn is_geographic(&self) -> bool {
@@ -213,11 +226,17 @@ mod tests {
     }
 
     #[test]
-    fn origin_is_inside_the_area_of_use() {
+    fn natural_origin() {
+        let origin = |id: &str| Crs::parse(id).unwrap().origin();
         // Lambert-93: 3°E, 46.5°N.
-        let o = Crs::parse("EPSG:2154").unwrap().origin().unwrap();
+        let o = origin("EPSG:2154").unwrap();
         assert!((o[0] - 3.0).abs() < 1e-6 && (o[1] - 46.5).abs() < 1e-6, "{o:?}");
-        assert_eq!(Crs::parse("EPSG:4326").unwrap().origin(), None);
+        // UTM zone 31 north: central meridian 3°E.
+        assert_eq!(origin("EPSG:32631"), Some([3.0, 0.0]));
+        // NTF Lambert zone II: longitudes from Paris.
+        let o = origin("EPSG:27572").unwrap();
+        assert!((o[0] - 2.337).abs() < 1e-3 && o[1] > 46.0 && o[1] < 47.5, "{o:?}");
+        assert_eq!(origin("EPSG:4326"), None);
     }
 
     #[test]

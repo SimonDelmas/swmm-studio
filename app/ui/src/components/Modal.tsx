@@ -4,19 +4,18 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 
 /**
  * Shell of a dialog: backdrop, box and title. The keyboard stays in the dialog (Tab goes
- * round its controls). Escape and a click on the backdrop close it, unless `modal`:
- * dialogs with unsaved input are only closed by their own buttons.
+ * round its controls). With `onClose`, Escape and a click on the backdrop close it;
+ * a dialog that edits something gives none and is closed by its own buttons only.
  */
 export function Modal(props: {
   title: string;
   /** What the title bar shows, when it is more than the title (an editable name…). */
   heading?: ReactNode;
-  onClose: () => void;
-  modal?: boolean;
+  onClose?: () => void;
   className?: string;
   children: ReactNode;
 }) {
-  const { onClose, modal } = props;
+  const { onClose } = props;
   const box = useRef<HTMLDivElement>(null);
   // The latest handler, without listening again on every render.
   const close = useRef(onClose);
@@ -32,17 +31,23 @@ export function Modal(props: {
     const key = (e: KeyboardEvent) => {
       const el = box.current;
       if (!el) return;
+      // When dialogs are stacked, the keyboard belongs to the one on top.
+      const open = document.querySelectorAll(".modal");
+      if (open[open.length - 1] !== el) return;
       if (e.key === "Escape") {
         // Handled here only: the shortcuts of the app (clear the selection, leave the
         // tool) must not also react to the key that closes a dialog.
         e.stopPropagation();
-        if (!modal) close.current();
+        close.current?.();
       } else if (e.key === "Tab") {
         const items = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE));
         if (items.length === 0) return e.preventDefault();
         const [first, last] = [items[0], items[items.length - 1]];
         const at = document.activeElement;
-        if (!el.contains(at) || (e.shiftKey && at === first) || (!e.shiftKey && at === last)) {
+        // From outside the dialog, from its box (where the focus is when it opens) or
+        // from its last control in that direction: go round.
+        const outside = at === el || !el.contains(at);
+        if (outside || (e.shiftKey && at === first) || (!e.shiftKey && at === last)) {
           e.preventDefault();
           (e.shiftKey ? last : first).focus();
         }
@@ -50,10 +55,10 @@ export function Modal(props: {
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [modal]);
+  }, []);
 
   return (
-    <div className="modal-back" onClick={modal ? undefined : onClose}>
+    <div className="modal-back" onClick={onClose}>
       <div
         ref={box}
         tabIndex={-1}
