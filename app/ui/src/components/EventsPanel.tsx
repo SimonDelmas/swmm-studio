@@ -1,10 +1,10 @@
-import { selectObject } from "../objects";
+import { selectObject } from "../actions/selection";
+import { ObjLink } from "./ObjLink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
 import { formatDateTime, parseNumber, periodAt, periodMs } from "../format";
-import { ObjLink } from "../objects";
 import { getState, setState, useStore } from "../store";
 import type { ElementKind, EventDto, EventTable, ObjKind } from "../types";
 import { addToPlot } from "../plot/series";

@@ -23,7 +23,7 @@ pub mod schema;
 pub mod tables;
 pub mod validate;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use swmm_inp::{InpFile, Line, SectionKind};

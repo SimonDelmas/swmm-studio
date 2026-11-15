@@ -1,8 +1,8 @@
-import { selectObject } from "../objects";
+import { selectObject } from "../actions/selection";
+import { Linkified } from "./ObjLink";
 import { useMemo, useState } from "react";
 import { validateModel } from "../actions/validate";
 import { exportTable } from "../exporting";
-import { Linkified } from "../objects";
 import { useStore } from "../store";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 

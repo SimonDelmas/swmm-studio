@@ -1,6 +1,8 @@
 //! Checks of a table before it is written.
 
-use super::*;
+use super::{Table, CURVE_TYPES, MONTHS, RESPONSES};
+use crate::edit::EditResult;
+use crate::schema::check_id;
 
 fn num_check(label: &str, v: &str) -> EditResult<()> {
     if v.trim().parse::<f64>().map(f64::is_finite).unwrap_or(false) {

@@ -1,6 +1,10 @@
 //! Edits made on the map: objects drawn, moved, reshaped, reconnected and deleted.
 
-use super::*;
+use swmm_model::ops;
+use swmm_model::{LinkType, NodeType, ObjKind, ObjRef};
+
+use super::{link_word, node_word, Effect, LinkEnd};
+use crate::session::{Res, Session};
 
 /// Objects drawn, moved and deleted on the map.
 impl Session {

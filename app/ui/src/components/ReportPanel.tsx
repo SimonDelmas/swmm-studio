@@ -1,9 +1,11 @@
+import { Linkified, ObjLink } from "./ObjLink";
+import { resolveName, useNameIndex } from "../hooks/useNameIndex";
+import { selectObject } from "../actions/selection";
 import { useEffect, useMemo, useState } from "react";
 import { useVirtualRows } from "../hooks/useVirtualRows";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
-import { Linkified, ObjLink, resolveName, selectObject, useNameIndex } from "../objects";
 import { notify, setState, useStore } from "../store";
 import type { BlockDto, MessageDto } from "../types";
 

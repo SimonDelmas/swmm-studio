@@ -1,6 +1,10 @@
 //! Keeping the network in step with the edits of the file.
 
-use super::*;
+use std::collections::{HashMap, HashSet};
+
+use swmm_inp::{InpFile, Line, SectionKind};
+
+use crate::{coord, edit, ops, Network, ObjKind, Refresh};
 
 impl Network {
     /// Updates the network after an edit of `inp` that changed these lines.

@@ -1,6 +1,9 @@
 //! Transects: `NC` / `X1` / `GR` line blocks of `[TRANSECTS]`.
 
-use super::*;
+use swmm_inp::{InpFile, Line, SectionKind};
+
+use super::{pairs, Transect};
+use crate::edit::{EditResult, Tx};
 
 /// A transect and the lines it spans.
 pub(super) struct TransectBlock {

@@ -31,7 +31,7 @@ use crate::reader::{Layout, OutFile};
 use crate::OutError;
 
 pub use build::{build, BuildProgress, BuildReport};
-use codec::*;
+use codec::{decode_chunk, Header, ENTRY_BYTES};
 pub use codec::{ChunkEntry, Fingerprint};
 
 /// Path of the cache next to a `.out` file: `model.out` → `model.out.swcache`.
@@ -281,6 +281,7 @@ impl ResultsCache {
 
 #[cfg(test)]
 mod tests {
+    use super::codec::{encode_chunk, ENC_CONSTANT, ENC_ZSTD};
     use super::*;
 
     #[test]

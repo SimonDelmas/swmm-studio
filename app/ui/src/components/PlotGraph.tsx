@@ -1,10 +1,10 @@
+import { ObjLink } from "./ObjLink";
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { errorText } from "../api";
 import { chartSvg, exportTable, savePng, saveSvg } from "../exporting";
 import { bucketLabel, formatDateTime, periodAt, periodMs } from "../format";
-import { ObjLink } from "../objects";
 import { cacheReason, fetchGraph, zoomPeriods, type Built } from "../plot/data";
 import { COLORS } from "../plot/series";
 import { getState, setState, updatePlotView, useStore, type PlotGraph as GraphDef, type PlotSeries, type PlotView } from "../store";

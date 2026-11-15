@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use swmm_inp::{InpFile, Line, LineKind, SectionKind};
 
-use super::*;
+use super::fields::{line_index, set_field_at};
 use crate::edit::{EditResult, Tx};
 use crate::schema::check_id;
 

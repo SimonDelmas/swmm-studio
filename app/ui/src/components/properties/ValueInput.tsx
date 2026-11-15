@@ -1,6 +1,7 @@
+import { ObjLink } from "../ObjLink";
+import { resolveName, useNameIndex } from "../../hooks/useNameIndex";
 import { useEffect, useState } from "react";
 import { errorText } from "../../api";
-import { ObjLink, resolveName, useNameIndex } from "../../objects";
 import type { Field, ObjKind, RefKind } from "../../types";
 import { useNames } from "../../hooks/useNames";
 

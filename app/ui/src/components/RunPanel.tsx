@@ -1,8 +1,8 @@
+import { Linkified } from "./ObjLink";
 import { LinkButton } from "./LinkButton";
 import { useEffect, useRef, useState } from "react";
 import { cancelRun, startRun } from "../actions/run";
 import { setState, useStore } from "../store";
-import { Linkified } from "../objects";
 
 export function RunControls() {
   const run = useStore((s) => s.run);

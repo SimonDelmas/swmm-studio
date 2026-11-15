@@ -49,7 +49,7 @@ All notable changes to SWMM Studio are recorded here. The format follows
   own buttons). In a dialog, Tab stays within the dialog.
 - Thresholds accept a decimal comma (events, statistics, timeline, plots, comparison).
 - Opening a model no longer rewrites its project file when its map styles and its view are
-  unchanged (a view restored in a window of another shape is still saved again).
+  unchanged, also in a window of another shape.
 - The code is organised in smaller modules (back-end: session, commands and editing by
   domain; results cache and model operations by concern; front-end: actions, hooks, map
   viewers, layers and edit tools, plot and profile data, properties, one file per dialog).
@@ -67,6 +67,8 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Fixed
 
+- The model is shown as saved again when undo brings it back to the saved state, also after
+  older edits have left the undo history.
 - Results cache: two builds of the same cache no longer write over each other; an older cache
   is replaced even while it is still open elsewhere; a cache built from a file that is still
   being written is no longer reported out of date.

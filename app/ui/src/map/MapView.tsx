@@ -28,10 +28,18 @@ function savedView(space: string): Extent | null {
   return view?.space === space && view.extent?.length === 4 && view.extent.every(Number.isFinite) ? (view.extent as Extent) : null;
 }
 
-/** Same extent, up to the rounding of a view that was restored and read back. */
-function sameExtent(a: Extent, b: Extent): boolean {
-  const tol = 1e-6 * Math.max(a[2] - a[0], a[3] - a[1]);
-  return a.every((v, i) => Math.abs(v - b[i]) <= tol);
+/**
+ * The view is the saved one as the map restores it: the saved extent, centred, filling
+ * the map in one direction. In a window of another shape the map shows more in the other
+ * direction, which is not a change of view to save.
+ */
+function isSavedView(saved: Extent, now: Extent): boolean {
+  const [w, h] = [saved[2] - saved[0], saved[3] - saved[1]];
+  const [nw, nh] = [now[2] - now[0], now[3] - now[1]];
+  const tol = 1e-3 * Math.max(w, h);
+  const centred = Math.abs(saved[0] + saved[2] - now[0] - now[2]) <= 2 * tol && Math.abs(saved[1] + saved[3] - now[1] - now[3]) <= 2 * tol;
+  const fills = (Math.abs(nw - w) <= tol && nh >= h - tol) || (Math.abs(nh - h) <= tol && nw >= w - tol);
+  return centred && fills;
 }
 
 export function MapView() {
@@ -144,7 +152,7 @@ export function MapView() {
       if (!viewer.current) return;
       const extent = viewer.current.extent();
       const saved = savedView(space);
-      if (!saved || !sameExtent(saved, extent)) updateProjectUi({ view: { space, extent } }, path);
+      if (!saved || !isSavedView(saved, extent)) updateProjectUi({ view: { space, extent } }, path);
     }, 1500);
     return () => clearTimeout(t);
   }, [viewTick, space]);

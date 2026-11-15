@@ -1,11 +1,11 @@
-import { zoomToSelection } from "../objects";
+import { zoomToSelection } from "../actions/selection";
+import { ObjLink } from "./ObjLink";
 import { LinkButton } from "./LinkButton";
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { deleteObjects, edit } from "../edit";
 import { formatDateTime, periodMs } from "../format";
-import { ObjLink } from "../objects";
 import { setState, useStore } from "../store";
 import type { ElementKind, ObjectInfo, RefKind } from "../types";
 import { addToPlot } from "../plot/series";

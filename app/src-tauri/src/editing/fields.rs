@@ -1,6 +1,12 @@
 //! Edits of the fields and lines of the sections.
 
-use super::*;
+use swmm_inp::SectionKind;
+use swmm_model::ops;
+use swmm_model::schema::RefKind;
+use swmm_model::ObjRef;
+
+use super::{first_key, section, Effect, Named};
+use crate::session::{Res, Session};
 
 /// Fields and lines of the sections.
 impl Session {

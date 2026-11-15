@@ -1,6 +1,6 @@
 //! Reading the text of a report: banners, blocks, tables, key-value lines and messages.
 
-use super::*;
+use crate::{Block, Body, KeyValue, Message, Table};
 
 fn is_banner(t: &str) -> bool {
     t.len() >= 3 && t.bytes().all(|b| b == b'*')

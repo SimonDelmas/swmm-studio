@@ -1,4 +1,4 @@
-import { selectObject } from "../objects";
+import { selectObject } from "../actions/selection";
 import { useState } from "react";
 import { askNewModel, chooseModel, chooseResults } from "../actions/model";
 import { api, errorText } from "../api";

@@ -2,13 +2,11 @@
 
 import { ensureIds } from "../actions/ids";
 import { setSeriesDropHandler } from "../dragSeries";
-import { currentPlotView, getState, newPlotId, newPlotView, setState, type PlotSeries } from "../store";
+import { currentPlotView, getState, newPlotId, newPlotView, seriesKey, setState, type PlotSeries } from "../store";
 import type { ElementKind } from "../types";
 
 /** Colours of the series of a graph, in order. */
 export const COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd", "#8c564b", "#e377c2", "#17becf"];
-
-export const seriesKey = (kind: string, index: number, v: number, b?: boolean) => `${kind}:${index}:${v}${b ? ":b" : ""}`;
 
 /** A series of the loaded (or compared) results, labelled with the object's name. */
 export function makeSeries(kind: ElementKind, index: number, v: number, b: boolean): PlotSeries | null {

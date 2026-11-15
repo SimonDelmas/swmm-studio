@@ -1,7 +1,7 @@
+import { Linkified } from "./ObjLink";
 import { LinkButton } from "./LinkButton";
 import { useEffect } from "react";
 import { api, errorText } from "../api";
-import { Linkified } from "../objects";
 import { notify, setState, useStore } from "../store";
 
 export function StatusBar() {

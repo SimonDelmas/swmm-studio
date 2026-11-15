@@ -4,8 +4,7 @@
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { indexOfId } from "./actions/ids";
 import { api, errorText } from "./api";
-import { seriesKey } from "./plot/series";
-import { getState, mapPlotSeries, notify, resetForModel, sameRef, setState, type PlotView, type State } from "./store";
+import { getState, mapPlotSeries, notify, resetForModel, sameRef, seriesKey, setState, type PlotView, type State } from "./store";
 import type { EditOutcome, EditRequest, Geometry, GeometryPatch, ObjKind, ObjRef } from "./types";
 
 let queue: Promise<unknown> = Promise.resolve();

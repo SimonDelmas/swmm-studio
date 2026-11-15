@@ -8,7 +8,7 @@ use swmm_inp::{InpFile, Line, SectionKind};
 
 use crate::edit::{EditResult, Tx};
 use crate::refs;
-use crate::schema::{check_id, RefKind};
+use crate::schema::RefKind;
 
 mod transect;
 

@@ -1,6 +1,12 @@
 //! Edits of curves, time series, patterns, unit hydrographs, transects and RDII.
 
-use super::*;
+use swmm_model::ops;
+use swmm_model::schema::RefKind;
+use swmm_model::tables::{self, Table};
+use swmm_model::ObjKind;
+
+use super::{table_prefix, table_word, Effect};
+use crate::session::{Res, Session};
 
 /// Curves, time series, patterns, unit hydrographs, transects and RDII.
 impl Session {

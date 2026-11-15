@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 
-use super::codec::*;
+use super::codec::{encode_chunk, ChunkEntry, Fingerprint, Header, ENC_CONSTANT, ENTRY_BYTES, HEADER_BYTES};
 use super::CacheOptions;
 use crate::reader::OutFile;
 use crate::OutError;

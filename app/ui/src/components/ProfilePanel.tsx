@@ -1,10 +1,10 @@
-import { selectObject, selectObjects } from "../objects";
+import { selectObject, selectObjects } from "../actions/selection";
+import { ObjLink } from "./ObjLink";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable, savePng, saveSvg } from "../exporting";
 import { formatDateTime, periodMs } from "../format";
-import { ObjLink } from "../objects";
 import { getState, setState, updateProfileView, useStore, type ProfileView } from "../store";
 import type { ObjRef } from "../types";
 import { useSize } from "../useSize";

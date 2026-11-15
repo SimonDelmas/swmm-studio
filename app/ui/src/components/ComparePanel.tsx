@@ -1,4 +1,5 @@
-import { selectObject } from "../objects";
+import { selectObject } from "../actions/selection";
+import { ObjLink } from "./ObjLink";
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { setResultsInfo } from "../actions/model";
@@ -6,7 +7,6 @@ import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
 import { formatDateTime, parseNumber, periodMs } from "../format";
-import { ObjLink } from "../objects";
 import { getState, makeStat, notify, setState, useStore, type StatName } from "../store";
 import { addToPlot } from "../plot/series";
 import { applyStyle } from "../actions/style";

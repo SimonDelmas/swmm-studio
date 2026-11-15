@@ -65,6 +65,9 @@ export interface PlotSeries {
   b?: boolean;
 }
 
+/** Identity of a series: the same object and variable is plotted once per graph. */
+export const seriesKey = (kind: string, index: number, v: number, b?: boolean) => `${kind}:${index}:${v}${b ? ":b" : ""}`;
+
 /** Time aggregation of a plot view (null: the series themselves). */
 export type PlotAgg = { unit: Calendar; stat: StatName; threshold: number };
 

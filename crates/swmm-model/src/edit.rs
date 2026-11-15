@@ -202,14 +202,17 @@ pub struct History {
     undo: Vec<Transaction>,
     redo: Vec<Transaction>,
     next_id: u64,
-    /// Top of the undo stack when the file was last saved (`Some(None)`: empty stack).
-    saved: Option<Option<u64>>,
+    /// Last edit dropped from the bottom of the undo stack (`None`: none yet). It is the
+    /// state the file is in once everything left has been undone.
+    base: Option<u64>,
+    /// Edit the file was at when it was last saved (`None`: as it was opened).
+    saved: Option<u64>,
     limit: usize,
 }
 
 impl Default for History {
     fn default() -> Self {
-        History { undo: Vec::new(), redo: Vec::new(), next_id: 1, saved: Some(None), limit: 500 }
+        History { undo: Vec::new(), redo: Vec::new(), next_id: 1, base: None, saved: None, limit: 500 }
     }
 }
 
@@ -237,11 +240,8 @@ impl History {
             self.undo.push(t);
             self.redo.clear();
             if self.undo.len() > self.limit {
-                self.undo.remove(0);
-                // The state saved before any of the kept edits cannot be undone to any more.
-                if self.saved == Some(None) {
-                    self.saved = None;
-                }
+                // The oldest edit can no longer be undone: it becomes the state under the stack.
+                self.base = Some(self.undo.remove(0).id);
             }
         }
         Ok(Applied { label, changes, value })
@@ -272,13 +272,18 @@ impl History {
         self.redo.last().map(|t| t.label.as_str())
     }
 
+    /// The edit the file is at: the last one applied, or the one under the stack.
+    fn current(&self) -> Option<u64> {
+        self.undo.last().map(|t| t.id).or(self.base)
+    }
+
     /// The file differs from the last saved state.
     pub fn is_dirty(&self) -> bool {
-        self.saved != Some(self.undo.last().map(|t| t.id))
+        self.saved != self.current()
     }
 
     pub fn mark_saved(&mut self) {
-        self.saved = Some(self.undo.last().map(|t| t.id));
+        self.saved = self.current();
     }
 
     /// Number of edits since the model was opened (changes on every edit, undo or redo).
@@ -378,6 +383,22 @@ mod tests {
         while h.undo(&mut inp).is_some() {}
         // A1 cannot be undone: the file still differs from the one opened.
         assert!(h.is_dirty());
+        // Saved here, then edited until that edit leaves the history too: undoing
+        // everything comes back to the saved file.
+        h.mark_saved();
+        for id in ["B1", "B2", "B3"] {
+            h.edit(&mut inp, id, |tx| {
+                tx.append(&SectionKind::Junctions, &[id, "1", "1"]);
+                Ok(())
+            })
+            .unwrap();
+        }
+        assert!(h.is_dirty());
+        while h.undo(&mut inp).is_some() {}
+        // B1 cannot be undone either: the file is not the saved one.
+        assert!(h.is_dirty());
+        h.mark_saved();
+        assert!(!h.is_dirty());
     }
 
     #[test]
