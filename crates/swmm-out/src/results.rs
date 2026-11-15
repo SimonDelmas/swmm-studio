@@ -4,7 +4,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-use crate::cache::{self, BuildProgress, BuildReport, CacheOptions, ResultsCache, SeriesStats};
+use crate::cache::{self, BuildProgress, BuildReport, CacheOptions, Piece, ResultsCache, SeriesStats};
 use crate::format::ElementKind;
 use crate::reader::{OutFile, OutMeta};
 use crate::OutError;
@@ -55,20 +55,22 @@ fn pyramid(c: &ResultsCache, series: usize, periods: Range<usize>, per_bucket: u
     let mut out = MinMax::default();
     for g in (c0..=c1).step_by(k) {
         let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
-        for chunk in g..(g + k).min(c1 + 1) {
-            let cp = c.chunk_periods(chunk);
-            if cp.start >= periods.start && cp.end <= periods.end {
-                let e = c.entry(series, chunk);
-                lo = lo.min(e.min);
-                hi = hi.max(e.max);
-            } else {
-                let part = cp.start.max(periods.start)..cp.end.min(periods.end);
-                for v in c.series(series, part)? {
-                    lo = lo.min(v);
-                    hi = hi.max(v);
+        let bucket = (g * cl).max(periods.start)..((g + k) * cl).min(periods.end);
+        c.walk(series, bucket, |piece| {
+            match piece {
+                Piece::Chunk { summary, .. } => {
+                    lo = lo.min(summary.min);
+                    hi = hi.max(summary.max);
+                }
+                Piece::Values { values, .. } => {
+                    for &v in values {
+                        lo = lo.min(v);
+                        hi = hi.max(v);
+                    }
                 }
             }
-        }
+            true
+        })?;
         out.periods.push((g * cl).max(periods.start));
         out.min.push(lo);
         out.max.push(hi);
@@ -146,10 +148,7 @@ impl Results {
         var: usize,
         periods: Range<usize>,
     ) -> Result<Vec<f32>, OutError> {
-        let m = self.out.meta();
-        if obj >= m.count(kind) || var >= m.nvars(kind) {
-            return Err(OutError::OutOfRange { kind, obj, var, period: periods.start });
-        }
+        self.check(kind, obj, var, periods.start)?;
         match &self.cache {
             Some(c) => c.series_of(kind, obj, var, periods),
             None => self.out.series(kind, obj, var, periods),
@@ -182,12 +181,27 @@ impl Results {
         Ok(decimate(&values, first, buckets))
     }
 
+    /// Fails unless the object and the variable exist (`period` is only named in the error).
     fn check(&self, kind: ElementKind, obj: usize, var: usize, period: usize) -> Result<(), OutError> {
         let m = self.out.meta();
         if obj >= m.count(kind) || var >= m.nvars(kind) {
             return Err(OutError::OutOfRange { kind, obj, var, period });
         }
         Ok(())
+    }
+
+    /// Fails unless the kind has this variable.
+    pub fn check_var(&self, kind: ElementKind, var: usize) -> Result<(), OutError> {
+        if var >= self.out.meta().nvars(kind) {
+            return Err(OutError::OutOfRange { kind, obj: 0, var, period: 0 });
+        }
+        Ok(())
+    }
+
+    /// Index of a series (one variable of one object) in the file and in the cache.
+    pub fn series_index(&self, kind: ElementKind, obj: usize, var: usize) -> Result<usize, OutError> {
+        self.check(kind, obj, var, 0)?;
+        Ok(self.out.layout().series(kind, obj, var))
     }
 
     /// Statistics of one series over the whole run: from the chunk summaries with the
@@ -198,19 +212,7 @@ impl Results {
             return Ok(c.stats(self.out.layout().series(kind, obj, var)));
         }
         let values = self.out.series(kind, obj, var, 0..self.out.n_periods())?;
-        let mut s =
-            SeriesStats { min: f32::INFINITY, max: f32::NEG_INFINITY, argmax: 0, mean: 0.0, sum: 0.0, nonzero: 0 };
-        for (i, &v) in values.iter().enumerate() {
-            s.min = s.min.min(v);
-            if v > s.max {
-                s.max = v;
-                s.argmax = i;
-            }
-            s.sum += v as f64;
-            s.nonzero += (v != 0.0) as u64;
-        }
-        s.mean = s.sum / values.len().max(1) as f64;
-        Ok(s)
+        Ok(SeriesStats::of(&values))
     }
 
     /// First period after `from` where the series rises above `threshold` (start of the
@@ -259,9 +261,7 @@ impl Results {
     /// Whole-run statistics of one variable for every object (needs the cache).
     pub fn envelope(&self, kind: ElementKind, var: usize) -> Result<Vec<SeriesStats>, OutError> {
         let c = self.cache.as_ref().ok_or(OutError::NoCache)?;
-        if var >= self.out.meta().nvars(kind) {
-            return Err(OutError::OutOfRange { kind, obj: 0, var, period: 0 });
-        }
+        self.check_var(kind, var)?;
         Ok(c.envelope(kind, var))
     }
 }

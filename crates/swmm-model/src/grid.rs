@@ -63,14 +63,7 @@ pub struct Grid {
 
 fn body<'a>(kind: &SectionKind, t: &'a [&'a str]) -> &'a [&'a str] {
     // The trailing infiltration method of SWMM 5.2 is not a field of the layout.
-    if *kind == SectionKind::Infiltration
-        && t.len() > 1
-        && t.last().is_some_and(|s| schema::INFILTRATION_METHODS.iter().any(|m| m.eq_ignore_ascii_case(s)))
-    {
-        &t[..t.len() - 1]
-    } else {
-        t
-    }
+    schema::split_method(kind, t).0
 }
 
 /// Rows of a section, with the union of the field layouts of its lines as columns.

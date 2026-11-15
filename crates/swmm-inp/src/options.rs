@@ -68,7 +68,13 @@ impl InpFile {
     pub fn set_option(&mut self, key: &str, value: &str) {
         let ending = self.line_ending();
         let section = self.section_or_insert(SectionKind::Options);
-        match section.find(key) {
+        // The last line of a key is the one read (see `option`): it is the one edited.
+        let last = section
+            .data()
+            .filter(|(_, l)| l.token(0).is_some_and(|k| k.eq_ignore_ascii_case(key)))
+            .last()
+            .map(|(i, _)| i);
+        match last {
             Some(i) => {
                 let line = section.line_mut(i).expect("index from find");
                 if line.len() == 2 {
@@ -130,5 +136,10 @@ mod tests {
         assert_eq!(inp.flow_units(), FlowUnits::Cms);
         assert_eq!(inp.option("THREADS").as_deref(), Some("4"));
         assert!(inp.to_string_lossy().starts_with("[OPTIONS]\nFLOW_UNITS  CMS\n"));
+        // A key written twice: the last line is the one read, and the one set.
+        let mut twice = InpFile::parse_str("[OPTIONS]\nTHREADS 1\nTHREADS 2\n");
+        twice.set_option("THREADS", "8");
+        assert_eq!(twice.option("THREADS").as_deref(), Some("8"));
+        assert_eq!(twice.to_string_lossy(), "[OPTIONS]\nTHREADS 1\nTHREADS 8\n");
     }
 }

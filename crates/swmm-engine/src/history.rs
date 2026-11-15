@@ -82,9 +82,12 @@ impl RunRecord {
     }
 
     pub fn save(&self, run_dir: &Path) -> Result<(), EngineError> {
+        // Written next to the record, then renamed: a crash never leaves half a record.
         let p = run_dir.join(RECORD_FILE);
-        std::fs::write(&p, serde_json::to_string_pretty(self).expect("record serialize"))
-            .map_err(|e| EngineError::io(&p, e))
+        let tmp = run_dir.join(format!("{RECORD_FILE}.tmp"));
+        std::fs::write(&tmp, serde_json::to_string_pretty(self).expect("record serialize"))
+            .map_err(|e| EngineError::io(&tmp, e))?;
+        std::fs::rename(&tmp, &p).map_err(|e| EngineError::io(&p, e))
     }
 
     pub fn load(run_dir: &Path) -> Result<RunRecord, EngineError> {

@@ -98,18 +98,23 @@ impl Line {
         }
     }
 
-    /// Mirrors SWMM's `getTokens`: whitespace separated, `"` groups, `;` starts a comment.
+    /// Mirrors SWMM's `getTokens`: the line is cut at the first `;` (a comment, even
+    /// inside quotes), then split on whitespace; a `"` that starts a token groups the
+    /// text up to the next `"`, elsewhere it is an ordinary character.
     fn tokenize(&mut self) {
         let bytes = self.text.as_bytes();
+        let n = match bytes.iter().position(|&b| b == b';') {
+            Some(at) => {
+                self.comment_at = Some(at as u32);
+                at
+            }
+            None => bytes.len(),
+        };
         let mut i = 0;
-        let n = bytes.len();
         while i < n {
             let b = bytes[i];
             if b == b' ' || b == b'\t' {
                 i += 1;
-            } else if b == b';' {
-                self.comment_at = Some(i as u32);
-                break;
             } else if b == b'"' {
                 let start = i + 1;
                 let mut end = start;
@@ -120,7 +125,7 @@ impl Line {
                 i = (end + 1).min(n);
             } else {
                 let start = i;
-                while i < n && !matches!(bytes[i], b' ' | b'\t' | b';' | b'"') {
+                while i < n && !matches!(bytes[i], b' ' | b'\t') {
                     i += 1;
                 }
                 self.spans.push(Span { start: start as u32, end: i as u32, quoted: false });
@@ -216,8 +221,10 @@ impl Line {
     }
 }
 
+/// Values with blanks are written in quotes. (A `;` cannot be written at all: SWMM reads
+/// it as the start of a comment even inside quotes; editors reject it.)
 fn needs_quotes(value: &str) -> bool {
-    value.is_empty() || value.contains([' ', '\t', ';'])
+    value.is_empty() || value.contains([' ', '\t'])
 }
 
 /// Formats tokens the way the EPA SWMM GUI does: first column 17 wide, others 11.
@@ -282,6 +289,17 @@ mod tests {
         let mut l = data("TS1 FILE \"C:\\data\\rain.dat\"");
         l.set_token(2, "D:\\rain.dat");
         assert_eq!(l.text(), "TS1 FILE \"D:\\rain.dat\"");
+    }
+
+    #[test]
+    fn tokens_like_the_engine() {
+        // A quote inside a token is an ordinary character.
+        assert_eq!(data("Pipe_12\" J1 J2").to_vec(), vec!["Pipe_12\"", "J1", "J2"]);
+        // A semicolon starts the comment, even inside quotes.
+        let l = data("TS1 FILE \"a;b.dat\" 5");
+        assert_eq!(l.to_vec(), vec!["TS1", "FILE", "a"]);
+        assert_eq!(l.comment(), Some("b.dat\" 5"));
+        assert_eq!(l.text(), "TS1 FILE \"a;b.dat\" 5");
     }
 
     #[test]

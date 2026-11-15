@@ -41,6 +41,11 @@ impl Fragments {
     }
 }
 
+/// A `day: … hour: …` status fragment (redrawn by the engine as the simulation advances).
+pub fn is_status(fragment: &str) -> bool {
+    fragment.contains("hour:")
+}
+
 /// Simulation progress in [0, 1] from one status fragment.
 pub fn parse_progress(fragment: &str, total_days: Option<f64>) -> Option<f64> {
     if let Some(p) = fragment.find('%') {
@@ -80,5 +85,6 @@ mod tests {
         assert_eq!(parse_progress(" o  Simulating day: 1     hour:  12", Some(3.0)), Some(0.5));
         assert_eq!(parse_progress(" o  Simulating day: 1     hour:  12", None), None);
         assert_eq!(parse_progress("Retrieving project data", Some(1.0)), None);
+        assert!(is_status(" o  Simulating day: 1     hour:  12") && !is_status("Retrieving project data"));
     }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
-import { focusVar, formatDateTime, fromInputValue, periodAt, periodMs, toInputValue } from "../format";
+import { focusVar, formatDateTime, fromInputValue, parseNumber, periodAt, periodMs, toInputValue } from "../format";
 import { getState, notify, setState, useStore } from "../store";
 import type { MinMaxSeries } from "../types";
 import { cssVar, useSize } from "../useSize";
@@ -24,7 +24,7 @@ const TICKS_MS = [
 ];
 
 /** Tick positions (ms), aligned on calendar months / years for long steps. */
-function ticks(t0: number, t1: number, step: number): number[] {
+function timeTicks(t0: number, t1: number, step: number): number[] {
   const out: number[] = [];
   if (step >= 30 * 86400e3) {
     const months = step >= 365 * 86400e3 ? 12 * Math.round(step / (365 * 86400e3)) : Math.round(step / (30 * 86400e3));
@@ -54,6 +54,8 @@ function tickLabel(t: number, step: number): string {
 }
 
 export function Timeline() {
+  // The variable the layer of the selected object is coloured by (followed when the style changes).
+  const styles = useStore((s) => s.styles);
   const results = useStore((s) => s.model?.results ?? null);
   const period = useStore((s) => s.period);
   const playing = useStore((s) => s.playing);
@@ -157,7 +159,7 @@ export function Timeline() {
     ctx.moveTo(0, 44.5);
     ctx.lineTo(width, 44.5);
     ctx.stroke();
-    for (const t of ticks(t0, t1, step)) {
+    for (const t of timeTicks(t0, t1, step)) {
       const px = ((t - t0) / (t1 - t0)) * width;
       ctx.beginPath();
       ctx.moveTo(px + 0.5, 44);
@@ -213,7 +215,7 @@ export function Timeline() {
   };
 
   const step = (k: number) => setState({ period: Math.max(0, Math.min(n - 1, period + k * stride)) });
-  const target = selection[0] ? focusVar(getState(), selection[0]) : null;
+  const target = selection[0] ? focusVar({ styles }, selection[0]) : null;
   const jumpMax = () => {
     const o = getState().selection[0];
     if (!target || !o) return;
@@ -225,9 +227,10 @@ export function Timeline() {
   const nextEvent = () => {
     const o = getState().selection[0];
     if (!target || !o) return;
-    const thr = Number(threshold);
+    const thr = parseNumber(threshold);
+    if (!Number.isFinite(thr)) return notify("The threshold is not a number.", true);
     api
-      .nextEvent(target.kind, o.index, target.var, period, Number.isFinite(thr) ? thr : 0)
+      .nextEvent(target.kind, o.index, target.var, period, thr)
       .then((p) => (p === null ? notify("No later event above the threshold.") : setState({ period: p })))
       .catch((e) => notify(errorText(e), true));
   };

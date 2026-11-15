@@ -1,23 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
+import { askNewModel, chooseModel, openModel } from "./actions/model";
+import { updateProjectUi } from "./actions/project";
+import { onFinished, onOutput, onProgress, startRun } from "./actions/run";
+import { useModelChecks } from "./actions/validate";
 import { onCacheProgress, onOpenFile, onResultsChanged, onRunFinished, onRunOutput, onRunProgress, api } from "./api";
 import { ClimateDialog } from "./components/ClimateDialog";
 import { CrsDialog } from "./components/CrsDialog";
 import { BottomPanel } from "./components/BottomPanel";
-import { useProfile } from "./components/ProfilePanel";
+import { useProfile } from "./profile/profiles";
 import { RunsPanel } from "./components/RunsPanel";
 import { SectionsDialog } from "./components/SectionsDialog";
 import { DataPanel } from "./components/DataPanel";
-import { DeleteDialog, NewModelDialog, OptionsDialog, refreshEngine } from "./components/Dialogs";
+import { refreshEngine } from "./actions/engines";
+import { DeleteDialog } from "./components/DeleteDialog";
+import { NewModelDialog } from "./components/NewModelDialog";
+import { OptionsDialog } from "./components/OptionsDialog";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { ReportPanel } from "./components/ReportPanel";
-import { onFinished, onOutput, onProgress, RunPanel, startRun } from "./components/RunPanel";
+import { RunPanel } from "./components/RunPanel";
 import { StatusBar } from "./components/StatusBar";
 import { StylePanel } from "./components/StylePanel";
 import { TableEditor } from "./components/TableEditor";
 import { Timeline } from "./components/Timeline";
-import { openModel, Toolbar } from "./components/Toolbar";
+import { Toolbar } from "./components/Toolbar";
 import { confirmDiscard, deleteObjects, redo, saveModel, undo } from "./edit";
 import { MapView, mapTools } from "./map/MapView";
 import { getState, setState, useStore, type SimTab } from "./store";
@@ -134,7 +141,13 @@ function useEvents() {
         saveModel(e.shiftKey);
         return;
       }
-      if (typing || s.dialog || s.tableEditor || s.pendingDelete || s.crsDialog) return;
+      const modal = s.dialog || s.tableEditor || s.pendingDelete || s.crsDialog;
+      if (ctrl && (k === "o" || k === "n") && !modal && !s.busy) {
+        e.preventDefault();
+        if (!e.repeat) void (k === "o" ? chooseModel() : askNewModel());
+        return;
+      }
+      if (typing || modal) return;
       const n = s.model?.results?.n_periods ?? 0;
       if (ctrl && k === "z" && !e.shiftKey) {
         e.preventDefault();
@@ -147,16 +160,20 @@ function useEvents() {
         startRun();
       } else if (e.key === "Delete" && !mapTools.current?.busy && s.selection.length > 0) {
         e.preventDefault();
-        deleteObjects(s.selection);
+        // A held key must not ask twice for the same objects (their indices change once deleted).
+        if (!e.repeat) deleteObjects(s.selection);
       } else if (e.key === "Backspace" && mapTools.current?.back()) {
         e.preventDefault();
       } else if (e.key === "Enter") {
         mapTools.current?.finish();
       } else if (e.key === " " && n > 0) {
-        setState({ playing: !s.playing });
+        // Play at the end of the run starts over.
+        setState(!s.playing && s.period >= n - 1 ? { playing: true, period: 0 } : { playing: !s.playing });
         e.preventDefault();
       } else if (e.key === "ArrowRight" && n > 0) setState({ period: Math.min(n - 1, s.period + s.stride) });
       else if (e.key === "ArrowLeft" && n > 0) setState({ period: Math.max(0, s.period - s.stride) });
+      else if (e.key === "Home" && n > 0) setState({ period: 0 });
+      else if (e.key === "End" && n > 0) setState({ period: n - 1 });
       else if (e.key === "Escape") {
         if (mapTools.current?.cancel()) return;
         if (s.profileStart !== null) setState({ profileStart: null });
@@ -172,12 +189,8 @@ function useEvents() {
   const styles = useStore((s) => s.styles);
   const labels = useStore((s) => s.labels);
   useEffect(() => {
-    const t = setTimeout(() => {
-      const m = getState().model;
-      if (!m) return;
-      m.project.ui = { ...m.project.ui, styles, labels };
-      api.updateProject(undefined, m.project.ui).catch(() => {});
-    }, 1000);
+    const path = getState().model?.path;
+    const t = setTimeout(() => updateProjectUi({ styles, labels }, path), 1000);
     return () => clearTimeout(t);
   }, [styles, labels]);
 }
@@ -212,6 +225,7 @@ function SimulationPanel() {
 export function App() {
   useEvents();
   useProfile();
+  useModelChecks();
   const crsDialog = useStore((s) => s.crsDialog);
   const dialog = useStore((s) => s.dialog);
   const bottomMax = useStore((s) => s.bottomMax);

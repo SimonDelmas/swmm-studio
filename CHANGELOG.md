@@ -43,6 +43,93 @@ All notable changes to SWMM Studio are recorded here. The format follows
   on the longest readable window around the current time, which follows the current time,
   instead of failing.
 
+- Shortcuts: Ctrl+O opens a model, Ctrl+N creates one, Home / End jump to the start / end of
+  the run; Space at the end of the run plays again from the start. Escape cancels a drag on
+  the map and closes any dialog.
+- Thresholds accept a decimal comma (events, statistics, timeline, plots).
+- Opening a model no longer rewrites its project file when nothing changed.
+- The code is organised in smaller modules (back-end: session, commands and editing by
+  domain; results cache and model operations by concern; front-end: actions, hooks, map
+  viewers, layers and edit tools, plot and profile data, properties, one file per dialog).
+- Actions shown as links (object names, "change", "remove"…) can be reached with Tab and
+  triggered with Enter or Space.
+- The Project menu is disabled while a model or results are loading.
+- Deleting a saved time series view or profile asks for a second click ("Delete?"): it
+  cannot be undone.
+- A new, empty model with a coordinate system opens on the area of its projection instead of
+  0°, 0°.
+- Section names are read like the engine does, with or without their final S (`[JUNCTION]`).
+- A value containing a semicolon is refused (SWMM reads it as the start of a comment, even
+  inside quotes); a subcatchment line needs its curb length and a subarea line its routing
+  keyword, as the engine requires.
+
+### Fixed
+
+- Results cache: two builds of the same cache no longer write over each other; an older cache
+  is replaced even while it is still open elsewhere; a cache built from a file that is still
+  being written is no longer reported out of date.
+- Pollutant results are named correctly in files written with fewer fixed variables.
+- A run that completes at the moment it is cancelled keeps its results and its status.
+- Renaming a curve also updates the underdrain curve of `[LID_CONTROLS]` and the curve of a
+  custom `[INLETS]` entry.
+- A file with a byte order mark and characters that are not UTF-8 is saved back as it was.
+- Tables of the input summary of a report (`INPUT YES`) are shown as tables.
+- Pasting numbers with a decimal comma into the section table; the scroll buttons of the tab
+  strip appear when a renamed tab no longer fits.
+- A damaged results file (impossible start date, report step or period count) is reported
+  as corrupt instead of crashing.
+- Two runs started within the same second no longer share a folder; a run record is written
+  whole or not at all; accented characters of the engine output are no longer garbled when a
+  read cuts them.
+- The preview of a long time series or curve no longer fails on its number of points.
+- Cross-sections of shape CUSTOM: the number of barrels is read and written where the engine
+  expects it (after two unused values).
+- Climatology: clearing an entry that was written on two lines removes both.
+- Deleting a transect no longer gives the next one a redundant roughness (`NC`) line.
+- Report tables: a row with blank cells (no velocity for a pump in the Link Flow Summary…)
+  keeps its values under their headings instead of shifting them left.
+- Report messages are linked to the object they name, not to the first type word of the
+  sentence ("invalid pump curve assigned to Pump P1" is about P1).
+- Renaming or deleting an object also updates `[LID_USAGE]` drains, `[AQUIFERS]` patterns and
+  the per-subcatchment lines of `[ADJUSTMENTS]`.
+- Lines are split like the engine does: a `;` starts the comment even inside quotes, and a
+  quote inside a name is part of the name.
+- Cancelling a run also stops an engine started through a wrapper (batch file, launcher).
+- The badge of the Issues tab follows the model after every edit, whatever tab is shown; the
+  issues list keeps its sort and scroll position.
+- Escape while dragging a result onto a graph only cancels the drag; the timeline jumps follow
+  the variable the map is coloured by as soon as it changes.
+- The map view saved in the project is restored when the model is opened again.
+- Adding an object to a file whose last line has no line break no longer glues two lines.
+- Editing a field of an `[INFILTRATION]` line that names its own method no longer drops or adds
+  parameters.
+- Errors written in the report after a block (run-time errors) are listed again.
+- Results cache: progress no longer overflows above 4 GB; a chunk holding an infinite value
+  keeps its true minimum and maximum; a failed build leaves no temporary file; an inconsistent
+  cache file is rejected instead of crashing.
+- Runs: a relative `--run-dir` works; stale files of a reused run folder are not read as
+  results; a run that cannot start leaves no empty folder; without a simulation period the
+  console no longer fills with one line per simulated hour. Ctrl+C stops `run --cache` while the
+  cache is built.
+- CLI: `out export` on results without periods and `out synth --step 0` report an error instead
+  of crashing.
+- Link slope with `LINK_OFFSETS ELEVATION` and default (`*`) offsets.
+- Reordering objects or changing the case of a name (sections as text, rename) updates the
+  network.
+- The model stays marked as modified when the saved state can no longer be reached by undo.
+- Absurd times in options (`10000000000000:00`) are rejected instead of crashing.
+- Profiles and plotted series follow their objects when an edit changes the indices; water
+  lines of a profile extended while playing are drawn for the right nodes.
+- Events: clicking a row after changing the selectors selects the object the table was computed
+  for; "outfalls only" no longer filters links.
+- The table editor no longer shows (or saves) the previous table while another one loads.
+- A dialog whose content cannot be loaded shows the error and can be closed.
+- Late answers of the back-end no longer replace newer ones (properties, class limits,
+  coordinate system search, section text, graphs).
+- A plain click on a vertex handle no longer records an edit; holding Delete no longer asks to
+  delete twice; the arrow keys no longer pan the basemap while stepping the timeline.
+- "Open results…" resets map styles and series that the new results cannot show.
+
 ### Security
 
 - MapLibre GL JS 6.16 (from 5.24), for an XSS sanitizer bypass in versions up to 6.4

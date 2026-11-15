@@ -10,9 +10,10 @@ use std::ops::Range;
 
 use chrono::Datelike;
 use serde::{Deserialize, Serialize};
+use swmm_out::cache::Piece;
 use swmm_out::{ElementKind, OutError, OutMeta, Results};
 
-use crate::reduce::integral;
+use crate::reduce::integral_of;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct EventParams {
@@ -111,24 +112,23 @@ pub fn detect(
             }
         }
         Some(c) => {
-            if obj >= r.meta().count(kind) || var >= r.meta().nvars(kind) {
-                return Err(OutError::OutOfRange { kind, obj, var, period: range.start });
-            }
-            let series = r.out().layout().series(kind, obj, var);
-            let cl = c.chunk_len();
-            for chunk in range.start / cl..=(range.end - 1) / cl {
-                let cp = c.chunk_periods(chunk);
-                let e = c.entry(series, chunk);
-                let whole = cp.start >= range.start && cp.end <= range.end;
-                if whole && e.max <= params.threshold && e.sum.is_finite() {
-                    d.skip(e.sum);
-                    continue;
+            let series = r.series_index(kind, obj, var)?;
+            c.walk(series, range.clone(), |piece| match piece {
+                // A chunk that stays below the threshold holds no event.
+                Piece::Chunk { summary: e, .. } => {
+                    let quiet = e.max <= params.threshold && e.sum.is_finite();
+                    if quiet {
+                        d.skip(e.sum);
+                    }
+                    quiet
                 }
-                let part = cp.start.max(range.start)..cp.end.min(range.end);
-                for (i, v) in c.series(series, part.clone())?.into_iter().enumerate() {
-                    d.push(part.start + i, v);
+                Piece::Values { start, values } => {
+                    for (i, &v) in values.iter().enumerate() {
+                        d.push(start + i, v);
+                    }
+                    true
                 }
-            }
+            })?;
         }
     }
     Ok(d.finish())
@@ -147,8 +147,7 @@ pub struct YearStats {
 
 /// Integral of an event's values (volume for flows, depth for intensities, value × s otherwise).
 pub fn event_total(meta: &OutMeta, kind: ElementKind, var: usize, e: &Event) -> f64 {
-    let unit = swmm_out::format::unit(kind, var, meta.flow_units);
-    let factor = integral(unit, meta.flow_units).map_or(1.0, |f| f.0);
+    let factor = integral_of(meta, kind, var).map_or(1.0, |f| f.0);
     e.sum * meta.report_step_secs as f64 * factor
 }
 

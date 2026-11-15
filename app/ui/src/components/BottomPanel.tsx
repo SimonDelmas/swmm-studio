@@ -3,8 +3,11 @@ import { getState, newPlotName, newPlotView, openPlotView, openProfileView, sele
 import { ComparePanel } from "./ComparePanel";
 import { EventsPanel } from "./EventsPanel";
 import { IssuesPanel } from "./IssuesPanel";
-import { deletePlotView, loadPlotView, PlotPanel, savedPlotViews } from "./PlotPanel";
-import { deleteProfile, loadProfile, ProfilePanel, savedProfiles } from "./ProfilePanel";
+import { deletePlotView, loadPlotView, savedPlotViews } from "../plot/savedViews";
+import { PlotPanel } from "./PlotPanel";
+import { deleteProfile, loadProfile, savedProfiles } from "../profile/profiles";
+import { useDropdown } from "../hooks/useDropdown";
+import { ProfilePanel } from "./ProfilePanel";
 import { TablePanel } from "./TablePanel";
 
 /** Views always there. */
@@ -50,28 +53,6 @@ function closeTab(s: State, t: DynTab) {
   else setState({ bottomTab: "table" });
 }
 
-/** A drop-down: closes on an outside click or Escape. */
-function useDropdown() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: MouseEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", down);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", down);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
-  const run = (f: () => unknown) => () => {
-    setOpen(false);
-    f();
-  };
-  return { open, setOpen, ref, run };
-}
-
 /** The "+" menu: new time series or profile tab, or one rebuilt from a view or profile saved in the project. */
 function AddMenu() {
   const results = useStore((s) => !!s.model?.results);
@@ -79,16 +60,33 @@ function AddMenu() {
   const views = useStore(savedPlotViews);
   const profiles = useStore(savedProfiles);
   const { open, setOpen, ref, run } = useDropdown();
-  const saved = (name: string, title: string, disabled: boolean, load: () => unknown, del: () => void) => (
-    <div key={name} className="menu-row">
-      <button disabled={disabled} title={title} onClick={run(load)}>
-        {name}
-      </button>
-      <button className="menu-del" title="Delete from the project" onClick={del}>
-        ×
-      </button>
-    </div>
-  );
+  // Deleting a saved view cannot be undone: the first click asks, the second deletes.
+  const [asking, setAsking] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) setAsking(null);
+  }, [open]);
+  const saved = (name: string, title: string, disabled: boolean, load: () => unknown, del: () => void) => {
+    const id = `${title}|${name}`;
+    const confirm = asking === id;
+    return (
+      <div key={name} className="menu-row">
+        <button disabled={disabled} title={title} onClick={run(load)}>
+          {name}
+        </button>
+        <button
+          className={confirm ? "menu-del danger" : "menu-del"}
+          title={confirm ? "Click again to delete it from the project (this cannot be undone)" : "Delete from the project"}
+          onClick={() => {
+            if (!confirm) return setAsking(id);
+            setAsking(null);
+            del();
+          }}
+        >
+          {confirm ? "Delete?" : "×"}
+        </button>
+      </div>
+    );
+  };
   return (
     <div className="menu" ref={ref}>
       <button className={`tab-add${open ? " active" : ""}`} title="New view: time series or profile, or a saved one" onClick={() => setOpen(!open)}>
@@ -232,6 +230,7 @@ export function BottomPanel() {
   // The time series and profile tabs scroll when they do not fit (wheel, or the list).
   const strip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
+  const tabNames = [...plotViews, ...profileViews].map((v) => v.name).join("\n");
   useLayoutEffect(() => {
     const el = strip.current;
     if (!el) return setOverflow(false);
@@ -240,7 +239,8 @@ export function BottomPanel() {
     const ro = new ResizeObserver(check);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [tabs.length]);
+    // Checked again when a tab is renamed: its width changes, not the strip's.
+  }, [tabs.length, tabNames]);
   // The open tab is scrolled into view.
   const activeKey = bottomTab === "plot" ? `plot:${plotView}` : bottomTab === "profile" ? `profile:${profileView}` : "";
   useEffect(() => {

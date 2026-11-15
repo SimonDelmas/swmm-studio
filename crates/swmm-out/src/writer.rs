@@ -93,6 +93,13 @@ fn count(n: usize) -> i32 {
 
 impl OutWriter {
     pub fn create(path: impl AsRef<Path>, spec: &OutSpec) -> Result<OutWriter, OutError> {
+        // One value per object in every property list, or the file would not be readable.
+        let consistent = spec.subcatch_area.len() == spec.subcatchments.len()
+            && [spec.node_type.len(), spec.node_invert.len(), spec.node_max_depth.len()] == [spec.nodes.len(); 3]
+            && [spec.link_type.len(), spec.link_props.len()] == [spec.links.len(); 2];
+        if !consistent {
+            return Err(OutError::Corrupt("the object lists of the specification have different lengths".into()));
+        }
         let path = path.as_ref().to_path_buf();
         let io = |e| OutError::io(&path, e);
         let file = File::create(&path).map_err(io)?;

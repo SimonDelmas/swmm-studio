@@ -2,17 +2,10 @@ import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
-import { getState, mapPlotSeries, notify, setState, styleUsable, defaultStyle, useStore, type StyledKind } from "../store";
+import { setResultsInfo } from "../actions/model";
+import { notify, setState, useStore } from "../store";
 import type { ModelInfo, RunDto } from "../types";
-
-/** Applies new model info after results were loaded or unloaded (styles that no longer apply are reset). */
-export function setResultsInfo(model: ModelInfo, resetTime: boolean) {
-  const s = getState();
-  const styles = { ...s.styles };
-  for (const k of Object.keys(styles) as StyledKind[]) if (!styleUsable(styles[k], k, model)) styles[k] = defaultStyle(k);
-  const plotViews = mapPlotSeries(s.plotViews, (p) => (!p.b || model.compare ? p : null));
-  setState({ model, styles, plotViews, ...(resetTime ? { period: 0, playing: false } : {}) });
-}
+import { CommitInput } from "./CommitInput";
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${v.toFixed(2)} %`);
 
@@ -120,13 +113,7 @@ export function RunsPanel() {
                 <tr key={r.dir} className={r.loaded ? "active-row" : r.compared ? "compared-row" : undefined}>
                   <td title={r.dir}>{local(r.record.started)}</td>
                   <td>
-                    <input
-                      key={r.record.label ?? ""}
-                      defaultValue={r.record.label ?? ""}
-                      placeholder="label"
-                      onBlur={(e) => label(r, e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                    />
+                    <CommitInput value={r.record.label ?? ""} placeholder="label" onCommit={(text) => label(r, text)} />
                   </td>
                   <td className={r.record.status === "failed" ? "bad" : r.record.status === "warnings" ? "warn" : undefined}>{r.record.status}</td>
                   <td>

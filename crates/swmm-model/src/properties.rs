@@ -104,12 +104,7 @@ pub fn fields_of(kind: &SectionKind, tokens: &[&str], inp: &InpFile) -> (Vec<Fie
         return (fields, false);
     };
     // A trailing infiltration method is shown last, after the parameters.
-    let method = (*kind == SectionKind::Infiltration && tokens.len() > 1)
-        .then(|| {
-            tokens.last().copied().filter(|s| schema::INFILTRATION_METHODS.iter().any(|m| m.eq_ignore_ascii_case(s)))
-        })
-        .flatten();
-    let body = if method.is_some() { &tokens[..tokens.len() - 1] } else { tokens };
+    let (body, method) = schema::split_method(kind, tokens);
     let mut out: Vec<Field> = Vec::new();
     for (i, d) in defs.iter().enumerate() {
         out.push(Field {
@@ -284,10 +279,7 @@ pub fn field_names(kind: &SectionKind, t: &[&str], infiltration: &str) -> Vec<St
         Some(defs) => defs.iter().map(|d| d.name.to_string()).collect(),
         None => vec!["Name".to_string()],
     };
-    if *kind == SectionKind::Infiltration
-        && t.len() > 1
-        && t.last().is_some_and(|s| schema::INFILTRATION_METHODS.iter().any(|m| m.eq_ignore_ascii_case(s)))
-    {
+    if schema::split_method(kind, t).1.is_some() {
         out.truncate(t.len() - 1);
         while out.len() < t.len() - 1 {
             out.push(format!("Field {}", out.len() + 1));

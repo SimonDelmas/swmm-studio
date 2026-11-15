@@ -70,7 +70,7 @@ export function startSeriesDrag(e: React.PointerEvent, item: DraggedSeries, clic
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     window.removeEventListener("pointercancel", cancel);
-    window.removeEventListener("keydown", key);
+    window.removeEventListener("keydown", key, true);
     setOver(null);
     if (!ghost) {
       if (drop) click();
@@ -84,9 +84,14 @@ export function startSeriesDrag(e: React.PointerEvent, item: DraggedSeries, clic
   };
   const up = (ev: PointerEvent) => end(ev, true);
   const cancel = (ev: PointerEvent) => end(ev, false);
-  const key = (ev: KeyboardEvent) => ev.key === "Escape" && end(new PointerEvent("pointercancel"), false);
+  // Escape cancels the drag only: it does not also reach the shortcuts of the app.
+  const key = (ev: KeyboardEvent) => {
+    if (ev.key !== "Escape") return;
+    ev.stopPropagation();
+    end(new PointerEvent("pointercancel"), false);
+  };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
   window.addEventListener("pointercancel", cancel);
-  window.addEventListener("keydown", key);
+  window.addEventListener("keydown", key, true);
 }

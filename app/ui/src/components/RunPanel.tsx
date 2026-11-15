@@ -1,61 +1,8 @@
+import { LinkButton } from "./LinkButton";
 import { useEffect, useRef, useState } from "react";
-import { api, errorText } from "../api";
-import { defaultStyle, getState, notify, setState, styleUsable, useStore, type StyledKind } from "../store";
+import { cancelRun, startRun } from "../actions/run";
+import { setState, useStore } from "../store";
 import { Linkified } from "../objects";
-import type { RunFinished, RunProgress } from "../types";
-
-/** Starts a simulation of the model as it is now (unsaved edits included). */
-export async function startRun(label: string | null = null) {
-  const s = getState();
-  if (!s.model || s.run.running) return;
-  if (!s.engine) {
-    notify("Configure a SWMM engine first", true);
-    setState({ dialog: "engines" });
-    return;
-  }
-  setState({ run: { running: true, progress: null, elapsed: 0, log: [], last: null }, sideTab: "simulation", simTab: "run" });
-  try {
-    await api.runStart(label);
-  } catch (e) {
-    setState({ run: { ...getState().run, running: false } });
-    notify(errorText(e), true);
-  }
-}
-
-export function onProgress(p: RunProgress) {
-  const r = getState().run;
-  setState({ run: { ...r, progress: p.progress ?? r.progress, elapsed: p.elapsed } });
-}
-
-export function onOutput(line: string) {
-  const r = getState().run;
-  setState({ run: { ...r, log: [...r.log.slice(-1999), line] } });
-}
-
-export function onFinished(f: RunFinished) {
-  const s = getState();
-  const patch: Parameters<typeof setState>[0] = { run: { ...s.run, running: false, progress: null, last: f } };
-  if (f.info) {
-    Object.assign(patch, { model: f.info, period: 0, playing: false });
-    // Without results (failed run), layers coloured by a result go back to their default.
-    const styles = { ...s.styles };
-    for (const k of Object.keys(styles) as StyledKind[]) {
-      if (!styleUsable(styles[k], k, f.info)) styles[k] = defaultStyle(k);
-    }
-    Object.assign(patch, { styles });
-  }
-  setState(patch);
-  const what =
-    f.status === "success"
-      ? "Simulation completed"
-      : f.status === "warnings"
-        ? `Simulation completed with ${f.warnings} warning(s)`
-        : f.status === "cancelled"
-          ? "Simulation cancelled"
-          : `Simulation failed${f.errors ? ` with ${f.errors} error(s)` : ""}${f.info?.results ? "; partial results loaded" : ""}`;
-  notify(`${what} (${f.seconds.toFixed(1)} s)`, f.status === "failed");
-  if (f.errors > 0) setState({ sideTab: "simulation", simTab: "report" });
-}
 
 export function RunControls() {
   const run = useStore((s) => s.run);
@@ -71,7 +18,7 @@ export function RunControls() {
           </span>
         </span>
         <span className="muted">{run.elapsed.toFixed(0)} s</span>
-        <button onClick={() => api.runCancel()}>Cancel</button>
+        <button onClick={cancelRun}>Cancel</button>
       </span>
     );
   return (
@@ -100,11 +47,11 @@ export function RunPanel() {
     <div className="run-panel">
       <div className="panel-toolbar">
         <span>
-          Engine: <b>{engine ?? "none"}</b> <a onClick={() => setState({ dialog: "engines" })}>change</a>
+          Engine: <b>{engine ?? "none"}</b> <LinkButton onClick={() => setState({ dialog: "engines" })}>change</LinkButton>
         </span>
         <input placeholder="Run label (optional)" value={label} onChange={(e) => setLabel(e.target.value)} disabled={run.running} />
         {run.running ? (
-          <button onClick={() => api.runCancel()}>Cancel</button>
+          <button onClick={cancelRun}>Cancel</button>
         ) : (
           <button className="primary" onClick={() => startRun(label.trim() || null)}>
             ▶ Run
@@ -126,7 +73,7 @@ export function RunPanel() {
           {f.errors + f.warnings > 0 && (
             <>
               {" "}
-              <a onClick={() => setState({ sideTab: "simulation", simTab: "report" })}>see the report</a>
+              <LinkButton onClick={() => setState({ sideTab: "simulation", simTab: "report" })}>see the report</LinkButton>
             </>
           )}
         </div>

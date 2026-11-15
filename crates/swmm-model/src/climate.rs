@@ -251,6 +251,8 @@ impl Climate {
                 ("DRY_ONLY", None, Some(_)) => Some(vec!["DRY_ONLY".to_string(), "NO".to_string()]),
                 _ => row,
             };
+            // Lines of the key left once this one is handled: one, or none for a cleared key.
+            let kept = usize::from(row.is_some());
             match (at, row) {
                 (Some((s, i)), Some(row)) => {
                     let line = &tx.inp().sections()[s].lines()[i];
@@ -268,13 +270,13 @@ impl Climate {
                 (Some((s, i)), None) => tx.remove_line(s, i),
                 (None, None) => {}
             }
-            // Duplicate lines of the key (later ones) go away.
+            // Other lines of the key (duplicates) go away.
             loop {
                 let dup =
                     tx.inp().sections().iter().enumerate().filter(|(_, s)| s.kind() == &kind).find_map(|(si, s)| {
                         s.data()
                             .filter(|(_, l)| line_key(&kind, l).as_deref() == Some(key))
-                            .nth(1)
+                            .nth(kept)
                             .map(|(li, _)| (si, li))
                     });
                 match dup {

@@ -228,8 +228,9 @@ export interface State {
   profileError: string | null;
   /** Profile tool: start node clicked, waiting for the end node. */
   profileStart: number | null;
-  /** Last model check (null: not run yet). */
+  /** Last model check (null: not run yet), and why it could not run. */
   issues: Issue[] | null;
+  issuesError: string | null;
   /** Incremented to ask the map to zoom to the model extent / to the selection. */
   fitExtent: number;
   fitSelection: number;
@@ -295,6 +296,7 @@ const initial: State = {
   profileError: null,
   profileStart: null,
   issues: null,
+  issuesError: null,
   fitExtent: 0,
   fitSelection: 0,
   panSelection: 0,
@@ -351,8 +353,11 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     profileStart: null,
     bottomTab: state.bottomTab === "plot" || state.bottomTab === "profile" ? "table" : state.bottomTab,
     issues: null,
-    fitExtent: state.fitExtent + 1,
+    issuesError: null,
+    // The map view is rebuilt (modelSeq) and shows the saved view, or the whole model.
     tool: "select",
+    // The console of the previous model does not belong to this one.
+    run: state.run.running ? state.run : initial.run,
     modelSeq: state.modelSeq + 1,
     tableEditor: null,
     pendingDelete: null,

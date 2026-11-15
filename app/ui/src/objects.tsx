@@ -1,3 +1,4 @@
+import { LinkButton } from "./components/LinkButton";
 // Clickable object names: wherever the UI shows the name of a network object, clicking it
 // selects the object (and zooms the map to it).
 import { useEffect, useState, type ReactNode } from "react";
@@ -9,8 +10,17 @@ const KINDS: ObjKind[] = ["node", "link", "subcatchment", "gage"];
 
 /** Selects one object; by default the map zooms to it. */
 export function selectObject(o: ObjRef, zoom = true) {
-  const s = getState();
-  setState(zoom ? { selection: [o], fitSelection: s.fitSelection + 1 } : { selection: [o] });
+  selectObjects([o], zoom);
+}
+
+/** Selects objects and, with `zoom`, shows them on the map. */
+export function selectObjects(selection: ObjRef[], zoom = true) {
+  setState(zoom ? { selection, fitSelection: getState().fitSelection + 1 } : { selection });
+}
+
+/** Zooms the map to the selected objects. */
+export function zoomToSelection() {
+  setState({ fitSelection: getState().fitSelection + 1 });
 }
 
 /** Objects by upper-case name (SWMM names are case-insensitive), in kind order. */
@@ -69,7 +79,7 @@ export function resolveName(index: NameIndex | null, name: string, prefer?: ObjK
 /** A link selecting `obj`. */
 export function ObjLink({ obj, children, zoom = true, title }: { obj: ObjRef; children: ReactNode; zoom?: boolean; title?: string }) {
   return (
-    <a
+    <LinkButton
       className="obj-link"
       title={title ?? "Select"}
       onClick={(e) => {
@@ -78,7 +88,7 @@ export function ObjLink({ obj, children, zoom = true, title }: { obj: ObjRef; ch
       }}
     >
       {children}
-    </a>
+    </LinkButton>
   );
 }
 

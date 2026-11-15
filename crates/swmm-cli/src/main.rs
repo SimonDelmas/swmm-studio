@@ -262,7 +262,7 @@ fn run_cmd(
         RunStatus::Cancelled => ExitCode::from(130),
     };
     if cache && matches!(outcome.status, RunStatus::Success | RunStatus::Warnings) {
-        out_cmd::build_cache(&outcome.out, &swmm_out::cache::CacheOptions::default())?;
+        out_cmd::build_cache(&outcome.out, &swmm_out::cache::CacheOptions::default(), &cancel)?;
     }
     Ok(code)
 }

@@ -3,8 +3,8 @@
 
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "./api";
-import { seriesKey } from "./components/PlotPanel";
-import { getState, mapPlotSeries, notify, resetForModel, setState, type State } from "./store";
+import { seriesKey } from "./plot/series";
+import { getState, mapPlotSeries, notify, resetForModel, sameRef, setState, type PlotView, type State } from "./store";
 import type { EditOutcome, EditRequest, Geometry, GeometryPatch, ObjKind, ObjRef } from "./types";
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -78,6 +78,41 @@ export function applyPatch(g: Geometry, p: GeometryPatch): Geometry {
   return out;
 }
 
+/** Index of an object name in a list of names (-1: not there). */
+function indexOfId(list: string[] | undefined, id: string): number {
+  const up = id.toUpperCase();
+  return list ? list.findIndex((x) => x.toUpperCase() === up) : -1;
+}
+
+/** Plotted series found again by name after the indices changed (dropped when gone). */
+function remapPlotViews(views: PlotView[], ids: State["ids"]): PlotView[] {
+  return mapPlotSeries(views, (p) => {
+    if (p.kind === "system" || !p.id) return p;
+    const index = indexOfId(ids[p.kind as ObjKind], p.id);
+    return index < 0 ? null : { ...p, index, key: seriesKey(p.kind, index, p.var, p.b) };
+  });
+}
+
+/**
+ * Profiles after the node indices changed: their nodes are found again by name (the
+ * names loaded before the edit, or those of the profile shown). A profile that lost a
+ * node, or whose node names are not known, is emptied rather than drawn through other nodes.
+ */
+function remapProfiles(s: State, nodeIds: string[]): Pick<State, "profileViews" | "profileNodes" | "profileStart"> {
+  const shownNames = new Map(s.profile?.nodes.map((n) => [n.index, n.id]));
+  const nameOf = (i: number) => s.ids.node?.[i] ?? shownNames.get(i);
+  const remap = (nodes: number[]): number[] => {
+    const next = nodes.map((i) => {
+      const name = nameOf(i);
+      return name === undefined ? -1 : indexOfId(nodeIds, name);
+    });
+    return next.includes(-1) ? [] : next;
+  };
+  const profileViews = s.profileViews.map((v) => ({ ...v, nodes: remap(v.nodes) }));
+  const shown = profileViews.find((v) => v.id === s.profileView);
+  return { profileViews, profileNodes: shown ? shown.nodes : [], profileStart: null };
+}
+
 /** Updates the UI after the backend changed the model. */
 export async function applyOutcome(o: EditOutcome) {
   const s = getState();
@@ -88,23 +123,22 @@ export async function applyOutcome(o: EditOutcome) {
     if (s.model.results && info.results?.path === s.model.results.path) info.results = s.model.results;
     if (s.model.report && info.report?.path === s.model.report.path) info.report = s.model.report;
   }
-  const same = o.selection.length === s.selection.length && o.selection.every((r, i) => r.kind === s.selection[i].kind && r.index === s.selection[i].index);
+  const same = o.selection.length === s.selection.length && o.selection.every((r, i) => sameRef(r, s.selection[i]));
   const patch: Partial<State> = { model: info, selection: same ? s.selection : o.selection };
   if (o.geometry) patch.geometry = await api.geometry();
   else if (o.patch && s.geometry) patch.geometry = applyPatch(s.geometry, o.patch);
   if (o.rebuilt) {
-    // Indices changed: reload the cached IDs and find plotted objects by name.
-    const kinds = Object.keys(s.ids) as ObjKind[];
-    const lists = await Promise.all(kinds.map((k) => api.ids(k)));
+    // Indices changed: reload the cached IDs (the node names too when profiles need them).
+    const kinds = new Set(Object.keys(s.ids) as ObjKind[]);
+    if (s.profileViews.length > 0) kinds.add("node");
+    const lists = await Promise.all([...kinds].map((k) => api.ids(k)));
     const ids: State["ids"] = {};
-    kinds.forEach((k, i) => (ids[k] = lists[i]));
+    [...kinds].forEach((k, i) => (ids[k] = lists[i]));
     patch.ids = ids;
-    patch.plotViews = mapPlotSeries(s.plotViews, (p) => {
-      if (p.kind === "system" || !p.id) return p;
-      const list = ids[p.kind as ObjKind];
-      const index = list ? list.findIndex((x) => x.toUpperCase() === p.id!.toUpperCase()) : -1;
-      return index < 0 ? null : { ...p, index, key: seriesKey(p.kind, index, p.var, p.b) };
-    });
+    // The views may have changed while the names were loaded: remap the current ones.
+    const now = getState();
+    patch.plotViews = remapPlotViews(now.plotViews, ids);
+    Object.assign(patch, remapProfiles(now, ids.node ?? []));
   }
   setState(patch);
   if (o.message) notify(o.message);

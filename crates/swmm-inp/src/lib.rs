@@ -254,8 +254,10 @@ impl InpFile {
 }
 
 fn decode(bytes: &[u8]) -> (String, TextEncoding) {
-    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
-        return (String::from_utf8_lossy(rest).into_owned(), TextEncoding::Utf8Bom);
+    // A byte order mark announces UTF-8, but only valid UTF-8 can be written back as it
+    // was: otherwise the file is read as Windows-1252, mark included.
+    if let Some(Ok(text)) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).map(std::str::from_utf8) {
+        return (text.to_string(), TextEncoding::Utf8Bom);
     }
     match std::str::from_utf8(bytes) {
         Ok(s) => (s.to_string(), TextEncoding::Utf8),

@@ -167,8 +167,3 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif">${parts.join("")}</svg>`;
 }
-
-/** Export buttons of a table. */
-export function tableExport(name: string, title: string, columns: string[], rows: () => Cell[][]) {
-  return () => exportTable(name, title, columns, rows());
-}

@@ -114,14 +114,19 @@ impl OutMeta {
         self.layout.nvars[kind as usize]
     }
 
-    /// Variable names: fixed variables, then one per pollutant (`washoff_<p>` for subcatchments).
+    /// Variable names: fixed variables, then one per pollutant (`washoff_<p>` for
+    /// subcatchments). The pollutants are the last variables, whatever the number of
+    /// fixed ones (older engines write fewer).
     pub fn var_names(&self, kind: ElementKind) -> Vec<String> {
         let base = kind.base_variables();
-        (0..self.nvars(kind))
-            .map(|v| match base.get(v) {
+        let n = self.nvars(kind);
+        let fixed = if kind == ElementKind::System { n } else { n.saturating_sub(self.pollutants.len()) };
+        (0..n)
+            .map(|v| match base.get(v).filter(|_| v < fixed) {
                 Some(n) => n.to_string(),
+                None if v < fixed => format!("variable_{}", v + 1),
                 None => {
-                    let p = self.pollutants.get(v - base.len()).map_or("pollutant", String::as_str);
+                    let p = self.pollutants.get(v - fixed).map_or("pollutant", String::as_str);
                     if kind == ElementKind::Subcatchment {
                         format!("washoff_{p}")
                     } else {
@@ -162,6 +167,8 @@ impl OutMeta {
 pub struct OutFile {
     path: PathBuf,
     map: Mmap,
+    /// Modification time of the file when it was mapped, in nanoseconds since 1970.
+    modified_ns: u64,
     meta: OutMeta,
     index: [OnceLock<HashMap<String, usize>>; 4],
 }
@@ -261,6 +268,10 @@ fn parse_meta(buf: &[u8]) -> Result<OutMeta, OutError> {
     }
     let start_date = c.f64()?;
     let report_step_secs = c.i32()?;
+    // Dates are days since 1899-12-30: anything outside a few thousand years is not one.
+    if !(0.0..3_000_000.0).contains(&start_date) || report_step_secs <= 0 {
+        return Err(OutError::Corrupt("invalid start date or report step".into()));
+    }
     let output_start = c.pos as u64;
 
     let layout = Layout {
@@ -277,14 +288,15 @@ fn parse_meta(buf: &[u8]) -> Result<OutMeta, OutError> {
     if len >= output_start + EPILOGUE_BYTES {
         let mut e = Cursor { buf, pos: (len - EPILOGUE_BYTES) as usize };
         let (_ids, _input, out_pos, np, err, magic) = (e.i32()?, e.i32()?, e.i32()?, e.i32()?, e.i32()?, e.i32()?);
-        let np = usize::try_from(np).unwrap_or(usize::MAX);
-        if magic == MAGIC
-            && out_pos as u32 as u64 == output_start & 0xFFFF_FFFF
-            && output_start + np as u64 * bpp + EPILOGUE_BYTES == len
-        {
+        // The period count must account for the size of the file exactly.
+        let end = u64::try_from(np)
+            .ok()
+            .and_then(|n| n.checked_mul(bpp))
+            .and_then(|b| b.checked_add(output_start + EPILOGUE_BYTES));
+        if magic == MAGIC && out_pos as u32 as u64 == output_start & 0xFFFF_FFFF && end == Some(len) {
             complete = true;
             error_code = err;
-            n_periods = Some(np);
+            n_periods = Some(np as usize);
         }
     }
     let n_periods = n_periods.unwrap_or(((len - output_start) / bpp) as usize);
@@ -328,8 +340,17 @@ impl OutFile {
         // SAFETY: the file is opened read-only; SWMM files are not modified while read
         // (a concurrent run writes a new file in another folder).
         let map = unsafe { Mmap::map(&file) }.map_err(|e| OutError::io(&path, e))?;
+        let modified = file.metadata().and_then(|m| m.modified()).ok();
+        let modified_ns =
+            modified.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64);
         let meta = parse_meta(&map)?;
-        Ok(OutFile { path, map, meta, index: Default::default() })
+        Ok(OutFile { path, map, modified_ns, meta, index: Default::default() })
+    }
+
+    /// Modification time of the file as it was opened (the bytes read are those of that
+    /// moment, also when a running simulation keeps writing to the file).
+    pub fn modified_ns(&self) -> u64 {
+        self.modified_ns
     }
 
     pub fn path(&self) -> &Path {

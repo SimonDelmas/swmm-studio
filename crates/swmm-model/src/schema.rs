@@ -245,12 +245,27 @@ impl Context {
     }
 }
 
+/// Splits a data line into its fields and the infiltration method that an
+/// `[INFILTRATION]` line may name after them (SWMM 5.2); other lines have none.
+pub fn split_method<'a, 't>(kind: &SectionKind, t: &'a [&'t str]) -> (&'a [&'t str], Option<&'t str>) {
+    match t.split_last() {
+        Some((last, body))
+            if *kind == SectionKind::Infiltration
+                && !body.is_empty()
+                && INFILTRATION_METHODS.iter().any(|m| m.eq_ignore_ascii_case(last)) =>
+        {
+            (body, Some(*last))
+        }
+        _ => (t, None),
+    }
+}
+
 /// Infiltration method of a line: its own trailing method token (SWMM 5.2) or the model's.
 pub fn infiltration_method(t: &[&str], ctx: &Context) -> String {
-    t.last()
-        .filter(|s| t.len() > 1 && INFILTRATION_METHODS.iter().any(|m| m.eq_ignore_ascii_case(s)))
-        .map(|s| s.to_ascii_uppercase())
-        .unwrap_or_else(|| ctx.infiltration.clone())
+    match split_method(&SectionKind::Infiltration, t).1 {
+        Some(method) => method.to_ascii_uppercase(),
+        None => ctx.infiltration.clone(),
+    }
 }
 
 /// Fields of a data line of a section, or `None` for sections without a schema.
@@ -425,9 +440,13 @@ pub fn layout(kind: &SectionKind, t: &[&str], ctx: &Context) -> Option<Vec<Field
                 req(choice("shape", "Shape", XSECTION_SHAPES, "CIRCULAR")),
             ];
             match shape.as_str() {
+                // The engine reads the barrels in the same place for every shape: two
+                // unused values, which it requires, come before them.
                 "CUSTOM" => v.extend([
                     req(num("geom1", "Max depth", U::Length, "1")),
                     req(refer("curve", "Shape curve", R::Curve, "*")),
+                    req(num("geom3", "Not used", U::None, "0")),
+                    req(num("geom4", "Not used", U::None, "0")),
                     num("barrels", "Barrels", U::None, "1"),
                 ]),
                 "IRREGULAR" => v.push(req(refer("curve", "Transect", R::Transect, "*"))),
@@ -474,7 +493,8 @@ pub fn layout(kind: &SectionKind, t: &[&str], ctx: &Context) -> Option<Vec<Field
                 num("curb", "Curb length", U::Length, "0"),
                 refer("snowpack", "Snow pack", R::Snowpack, ""),
             ],
-            7,
+            // The engine needs the curb length too.
+            8,
         ),
         SectionKind::Subareas => required(
             vec![
@@ -490,7 +510,8 @@ pub fn layout(kind: &SectionKind, t: &[&str], ctx: &Context) -> Option<Vec<Field
                 choice("route", "Subarea routing", &["OUTLET", "IMPERVIOUS", "PERVIOUS"], "OUTLET"),
                 num("prouted", "Percent routed", U::Percent, "100"),
             ],
-            6,
+            // The engine needs the routing keyword too.
+            7,
         ),
         SectionKind::Infiltration => {
             let method = infiltration_method(t, ctx);
@@ -608,6 +629,9 @@ pub fn validate(def: &FieldDef, value: &str) -> Result<String, String> {
     if v.contains('"') {
         return Err("double quotes are not allowed".into());
     }
+    if v.contains(';') {
+        return Err("a semicolon starts a comment: it is not allowed in a value".into());
+    }
     if v.is_empty() {
         return if def.required && !def.default.is_empty() {
             Err(format!("{} is required", def.name))
@@ -699,11 +723,8 @@ pub fn new_line_tokens(kind: &SectionKind, key: &[&str], ctx: &Context) -> Optio
 pub fn set_field(kind: &SectionKind, tokens: &[&str], index: usize, value: &str, ctx: &Context) -> Option<Vec<String>> {
     let old = layout(kind, tokens, ctx)?;
     // A trailing infiltration method (SWMM 5.2) stays last.
-    let method = (*kind == SectionKind::Infiltration && tokens.len() > 1)
-        .then(|| tokens.last().filter(|s| INFILTRATION_METHODS.iter().any(|m| m.eq_ignore_ascii_case(s))))
-        .flatten()
-        .map(|s| s.to_string());
-    let body: Vec<&str> = if method.is_some() { tokens[..tokens.len() - 1].to_vec() } else { tokens.to_vec() };
+    let (body, method) = split_method(kind, tokens);
+    let method = method.map(str::to_string);
     let def = old.get(index)?;
     let mut t: Vec<String> = body.iter().map(|s| s.to_string()).collect();
     while t.len() <= index {
@@ -714,7 +735,8 @@ pub fn set_field(kind: &SectionKind, tokens: &[&str], index: usize, value: &str,
     if value.is_empty() && index + 1 == t.len() && !def.required {
         t.pop();
     }
-    let probe: Vec<&str> = t.iter().map(String::as_str).collect();
+    // The new layout is that of the whole line: its own method, not the model's.
+    let probe: Vec<&str> = t.iter().map(String::as_str).chain(method.as_deref()).collect();
     let new = layout(kind, &probe, ctx)?;
     let same = new.len() == old.len() && new.iter().zip(&old).all(|(a, b)| a.key == b.key);
     if !same {
@@ -761,11 +783,25 @@ mod tests {
     }
 
     #[test]
+    fn infiltration_line_keeps_its_own_method() {
+        // The line's trailing method decides its fields, whatever the model option is.
+        let i = SectionKind::Infiltration;
+        let green_ampt = Context { infiltration: "GREEN_AMPT".into() };
+        let horton = Context { infiltration: "HORTON".into() };
+        let set = |line: &str, ctx: &Context| {
+            let t: Vec<&str> = line.split_whitespace().collect();
+            set_field(&i, &t, 2, "0.4", ctx).unwrap().join(" ")
+        };
+        assert_eq!(set("S1 3 0.5 4 7 0 HORTON", &green_ampt), "S1 3 0.4 4 7 0 HORTON");
+        assert_eq!(set("S1 3.5 0.5 0.26 GREEN_AMPT", &horton), "S1 3.5 0.4 0.26 GREEN_AMPT");
+    }
+
+    #[test]
     fn padding_and_simple_edits() {
         assert_eq!(set(SectionKind::Junctions, "J1 100", 4, "1.5"), "J1 100 0 0 1.5");
         assert_eq!(set(SectionKind::Conduits, "C1 A B 10 0.01 0 0", 4, "0.013"), "C1 A B 10 0.013 0 0");
-        assert_eq!(set(SectionKind::Xsections, "C1 CIRCULAR 1 0 0 0 1", 1, "CUSTOM"), "C1 CUSTOM 1 * 1");
-        assert_eq!(set(SectionKind::Xsections, "C1 CUSTOM 2 SH 1", 1, "RECT_CLOSED"), "C1 RECT_CLOSED 2 0 0 0 1");
+        assert_eq!(set(SectionKind::Xsections, "C1 CIRCULAR 1 0 0 0 1", 1, "CUSTOM"), "C1 CUSTOM 1 * 0 0 1");
+        assert_eq!(set(SectionKind::Xsections, "C1 CUSTOM 2 SH 0 0 1", 1, "RECT_CLOSED"), "C1 RECT_CLOSED 2 0 0 0 1");
         assert_eq!(set(SectionKind::Storage, "S 1 2 0 TABULAR C", 4, "FUNCTIONAL"), "S 1 2 0 FUNCTIONAL 1000 0 0");
         assert_eq!(
             set(SectionKind::Raingages, "RG INTENSITY 0:05 1.0 TIMESERIES TS", 4, "FILE"),

@@ -1,23 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
-import maplibreWorker from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
-import { COORDINATE_SYSTEM, Deck, OrthographicView, type Layer } from "@deck.gl/core";
-import { MapboxOverlay } from "@deck.gl/mapbox";
-import { IconLayer, LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { COORDINATE_SYSTEM } from "@deck.gl/core";
+import { ensureIds } from "../actions/ids";
+import { updateProjectUi } from "../actions/project";
 import { api, errorText } from "../api";
-import { profileClick } from "../components/ProfilePanel";
+import { profileClick } from "../profile/profiles";
 import { getState, notify, sameRef, setState, useStore } from "../store";
-import type { Geometry, ObjKind, ObjRef } from "../types";
+import type { ObjRef } from "../types";
 import { styleObjects } from "./colors";
-import { ICON_SCALE, LINK_TYPE_SHAPES, NODE_TYPE_SHAPES, SHAPE_SCALE, shapeAtlas, type Shape } from "./shapes";
+import { baseLayers, staticGeometry } from "./layers";
+import { outletSegments } from "./outlets";
+import { labelLayer, profileLayers, selectionLayers } from "./overlayLayers";
+import { ToolHint } from "./ToolHint";
 import { useEditTools, type EditTools } from "./useEditTools";
 import { useLayerValues } from "./useLayerValues";
-
-const EARTH = 40075016.686;
-
-// MapLibre looks for its worker next to its own module, which is not where Vite serves or bundles it.
-maplibregl.setWorkerUrl(maplibreWorker);
+import { createDeckViewer, createMapViewer, selectionBounds, type Extent, type Pt, type Viewer } from "./viewers";
 
 /** Rendering measurements, read by the UI tests. */
 export const mapPerf = { steps: [] as { period: number; ms: number }[] };
@@ -25,282 +21,17 @@ export const mapPerf = { steps: [] as { period: number; ms: number }[] };
 export const mapTools: { current: EditTools | null } = { current: null };
 /** Display coordinates → page coordinates on the map (UI tests). */
 export const mapProject: { current: ((p: Pt) => Pt) | null } = { current: null };
-const HIGHLIGHT: [number, number, number, number] = [255, 200, 0, 255];
-/** Path of the current longitudinal profile. */
-const PROFILE: [number, number, number, number] = [230, 40, 150, 210];
-/** Lines from subcatchments to their outlets. */
-const OUTLET_LINK: [number, number, number, number] = [50, 50, 50, 190];
-const MAX_LABELS = 400;
 
-type Pt = [number, number];
-
-/** What the map needs from either back-end (MapLibre + overlay, or a plain Deck). */
-interface Viewer {
-  setLayers(layers: Layer[]): void;
-  unproject(p: Pt): Pt;
-  /** Display coordinates → pixels in the map element. */
-  project(p: Pt): Pt;
-  /** Size of a screen pixel in spatial-index units (Web Mercator metres or model units). */
-  unitsPerPixel(): number;
-  fit(b: [number, number, number, number]): void;
-  /** Pans to a point (display coordinates), keeping the zoom. */
-  center(p: Pt): void;
-  /** Visible extent in display coordinates. */
-  extent(): [number, number, number, number];
-  /** Double-click zoom gets in the way while drawing. */
-  setDoubleClickZoom(on: boolean): void;
-  destroy(): void;
+/** The view saved in the project, when it was saved in this coordinate space. */
+function savedView(space: string): Extent | null {
+  const view = getState().model?.project.ui.view as { extent?: number[]; space?: string } | undefined;
+  return view?.space === space && view.extent?.length === 4 && view.extent.every(Number.isFinite) ? (view.extent as Extent) : null;
 }
 
-function bboxOf(pts: ArrayLike<number>, from = 0, to = pts.length / 2, b = [Infinity, Infinity, -Infinity, -Infinity]) {
-  for (let i = from; i < to; i++) {
-    const x = pts[2 * i];
-    const y = pts[2 * i + 1];
-    if (!Number.isFinite(x)) continue;
-    b[0] = Math.min(b[0], x);
-    b[1] = Math.min(b[1], y);
-    b[2] = Math.max(b[2], x);
-    b[3] = Math.max(b[3], y);
-  }
-  return b;
-}
-
-function createMapViewer(container: HTMLDivElement, onView: () => void): Viewer {
-  const project = getState().model!.project;
-  const bm = project.basemap;
-  const map = new maplibregl.Map({
-    container,
-    style: {
-      version: 8,
-      sources: {
-        basemap: { type: "raster", tiles: [bm.url], tileSize: 256, attribution: bm.attribution, maxzoom: 19 },
-      },
-      layers: [
-        { id: "background", type: "background", paint: { "background-color": "#eef0f2" } },
-        {
-          id: "basemap",
-          type: "raster",
-          source: "basemap",
-          paint: { "raster-opacity": bm.opacity },
-          layout: { visibility: bm.visible ? "visible" : "none" },
-        },
-      ],
-    },
-    center: [0, 0],
-    zoom: 1,
-    maxZoom: 24,
-    boxZoom: false,
-    dragRotate: false,
-    pitchWithRotate: false,
-    attributionControl: { compact: true },
-    fadeDuration: 0,
-  });
-  map.touchZoomRotate.disableRotation();
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-  map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
-  const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
-  map.addControl(overlay as unknown as maplibregl.IControl);
-  map.on("moveend", onView);
-  // The panels around the map resize it, not only the window.
-  const ro = new ResizeObserver(() => map.resize());
-  ro.observe(container);
-  (container as unknown as { __map: maplibregl.Map }).__map = map;
-  return {
-    setLayers: (layers) => overlay.setProps({ layers }),
-    unproject: (p) => {
-      const ll = map.unproject(p);
-      return [ll.lng, ll.lat];
-    },
-    project: (p) => {
-      const q = map.project(p as [number, number]);
-      return [q.x, q.y];
-    },
-    unitsPerPixel: () => EARTH / (512 * Math.pow(2, map.getZoom())),
-    fit: (b) =>
-      map.fitBounds(
-        [
-          [b[0], b[1]],
-          [b[2], b[3]],
-        ],
-        { padding: 40, duration: 0, maxZoom: 19 },
-      ),
-    center: (p) => map.easeTo({ center: p, duration: 300 }),
-    extent: () => {
-      const b = map.getBounds();
-      return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-    },
-    setDoubleClickZoom: (on) => {
-      if (on) map.doubleClickZoom.enable();
-      else map.doubleClickZoom.disable();
-    },
-    destroy: () => {
-      ro.disconnect();
-      map.remove();
-      delete (container as unknown as { __map?: maplibregl.Map }).__map;
-    },
-  };
-}
-
-function createDeckViewer(container: HTMLDivElement, onView: () => void): Viewer {
-  let viewState = { target: [0, 0, 0] as [number, number, number], zoom: 0, minZoom: -30, maxZoom: 30 };
-  const deck = new Deck({
-    parent: container,
-    views: new OrthographicView({ id: "ortho", flipY: false }),
-    initialViewState: viewState,
-    controller: { doubleClickZoom: true, inertia: false },
-    layers: [],
-    onViewStateChange: ({ viewState: v }) => {
-      viewState = v as typeof viewState;
-      onView();
-      return v;
-    },
-  });
-  const viewport = () => deck.getViewports()[0];
-  return {
-    setLayers: (layers) => deck.setProps({ layers }),
-    unproject: (p) => {
-      const v = viewport();
-      return v ? (v.unproject(p) as Pt) : p;
-    },
-    project: (p) => {
-      const v = viewport();
-      return v ? (v.project(p) as Pt) : p;
-    },
-    unitsPerPixel: () => 1 / Math.pow(2, viewState.zoom),
-    fit: (b) => {
-      const w = container.clientWidth || 800;
-      const h = container.clientHeight || 600;
-      const sx = Math.max(b[2] - b[0], 1e-6);
-      const sy = Math.max(b[3] - b[1], 1e-6);
-      const zoom = Math.log2(Math.min((w - 80) / sx, (h - 80) / sy));
-      viewState = { ...viewState, target: [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2, 0], zoom };
-      deck.setProps({ initialViewState: { ...viewState } });
-      onView();
-    },
-    center: (p) => {
-      viewState = { ...viewState, target: [p[0], p[1], 0] };
-      deck.setProps({ initialViewState: { ...viewState } });
-      onView();
-    },
-    extent: () => {
-      const v = viewport();
-      if (!v) return [-Infinity, -Infinity, Infinity, Infinity];
-      const [x0, y0] = v.unproject([0, v.height]);
-      const [x1, y1] = v.unproject([v.width, 0]);
-      return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
-    },
-    setDoubleClickZoom: (on) => deck.setProps({ controller: { doubleClickZoom: on, inertia: false } }),
-    destroy: () => deck.finalize(),
-  };
-}
-
-/** Centroid of each subcatchment outline (NaN without one). */
-function subCentroids(g: Geometry): Float64Array {
-  const n = g.subStarts.length - 1;
-  const out = new Float64Array(2 * n).fill(NaN);
-  const p = g.subPts;
-  for (let i = 0; i < n; i++) {
-    const s = g.subStarts[i];
-    const e = g.subStarts[i + 1];
-    if (e - s < 3) continue;
-    // Relative to the first vertex, for precision; the ring is closed.
-    const [x0, y0] = [p[2 * s], p[2 * s + 1]];
-    let a = 0;
-    let cx = 0;
-    let cy = 0;
-    let mx = 0;
-    let my = 0;
-    for (let v = s; v + 1 < e; v++) {
-      const [xa, ya, xb, yb] = [p[2 * v] - x0, p[2 * v + 1] - y0, p[2 * v + 2] - x0, p[2 * v + 3] - y0];
-      const c = xa * yb - xb * ya;
-      a += c;
-      cx += (xa + xb) * c;
-      cy += (ya + yb) * c;
-      mx += xa;
-      my += ya;
-    }
-    // Degenerate outlines: the mean of the vertices.
-    const [x, y] = Math.abs(a) > 1e-12 ? [cx / (3 * a), cy / (3 * a)] : [mx / (e - s - 1), my / (e - s - 1)];
-    out[2 * i] = x0 + x;
-    out[2 * i + 1] = y0 + y;
-  }
-  return out;
-}
-
-/** Segments from each drawn subcatchment's centroid to its outlet (node or subcatchment centroid). */
-function outletSegments(g: Geometry) {
-  const c = subCentroids(g);
-  const n = g.subStarts.length - 1;
-  const src: number[] = [];
-  const tgt: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const [kind, j] = [g.subOutlets[2 * i], g.subOutlets[2 * i + 1]];
-    const to = kind === 0 ? g.nodes : kind === 1 ? c : null;
-    if (!to || j >= to.length / 2) continue;
-    const [x0, y0, x1, y1] = [c[2 * i], c[2 * i + 1], to[2 * j], to[2 * j + 1]];
-    if (![x0, y0, x1, y1].every(Number.isFinite)) continue;
-    src.push(x0, y0);
-    tgt.push(x1, y1);
-  }
-  return { length: src.length / 2, src: new Float64Array(src), tgt: new Float64Array(tgt) };
-}
-
-/**
- * Symbols tinted per object over a white halo. Sizes are icon heights in pixels (0: not drawn,
- * as for hidden types, whose colour is also transparent); angles in degrees, counter-clockwise.
- */
-function shapeLayers(
-  id: string,
-  common: object,
-  length: number,
-  position: { value: Float64Array; size: number },
-  angle: { value: Float32Array; size: number } | null,
-  shapeOf: (i: number) => Shape,
-  colors: Uint8Array,
-  sizes: Float32Array,
-): Layer[] {
-  const { canvas, mapping } = shapeAtlas();
-  const haloColors = new Uint8Array(4 * length);
-  const haloSizes = new Float32Array(length);
-  for (let i = 0; i < length; i++) {
-    const shown = sizes[i] > 0 && colors[4 * i + 3] > 0;
-    haloColors.set([255, 255, 255, shown ? 220 : 0], 4 * i);
-    haloSizes[i] = shown ? sizes[i] + 2.5 : 0;
-  }
-  const layer = (suffix: string, c: Uint8Array, s: Float32Array) =>
-    new IconLayer({
-      ...common,
-      id: id + suffix,
-      data: {
-        length,
-        attributes: {
-          getPosition: position,
-          getColor: { value: c, size: 4, normalized: true },
-          getSize: { value: s, size: 1 },
-          ...(angle && { getAngle: angle }),
-        },
-      },
-      iconAtlas: canvas,
-      iconMapping: mapping,
-      getIcon: (_: unknown, { index }: { index: number }) => shapeOf(index),
-      sizeUnits: "pixels",
-    } as never);
-  return [layer("-halo", haloColors, haloSizes), layer("", colors, sizes)];
-}
-
-/** Display-coordinate bounds of a set of objects. */
-function selectionBounds(g: Geometry, sel: ObjRef[]): [number, number, number, number] | null {
-  let b = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const o of sel) {
-    if (o.kind === "node") b = bboxOf(g.nodes, o.index, o.index + 1, b);
-    else if (o.kind === "gage") b = bboxOf(g.gages, o.index, o.index + 1, b);
-    else if (o.kind === "link") b = bboxOf(g.linkPts, g.linkStarts[o.index], g.linkStarts[o.index + 1], b);
-    else b = bboxOf(g.subPts, g.subStarts[o.index], g.subStarts[o.index + 1], b);
-  }
-  if (!Number.isFinite(b[0])) return null;
-  // Single points: give the box some size.
-  const pad = Math.max(b[2] - b[0], b[3] - b[1]) * 0.2 || (g.space === "lonlat" ? 0.002 : 100);
-  return [b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad];
+/** Same extent, up to the rounding of a view that was restored and read back. */
+function sameExtent(a: Extent, b: Extent): boolean {
+  const tol = 1e-6 * Math.max(a[2] - a[0], a[3] - a[1]);
+  return a.every((v, i) => Math.abs(v - b[i]) <= tol);
 }
 
 export function MapView() {
@@ -355,16 +86,18 @@ export function MapView() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => setViewTick((t) => t + 1));
     };
-    const v = space === "lonlat" ? createMapViewer(el, onView) : createDeckViewer(el, onView);
+    const v = space === "lonlat" ? createMapViewer(el, getState().model!.project.basemap, onView) : createDeckViewer(el, onView);
     viewer.current = v;
     mapProject.current = (p) => {
       const r = el.getBoundingClientRect();
       const q = v.project(p);
       return [r.left + q[0], r.top + q[1]];
     };
-    const saved = (getState().model?.project.ui as { view?: { extent?: number[]; space?: string } })?.view;
-    const b = saved?.space === space && saved.extent?.length === 4 ? saved.extent : getState().model?.bounds;
-    if (b) v.fit(b as [number, number, number, number]);
+    // The view saved in the project, else the whole model.
+    const saved = savedView(space);
+    const bounds = getState().model?.bounds;
+    if (saved) v.fit(saved, true);
+    else if (bounds) v.fit(bounds);
     return () => {
       cancelAnimationFrame(raf);
       v.destroy();
@@ -373,20 +106,10 @@ export function MapView() {
   }, [space, modelKey]);
 
   // Basemap settings.
+  const basemap = model?.project.basemap;
   useEffect(() => {
-    const map = (container.current as unknown as { __map?: maplibregl.Map })?.__map;
-    const bm = model?.project.basemap;
-    if (!map || !bm || space !== "lonlat") return;
-    const apply = () => {
-      if (!map.getLayer("basemap")) return;
-      map.setLayoutProperty("basemap", "visibility", bm.visible ? "visible" : "none");
-      map.setPaintProperty("basemap", "raster-opacity", bm.opacity);
-      const src = map.getSource("basemap") as maplibregl.RasterTileSource | undefined;
-      if (src && src.tiles?.[0] !== bm.url) src.setTiles([bm.url]);
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once("load", apply);
-  }, [model?.project.basemap, space]);
+    if (basemap) viewer.current?.setBasemap(basemap);
+  }, [basemap, space, modelKey]);
 
   useEffect(() => {
     const b = getState().model?.bounds;
@@ -413,29 +136,22 @@ export function MapView() {
     v.center([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
   }, [panSelection]);
 
-  // Remember the view in the project (debounced).
+  // Remember the view in the project (debounced), once it differs from the saved one.
   useEffect(() => {
     if (!viewer.current || !space) return;
+    const path = getState().model?.path;
     const t = setTimeout(() => {
-      const st = getState();
-      if (!st.model || !viewer.current) return;
-      const ui = { ...st.model.project.ui, view: { space, extent: viewer.current.extent() } };
-      st.model.project.ui = ui;
-      api.updateProject(undefined, ui).catch(() => {});
+      if (!viewer.current) return;
+      const extent = viewer.current.extent();
+      const saved = savedView(space);
+      if (!saved || !sameExtent(saved, extent)) updateProjectUi({ view: { space, extent } }, path);
     }, 1500);
     return () => clearTimeout(t);
   }, [viewTick, space]);
 
   // Labels need the IDs.
   useEffect(() => {
-    if (!labels || !model) return;
-    const need = (["node", "link", "subcatchment"] as ObjKind[]).filter((k) => !getState().ids[k]);
-    if (need.length === 0) return;
-    Promise.all(need.map((k) => api.ids(k))).then((all) => {
-      const next = { ...getState().ids };
-      need.forEach((k, i) => (next[k] = all[i]));
-      setState({ ids: next });
-    });
+    if (labels && model) void ensureIds(["node", "link"]);
   }, [labels, modelKey]);
 
   const coordSystem = space === "lonlat" ? COORDINATE_SYSTEM.LNGLAT : COORDINATE_SYSTEM.CARTESIAN;
@@ -453,335 +169,30 @@ export function MapView() {
     [g, styles.subcatchment, subValues],
   );
 
-  // Static geometry. Links are drawn as one instance per segment so that colours and
-  // widths are plain per-instance arrays: deck.gl uploads them directly, without running
-  // accessors or re-tessellating paths (a time step only replaces the colour arrays).
-  const geo = useMemo(() => {
-    if (!g) return null;
-    const nLinks = g.linkStarts.length - 1;
-    let nSeg = 0;
-    for (let i = 0; i < nLinks; i++) nSeg += Math.max(0, g.linkStarts[i + 1] - g.linkStarts[i] - 1);
-    const src = new Float64Array(2 * nSeg);
-    const tgt = new Float64Array(2 * nSeg);
-    const segLink = new Uint32Array(nSeg);
-    let k = 0;
-    for (let i = 0; i < nLinks; i++) {
-      for (let v = g.linkStarts[i]; v + 1 < g.linkStarts[i + 1]; v++, k++) {
-        src[2 * k] = g.linkPts[2 * v];
-        src[2 * k + 1] = g.linkPts[2 * v + 1];
-        tgt[2 * k] = g.linkPts[2 * v + 2];
-        tgt[2 * k + 1] = g.linkPts[2 * v + 3];
-        segLink[k] = i;
-      }
-    }
-    // Symbols of the links that have one, on the middle segment, pointing downstream.
-    const sym: number[] = [];
-    const symPos: number[] = [];
-    const symAngle: number[] = [];
-    for (let i = 0; i < nLinks; i++) {
-      const a = g.linkStarts[i];
-      const b = g.linkStarts[i + 1];
-      if (b - a < 2 || !LINK_TYPE_SHAPES[g.linkTypes[i]]) continue;
-      const m = a + Math.floor((b - a - 1) / 2);
-      const [x0, y0, x1, y1] = [g.linkPts[2 * m], g.linkPts[2 * m + 1], g.linkPts[2 * m + 2], g.linkPts[2 * m + 3]];
-      if (![x0, y0, x1, y1].every(Number.isFinite)) continue;
-      // Longitude / latitude: the angle on the (Mercator) screen.
-      const sx = g.space === "lonlat" ? Math.cos((((y0 + y1) / 2) * Math.PI) / 180) : 1;
-      sym.push(i);
-      symPos.push((x0 + x1) / 2, (y0 + y1) / 2);
-      symAngle.push((Math.atan2(y1 - y0, (x1 - x0) * sx) * 180) / Math.PI);
-    }
-    return {
-      nSeg,
-      segLink,
-      symLink: Uint32Array.from(sym),
-      symPos: { value: Float64Array.from(symPos), size: 2 },
-      symAngle: { value: Float32Array.from(symAngle), size: 1 },
-      src: { value: src, size: 2 },
-      tgt: { value: tgt, size: 2 },
-      nodePos: { value: g.nodes, size: 2 },
-      gagePos: { value: g.gages, size: 2 },
-      subs: { length: g.subStarts.length - 1, startIndices: g.subStarts, attributes: { getPolygon: { value: g.subPts, size: 2 } } },
-      outlines: { length: g.subStarts.length - 1, startIndices: g.subStarts, attributes: { getPath: { value: g.subPts, size: 2 } } },
-    };
-  }, [g]);
+  const geo = useMemo(() => g && staticGeometry(g), [g]);
   const outlets = useMemo(() => (g && styles.subcatchment.outletLinks ? outletSegments(g) : null), [g, styles.subcatchment.outletLinks]);
 
-  const baseLayers = useMemo(() => {
-    if (!g || !geo || !nodeStyled || !linkStyled || !subStyled) return [];
-    const common = { coordinateSystem: coordSystem, pickable: false };
-    const layers: Layer[] = [];
-    if (styles.subcatchment.visible && geo.subs.length > 0 && g.subPts.length > 0) {
-      const c = subStyled.colors;
-      layers.push(
-        new SolidPolygonLayer({
-          ...common,
-          id: "subcatchments",
-          data: geo.subs,
-          _normalize: false,
-          getFillColor: (_: unknown, { index, target }: { index: number; target: number[] }) => {
-            target[0] = c[4 * index];
-            target[1] = c[4 * index + 1];
-            target[2] = c[4 * index + 2];
-            target[3] = c[4 * index + 3];
-            return target;
-          },
-          updateTriggers: { getFillColor: subStyled },
-        } as never),
-        new PathLayer({
-          ...common,
-          id: "subcatchment-outlines",
-          data: geo.outlines,
-          _pathType: "open",
-          getColor: [70, 120, 60, 200],
-          getWidth: 1,
-          widthUnits: "pixels",
-        } as never),
-      );
-    }
-    if (styles.subcatchment.visible && outlets && outlets.length > 0) {
-      layers.push(
-        new LineLayer({
-          ...common,
-          id: "outlet-links",
-          data: {
-            length: outlets.length,
-            attributes: { getSourcePosition: { value: outlets.src, size: 2 }, getTargetPosition: { value: outlets.tgt, size: 2 } },
-          },
-          getColor: OUTLET_LINK,
-          getWidth: 1.5,
-          widthUnits: "pixels",
-        } as never),
-        new ScatterplotLayer({
-          ...common,
-          id: "outlet-links-start",
-          data: { length: outlets.length, attributes: { getPosition: { value: outlets.src, size: 2 } } },
-          getFillColor: OUTLET_LINK,
-          getRadius: 2.5,
-          radiusUnits: "pixels",
-        } as never),
-      );
-    }
-    if (styles.link.visible && geo.nSeg > 0) {
-      const objColors = new Uint32Array(linkStyled.colors.buffer);
-      const colors = new Uint32Array(geo.nSeg);
-      const widths = new Float32Array(geo.nSeg);
-      for (let k = 0; k < geo.nSeg; k++) {
-        const i = geo.segLink[k];
-        colors[k] = objColors[i];
-        widths[k] = linkStyled.sizes[i];
-      }
-      layers.push(
-        new LineLayer({
-          ...common,
-          id: "links",
-          data: {
-            length: geo.nSeg,
-            attributes: {
-              getSourcePosition: geo.src,
-              getTargetPosition: geo.tgt,
-              getColor: { value: new Uint8Array(colors.buffer), size: 4, normalized: true },
-              getWidth: { value: widths, size: 1 },
-            },
-          },
-          widthUnits: "pixels",
-          widthMinPixels: 1,
-        } as never),
-      );
-    }
-    if (styles.link.visible && geo.symLink.length > 0) {
-      const n = geo.symLink.length;
-      const colors = new Uint8Array(4 * n);
-      const sizes = new Float32Array(n);
-      for (let k = 0; k < n; k++) {
-        const i = geo.symLink[k];
-        colors.set(linkStyled.colors.subarray(4 * i, 4 * i + 4), 4 * k);
-        sizes[k] = colors[4 * k + 3] ? 3 * linkStyled.sizes[i] + 8 : 0;
-      }
-      const types = g.linkTypes;
-      layers.push(
-        ...shapeLayers("link-symbols", common, n, geo.symPos, geo.symAngle, (k) => LINK_TYPE_SHAPES[types[geo.symLink[k]]]!, colors, sizes),
-      );
-    }
-    if (styles.node.visible && g.nodeTypes.length > 0) {
-      const types = g.nodeTypes;
-      const shapeOf = (i: number) => NODE_TYPE_SHAPES[types[i]] ?? "circle";
-      const sizes = nodeStyled.sizes.map((s, i) => s * ICON_SCALE * (SHAPE_SCALE[shapeOf(i)] ?? 1));
-      layers.push(...shapeLayers("nodes", common, types.length, geo.nodePos, null, shapeOf, nodeStyled.colors, sizes));
-    }
-    if (g.gages.length > 0) {
-      layers.push(
-        new ScatterplotLayer({
-          ...common,
-          id: "gages",
-          data: { length: g.gages.length / 2, attributes: { getPosition: geo.gagePos } },
-          radiusUnits: "pixels",
-          getRadius: 6,
-          getFillColor: [30, 30, 30, 230],
-          stroked: true,
-          getLineColor: [255, 255, 255, 255],
-          lineWidthUnits: "pixels",
-          getLineWidth: 1.5,
-        } as never),
-      );
-    }
-    return layers;
-  }, [g, geo, outlets, nodeStyled, linkStyled, subStyled, styles.node.visible, styles.link.visible, styles.subcatchment.visible, coordSystem]);
-
-  const selectionLayers = useMemo(() => {
-    if (!g || selection.length === 0) return [];
-    const common = { coordinateSystem: coordSystem, pickable: false };
-    const pts: Pt[] = [];
-    const paths: Pt[][] = [];
-    const rings: Pt[][] = [];
-    const slice = (a: Float64Array, s: number, e: number) => {
-      const out: Pt[] = [];
-      for (let i = s; i < e; i++) out.push([a[2 * i], a[2 * i + 1]]);
-      return out;
-    };
-    for (const o of selection) {
-      if (o.kind === "node") pts.push([g.nodes[2 * o.index], g.nodes[2 * o.index + 1]]);
-      else if (o.kind === "gage") pts.push([g.gages[2 * o.index], g.gages[2 * o.index + 1]]);
-      else if (o.kind === "link") paths.push(slice(g.linkPts, g.linkStarts[o.index], g.linkStarts[o.index + 1]));
-      else rings.push(slice(g.subPts, g.subStarts[o.index], g.subStarts[o.index + 1]));
-    }
-    return [
-      new PathLayer<Pt[]>({
-        ...common,
-        id: "sel-subcatchments",
-        data: rings,
-        getPath: (r) => r,
-        getColor: HIGHLIGHT,
-        getWidth: 3,
-        widthUnits: "pixels",
-      }),
-      new PathLayer<Pt[]>({
-        ...common,
-        id: "sel-links",
-        data: paths,
-        getPath: (p) => p,
-        getColor: HIGHLIGHT,
-        getWidth: Math.max(5, styles.link.size + 4),
-        widthUnits: "pixels",
-        capRounded: true,
-        jointRounded: true,
-      }),
-      new ScatterplotLayer<Pt>({
-        ...common,
-        id: "sel-nodes",
-        data: pts,
-        getPosition: (p) => p,
-        getRadius: Math.max(7, styles.node.size + 4),
-        radiusUnits: "pixels",
-        filled: false,
-        stroked: true,
-        getLineColor: HIGHLIGHT,
-        getLineWidth: 3,
-        lineWidthUnits: "pixels",
-      }),
-    ];
-  }, [g, selection, coordSystem, styles.link.size, styles.node.size]);
-
-  // The current profile: its links and nodes, and the start node being picked.
-  const profileLayers = useMemo(() => {
-    if (!g) return [];
-    const common = { coordinateSystem: coordSystem, pickable: false };
-    const nodePt = (i: number): Pt => [g.nodes[2 * i], g.nodes[2 * i + 1]];
-    const paths: Pt[][] = [];
-    const pts: Pt[] = [];
-    if (profile) {
-      for (const l of profile.links) {
-        const path: Pt[] = [];
-        for (let i = g.linkStarts[l.index]; i < g.linkStarts[l.index + 1]; i++) path.push([g.linkPts[2 * i], g.linkPts[2 * i + 1]]);
-        paths.push(path);
-      }
-      for (const n of profile.nodes) pts.push(nodePt(n.index));
-    }
-    const start = profileStart !== null && profileStart < g.nodeTypes.length ? [nodePt(profileStart)] : [];
-    if (paths.length === 0 && pts.length === 0 && start.length === 0) return [];
-    return [
-      new PathLayer<Pt[]>({
-        ...common,
-        id: "profile-links",
-        data: paths,
-        getPath: (p) => p,
-        getColor: PROFILE,
-        getWidth: Math.max(7, styles.link.size + 6),
-        widthUnits: "pixels",
-        capRounded: true,
-        jointRounded: true,
-      }),
-      new ScatterplotLayer<Pt>({
-        ...common,
-        id: "profile-nodes",
-        data: pts,
-        getPosition: (p) => p,
-        getRadius: Math.max(5, styles.node.size + 2),
-        radiusUnits: "pixels",
-        getFillColor: PROFILE,
-      }),
-      new ScatterplotLayer<Pt>({
-        ...common,
-        id: "profile-start",
-        data: start,
-        getPosition: (p) => p,
-        getRadius: Math.max(9, styles.node.size + 6),
-        radiusUnits: "pixels",
-        filled: false,
-        stroked: true,
-        getLineColor: PROFILE,
-        getLineWidth: 3,
-        lineWidthUnits: "pixels",
-      }),
-    ];
-  }, [g, profile, profileStart, coordSystem, styles.link.size, styles.node.size]);
-
-  // Labels of the objects in view, when few enough.
-  const labelLayer = useMemo(() => {
-    const v = viewer.current;
-    if (!labels || !g || !v || !ids.node) return null;
-    const [x0, y0, x1, y1] = v.extent();
-    const inView = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
-    const items: { p: Pt; t: string }[] = [];
-    const push = (x: number, y: number, t: string | undefined) => {
-      if (t !== undefined && Number.isFinite(x) && inView(x, y)) items.push({ p: [x, y], t });
-    };
-    const nNodes = g.nodeTypes.length;
-    const nodeHidden = styles.node.hiddenTypes;
-    const linkHidden = styles.link.hiddenTypes;
-    for (let i = 0; styles.node.visible && i < nNodes && items.length <= MAX_LABELS; i++) {
-      if (!nodeHidden.includes(g.nodeTypes[i])) push(g.nodes[2 * i], g.nodes[2 * i + 1], ids.node[i]);
-    }
-    if (ids.link && styles.link.visible) {
-      for (let i = 0; i + 1 < g.linkStarts.length && items.length <= MAX_LABELS; i++) {
-        if (linkHidden.includes(g.linkTypes[i])) continue;
-        const a = g.linkStarts[i];
-        const b = g.linkStarts[i + 1];
-        if (b - a < 2) continue;
-        const m = a + Math.floor((b - a - 1) / 2);
-        const x = (g.linkPts[2 * m] + g.linkPts[2 * m + 2]) / 2;
-        const y = (g.linkPts[2 * m + 1] + g.linkPts[2 * m + 3]) / 2;
-        push(x, y, ids.link[i]);
-      }
-    }
-    if (items.length > MAX_LABELS) return null;
-    return new TextLayer<{ p: Pt; t: string }>({
-      id: "labels",
-      coordinateSystem: coordSystem,
-      data: items,
-      getPosition: (d) => d.p,
-      getText: (d) => d.t,
-      getSize: 12,
-      getColor: [20, 20, 20, 255],
-      getPixelOffset: [0, -13],
-      fontFamily: "Segoe UI, system-ui, sans-serif",
-      background: true,
-      getBackgroundColor: [255, 255, 255, 190],
-      backgroundPadding: [3, 1],
-      characterSet: "auto",
-    });
-    // viewTick: recompute when the view moves.
-  }, [labels, g, ids, viewTick, coordSystem, styles.node.visible, styles.link.visible, styles.node.hiddenTypes, styles.link.hiddenTypes]);
+  const visible = useMemo(
+    () => ({ node: styles.node.visible, link: styles.link.visible, subcatchment: styles.subcatchment.visible }),
+    [styles.node.visible, styles.link.visible, styles.subcatchment.visible],
+  );
+  const base = useMemo(
+    () => (g && geo && nodeStyled && linkStyled && subStyled ? baseLayers(g, geo, outlets, nodeStyled, linkStyled, subStyled, visible, coordSystem) : []),
+    [g, geo, outlets, nodeStyled, linkStyled, subStyled, visible, coordSystem],
+  );
+  const selected = useMemo(
+    () => (g ? selectionLayers(g, selection, coordSystem, styles.link.size, styles.node.size) : []),
+    [g, selection, coordSystem, styles.link.size, styles.node.size],
+  );
+  const profiled = useMemo(
+    () => (g ? profileLayers(g, profile, profileStart, coordSystem, styles.link.size, styles.node.size) : []),
+    [g, profile, profileStart, coordSystem, styles.link.size, styles.node.size],
+  );
+  // Labels of the objects in view (viewTick: recomputed when the view moves).
+  const labelled = useMemo(
+    () => (labels && g && viewer.current ? labelLayer(g, ids, viewer.current.extent(), coordSystem, styles) : null),
+    [labels, g, ids, viewTick, coordSystem, styles.node.visible, styles.link.visible, styles.node.hiddenTypes, styles.link.hiddenTypes],
+  );
 
   // Time from a period change to the map drawn with it (see `mapPerf`).
   const stepStart = useRef<{ period: number; t0: number } | null>(null);
@@ -790,7 +201,7 @@ export function MapView() {
   }, [period]);
 
   useEffect(() => {
-    viewer.current?.setLayers([...baseLayers, ...profileLayers, ...selectionLayers, ...(labelLayer ? [labelLayer] : []), ...tools.layers]);
+    viewer.current?.setLayers([...base, ...profiled, ...selected, ...(labelled ? [labelled] : []), ...tools.layers]);
     const s = stepStart.current;
     if (s) {
       requestAnimationFrame(() => {
@@ -798,7 +209,7 @@ export function MapView() {
         if (mapPerf.steps.length > 500) mapPerf.steps.shift();
       });
     }
-  }, [baseLayers, profileLayers, selectionLayers, labelLayer, tools.layers]);
+  }, [base, profiled, selected, labelled, tools.layers]);
 
   // ---- interaction ----------------------------------------------------------
 
@@ -938,28 +349,4 @@ export function MapView() {
       {!model && <div className="map-empty">Open a SWMM model (.inp) to start.</div>}
     </div>
   );
-}
-
-
-const HINTS: Partial<Record<string, string>> = {
-  move: "Drag a node or gage; drag a selected object to move the selection.",
-  vertex: "Select a link or subcatchment: drag a vertex, drag a midpoint to add one, Alt+click to delete one. Drag a link end onto a node to reconnect it.",
-  "add-subcatchment": "Click the outline points; click the first point or press Enter to finish. Backspace removes the last point.",
-  "add-gage": "Click to place a rain gage.",
-};
-
-/** One-line help for the active editing tool. */
-function ToolHint({ tool, sketching }: { tool: string; sketching: boolean }) {
-  let text = HINTS[tool];
-  if (tool === "profile")
-    text = sketching
-      ? "Click the end node: the profile is drawn."
-      : "Click the start node of a profile (Shift+click extends the current profile through another node).";
-  if (!text && /^add-(junction|outfall|divider|storage)$/.test(tool)) text = `Click to add a ${tool.slice(4)}.`;
-  if (!text && tool.startsWith("add-"))
-    text = sketching
-      ? "Click to add vertices, then click the end node. Backspace removes the last vertex, Escape cancels."
-      : `Click the start node of the ${tool.slice(4)}.`;
-  if (!text) return null;
-  return <div className="map-hint">{text} Escape: back to selection.</div>;
 }

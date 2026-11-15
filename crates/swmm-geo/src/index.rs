@@ -59,13 +59,22 @@ impl IndexBuilder {
         self.push(layer, index, ShapeKind::Line, pts);
     }
 
+    /// A ring of fewer than 3 points is not a polygon: it is left out, as in
+    /// [`SpatialIndex::set_polygon`].
     pub fn polygon(&mut self, layer: u8, index: u32, ring: &[P]) {
-        self.push(layer, index, ShapeKind::Polygon, ring);
+        if ring.len() >= 3 {
+            self.push(layer, index, ShapeKind::Polygon, ring);
+        }
     }
 
     pub fn finish(self) -> SpatialIndex {
-        let entries = (0..self.shapes.len()).map(|i| entry(&self.coords, &self.shapes[i], i as u32)).collect();
-        let lookup = self.shapes.iter().enumerate().map(|(i, s)| (s.hit, i as u32)).collect();
+        // An object given twice keeps its last shape only (an earlier one could never be
+        // replaced or removed).
+        let lookup: HashMap<Hit, u32> = self.shapes.iter().enumerate().map(|(i, s)| (s.hit, i as u32)).collect();
+        let entries = (0..self.shapes.len() as u32)
+            .filter(|&i| lookup[&self.shapes[i as usize].hit] == i)
+            .map(|i| entry(&self.coords, &self.shapes[i as usize], i))
+            .collect();
         SpatialIndex { coords: self.coords, shapes: self.shapes, lookup, tree: RTree::bulk_load(entries) }
     }
 }
@@ -88,12 +97,13 @@ impl SpatialIndex {
         IndexBuilder::default()
     }
 
+    /// Number of objects in the index (removed ones are not counted).
     pub fn len(&self) -> usize {
-        self.shapes.len()
+        self.lookup.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.shapes.is_empty()
+        self.lookup.is_empty()
     }
 
     fn pts(&self, s: &Shape) -> &[P] {
@@ -147,8 +157,8 @@ impl SpatialIndex {
     }
 
     pub fn set_polygon(&mut self, layer: u8, index: u32, ring: &[P]) {
-        let kind = if ring.len() >= 3 { ShapeKind::Polygon } else { ShapeKind::Line };
-        self.set(layer, index, kind, if ring.len() >= 3 { ring } else { &[] });
+        // A ring of fewer than 3 points removes the object.
+        self.set(layer, index, ShapeKind::Polygon, if ring.len() >= 3 { ring } else { &[] });
     }
 
     fn candidates(&self, min: P, max: P) -> impl Iterator<Item = &Shape> + '_ {

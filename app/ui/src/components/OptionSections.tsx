@@ -1,3 +1,4 @@
+import { LinkButton } from "./LinkButton";
 import { open as openFile, save } from "@tauri-apps/plugin-dialog";
 
 /** Tokens of a line, quoted strings kept whole (without quotes); stops at a comment. */
@@ -117,9 +118,9 @@ export function FilesPane({ data, onChange }: { data: FilesData; onChange: (d: F
               </td>
               <td className="nowrap">
                 <button onClick={() => browse(i)}>Browse…</button>{" "}
-                <a className="muted" title="Remove" onClick={() => onChange({ ...data, files: data.files.filter((_, j) => j !== i) })}>
+                <LinkButton className="muted" title="Remove" onClick={() => onChange({ ...data, files: data.files.filter((_, j) => j !== i) })}>
                   ✕
-                </a>
+                </LinkButton>
               </td>
             </tr>
           ))}

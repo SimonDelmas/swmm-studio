@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-
-const ROW_H = 22;
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useVirtualRows } from "../hooks/useVirtualRows";
 
 export type CellValue = string | number | null;
 
@@ -30,20 +29,10 @@ export function VirtualTable({
   resetKey?: unknown;
 }) {
   const [sort, setSort] = useState<{ col: number; asc: boolean } | null>(null);
-  const [scroll, setScroll] = useState(0);
-  const [height, setHeight] = useState(300);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const { box, onScroll, toTop, rowsInView } = useVirtualRows();
   useEffect(() => {
     setSort(null);
-    setScroll(0);
-    if (box.current) box.current.scrollTop = 0;
+    toTop();
   }, [resetKey]);
   const order = useMemo(() => {
     const idx = rows.map((_, i) => i);
@@ -64,10 +53,9 @@ export function VirtualTable({
     });
     return idx;
   }, [rows, sort]);
-  const first = Math.max(0, Math.floor(scroll / ROW_H) - 10);
-  const last = Math.min(order.length, first + Math.ceil(height / ROW_H) + 20);
+  const { first, last, before, after } = rowsInView(order.length);
   return (
-    <div className="table-box" ref={box} onScroll={(e) => setScroll((e.target as HTMLDivElement).scrollTop)}>
+    <div className="table-box" ref={box} onScroll={onScroll}>
       <table className="grid">
         <thead>
           <tr>
@@ -80,7 +68,7 @@ export function VirtualTable({
           </tr>
         </thead>
         <tbody>
-          <tr style={{ height: first * ROW_H }} />
+          <tr style={{ height: before }} />
           {order.slice(first, last).map((ri) => (
             <tr
               key={ri}
@@ -97,7 +85,7 @@ export function VirtualTable({
               })}
             </tr>
           ))}
-          <tr style={{ height: (order.length - last) * ROW_H }} />
+          <tr style={{ height: after }} />
         </tbody>
       </table>
     </div>

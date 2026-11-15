@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useVirtualRows } from "../hooks/useVirtualRows";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
@@ -6,7 +7,6 @@ import { Linkified, ObjLink, resolveName, selectObject, useNameIndex } from "../
 import { notify, setState, useStore } from "../store";
 import type { BlockDto, MessageDto } from "../types";
 
-const ROW_H = 22;
 
 /** Continuity error thresholds (%): warning above the first, problem above the second. */
 const CONTINUITY_WARN = 1;
@@ -31,20 +31,10 @@ function Message({ m, kind }: { m: MessageDto; kind: "error" | "warning" }) {
 /** Virtualized, sortable table. */
 function Table({ block }: { block: BlockDto }) {
   const [sort, setSort] = useState<{ col: number; asc: boolean } | null>(null);
-  const [scroll, setScroll] = useState(0);
-  const [height, setHeight] = useState(300);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const { box, onScroll, toTop, rowsInView } = useVirtualRows();
   useEffect(() => {
     setSort(null);
-    setScroll(0);
-    if (box.current) box.current.scrollTop = 0;
+    toTop();
   }, [block]);
   const rows = useMemo(() => {
     if (!sort) return block.rows;
@@ -63,8 +53,7 @@ function Table({ block }: { block: BlockDto }) {
   }, [block, sort]);
   const ncol = Math.max(block.columns.length, ...block.rows.slice(0, 50).map((r) => r.length));
   const cols = Array.from({ length: ncol }, (_, i) => block.columns[i] ?? "");
-  const first = Math.max(0, Math.floor(scroll / ROW_H) - 10);
-  const last = Math.min(rows.length, first + Math.ceil(height / ROW_H) + 20);
+  const { first, last, before, after } = rowsInView(rows.length);
   const index = useNameIndex();
   const onRow = (r: string[]) => {
     const o = block.id_kind && r[0] ? resolveName(index, r[0], block.id_kind) : null;
@@ -78,7 +67,7 @@ function Table({ block }: { block: BlockDto }) {
     return o ? <ObjLink obj={o}>{v}</ObjLink> : v;
   };
   return (
-    <div className="table-box" ref={box} onScroll={(e) => setScroll((e.target as HTMLDivElement).scrollTop)}>
+    <div className="table-box" ref={box} onScroll={onScroll}>
       <table className="grid">
         <thead>
           <tr>
@@ -95,7 +84,7 @@ function Table({ block }: { block: BlockDto }) {
           </tr>
         </thead>
         <tbody>
-          <tr style={{ height: first * ROW_H }} />
+          <tr style={{ height: before }} />
           {rows.slice(first, last).map((r, i) => (
             <tr key={first + i} className={block.id_kind ? "link-row" : undefined} onClick={() => onRow(r)}>
               {cols.map((_, j) => (
@@ -105,7 +94,7 @@ function Table({ block }: { block: BlockDto }) {
               ))}
             </tr>
           ))}
-          <tr style={{ height: (rows.length - last) * ROW_H }} />
+          <tr style={{ height: after }} />
           {block.footer.map((r, i) => (
             <tr key={`f${i}`} className="footer-row">
               {cols.map((_, j) => (
@@ -134,10 +123,15 @@ export function ReportPanel() {
 
   useEffect(() => {
     if (blockIndex < 0) return setBlock(null);
+    // A block asked for earlier, answered late, must not replace this one.
+    let current = true;
     api
       .reportBlock(blockIndex)
-      .then(setBlock)
-      .catch((e) => notify(errorText(e), true));
+      .then((b) => current && setBlock(b))
+      .catch((e) => current && notify(errorText(e), true));
+    return () => {
+      current = false;
+    };
   }, [blockIndex, report?.path]);
 
   if (!hasModel) return <div className="panel-empty">Open a model first.</div>;

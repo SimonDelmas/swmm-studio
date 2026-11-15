@@ -62,13 +62,11 @@ impl Settings {
         self.engines.iter().find(|e| e.name.eq_ignore_ascii_case(name))
     }
 
-    /// The default engine, or the only one when there is a single engine.
+    /// The default engine, or the only one when there is a single engine (also when the
+    /// default named in the file is no longer registered).
     pub fn default_engine(&self) -> Option<&EngineConfig> {
-        match &self.default_engine {
-            Some(n) => self.engine(n),
-            None if self.engines.len() == 1 => self.engines.first(),
-            None => None,
-        }
+        let named = self.default_engine.as_deref().and_then(|n| self.engine(n));
+        named.or_else(|| self.engines.first().filter(|_| self.engines.len() == 1))
     }
 
     /// Adds or replaces an engine by name. The first engine added becomes the default.

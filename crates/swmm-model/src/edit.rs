@@ -107,6 +107,16 @@ impl<'a> Tx<'a> {
         if remove == 0 && lines.is_empty() {
             return;
         }
+        // Lines put after the last line of a file that does not end with a line break
+        // would be glued to it: give that line its ending first.
+        if !lines.is_empty() {
+            let before = at.checked_sub(1).and_then(|i| self.inp.sections()[section].lines().get(i));
+            if let Some(prev) = before.filter(|l| l.ending() == LineEnding::None) {
+                let mut fixed = prev.clone();
+                fixed.set_ending(self.inp.line_ending());
+                self.push(Op::Splice { section, at: at - 1, remove: 1, lines: vec![fixed] });
+            }
+        }
         self.push(Op::Splice { section, at, remove, lines });
     }
 
@@ -228,6 +238,10 @@ impl History {
             self.redo.clear();
             if self.undo.len() > self.limit {
                 self.undo.remove(0);
+                // The state saved before any of the kept edits cannot be undone to any more.
+                if self.saved == Some(None) {
+                    self.saved = None;
+                }
             }
         }
         Ok(Applied { label, changes, value })
@@ -332,6 +346,38 @@ mod tests {
         // A no-op edit is not recorded.
         h.edit(&mut inp, "nothing", |_| Ok(())).unwrap();
         assert!(h.undo_label().is_none() && !h.is_dirty());
+    }
+
+    #[test]
+    fn append_after_an_unterminated_last_line() {
+        let src = "[JUNCTIONS]\nJ1 1 1";
+        let mut inp = InpFile::parse_str(src);
+        let mut h = History::default();
+        h.edit(&mut inp, "add", |tx| {
+            tx.append(&SectionKind::Junctions, &["J2", "2", "2"]);
+            Ok(())
+        })
+        .unwrap();
+        let text = inp.to_string_lossy();
+        assert!(text.starts_with("[JUNCTIONS]\nJ1 1 1\nJ2"), "{text:?}");
+        h.undo(&mut inp).unwrap();
+        assert_eq!(inp.to_string_lossy(), src);
+    }
+
+    #[test]
+    fn dirty_after_the_saved_state_left_the_history() {
+        let mut inp = InpFile::parse_str(SRC);
+        let mut h = History { limit: 2, ..History::default() };
+        for id in ["A1", "A2", "A3"] {
+            h.edit(&mut inp, id, |tx| {
+                tx.append(&SectionKind::Junctions, &[id, "1", "1"]);
+                Ok(())
+            })
+            .unwrap();
+        }
+        while h.undo(&mut inp).is_some() {}
+        // A1 cannot be undone: the file still differs from the one opened.
+        assert!(h.is_dirty());
     }
 
     #[test]

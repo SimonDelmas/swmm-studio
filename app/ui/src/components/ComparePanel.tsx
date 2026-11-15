@@ -1,14 +1,16 @@
+import { selectObject } from "../objects";
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { setResultsInfo } from "../actions/model";
 import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
 import { formatDateTime, periodMs } from "../format";
 import { ObjLink } from "../objects";
 import { getState, makeStat, notify, setState, useStore, type StatName } from "../store";
-import { addToPlot } from "./PlotPanel";
-import { setResultsInfo } from "./RunsPanel";
-import { applyStyle, STATS } from "./StylePanel";
+import { addToPlot } from "../plot/series";
+import { applyStyle } from "../actions/style";
+import { STATS } from "./StylePanel";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 
 type Kind = "node" | "link" | "subcatchment";
@@ -93,7 +95,7 @@ export function ComparePanel() {
   const animatedMap = () => applyStyle(kind, { source: "compare", field: String(vi), stat: "value", ramp: "diverging" });
   const pick = (i: number) => {
     const index = rows[i][5] as number;
-    setState({ selection: [{ kind, index }], fitSelection: getState().fitSelection + 1 });
+    selectObject({ kind, index });
   };
   // One graph per object, runs A and B on it.
   const overlay = async () => {
@@ -118,7 +120,16 @@ export function ComparePanel() {
           {offset !== 0 ? ` (${offset > 0 ? "+" : ""}${formatNumber(offset / 3600)} h)` : ""}, step {b.step_secs} s
         </span>
         <button onClick={chooseComparison}>Other B…</button>
-        <button onClick={() => api.closeComparison().then((m) => setResultsInfo(m, false))}>Close B</button>
+        <button
+          onClick={() =>
+            api
+              .closeComparison()
+              .then((m) => setResultsInfo(m, false))
+              .catch((e) => notify(errorText(e), true))
+          }
+        >
+          Close B
+        </button>
       </div>
       <div className="panel-toolbar">
         <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}>

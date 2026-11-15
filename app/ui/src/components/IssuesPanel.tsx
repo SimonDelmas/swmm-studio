@@ -1,42 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, errorText } from "../api";
+import { selectObject } from "../objects";
+import { useMemo, useState } from "react";
+import { validateModel } from "../actions/validate";
 import { exportTable } from "../exporting";
 import { Linkified } from "../objects";
-import { getState, setState, useStore } from "../store";
-import type { Issue } from "../types";
+import { useStore } from "../store";
 import { VirtualTable, type CellValue } from "./VirtualTable";
-
-/** Runs the model checks; the result is kept in the store for the tab badge. */
-export async function validateModel(): Promise<Issue[] | null> {
-  try {
-    const issues = await api.validate();
-    setState({ issues });
-    return issues;
-  } catch (e) {
-    setState({ issues: null });
-    throw e;
-  }
-}
 
 /** Model validation: errors SWMM would stop on and suspicious data, linked to the objects. */
 export function IssuesPanel() {
   const model = useStore((s) => s.model);
   const issues = useStore((s) => s.issues);
-  const [error, setError] = useState<string | null>(null);
+  const error = useStore((s) => s.issuesError);
   const [show, setShow] = useState<"all" | "error" | "warning">("all");
   const [filter, setFilter] = useState("");
-  const revision = model?.revision ?? 0;
-
-  // Checked again after every edit (debounced).
-  useEffect(() => {
-    if (!model) return;
-    const t = setTimeout(() => {
-      validateModel()
-        .then(() => setError(null))
-        .catch((e) => setError(errorText(e)));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [model?.path, revision]);
 
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase();
@@ -49,7 +25,7 @@ export function IssuesPanel() {
   const warnings = (issues?.length ?? 0) - errors;
   const pick = (k: number) => {
     const o = shown[k].object;
-    if (o) setState({ selection: [o], fitSelection: getState().fitSelection + 1 });
+    if (o) selectObject(o);
   };
   return (
     <div className="events-panel">
@@ -62,7 +38,7 @@ export function IssuesPanel() {
           <option value="warning">warnings</option>
         </select>
         <input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        <button onClick={() => validateModel().catch((e) => setError(errorText(e)))}>Check again</button>
+        <button onClick={() => void validateModel().catch(() => {})}>Check again</button>
         <span className="grow" />
         <button disabled={rows.length === 0} onClick={() => exportTable("issues", "Issues", ["Severity", "Check", "Message", "Section"], rows)}>
           Export
@@ -80,7 +56,7 @@ export function IssuesPanel() {
           ]}
           rows={rows}
           onRow={pick}
-          resetKey={issues}
+          resetKey={model.path}
           rowClass={(k) => (shown[k].object ? undefined : "no-object")}
         />
       )}

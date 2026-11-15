@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ROW_HEIGHT, useVirtualRows } from "../hooks/useVirtualRows";
 import { api, errorText } from "../api";
 import { edit } from "../edit";
 import { exportTable } from "../exporting";
 import { notify, setState, useStore } from "../store";
 import type { Grid, GridCell } from "../types";
 
-const ROW_H = 22;
 
 export const GRID_SECTIONS: [string, string][] = [
   ["JUNCTIONS", "Junctions"],
@@ -44,9 +44,6 @@ export function TablePanel() {
   const [active, setActive] = useState<Cell | null>(null);
   const [anchor, setAnchor] = useState<Cell | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [scroll, setScroll] = useState(0);
-  const [height, setHeight] = useState(300);
-  const box = useRef<HTMLDivElement>(null);
   // Keyboard focus lives in a hidden text area: clipboard events always reach an
   // editable element (a focused div gets none when nothing is selected).
   const keys = useRef<HTMLTextAreaElement>(null);
@@ -58,23 +55,22 @@ export function TablePanel() {
   };
   const revision = model?.revision ?? 0;
 
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [grid !== null]);
+  const { box, onScroll, rowsInView, height } = useVirtualRows(grid !== null);
 
   useEffect(() => {
     if (!model) return;
+    // The grid of a section chosen earlier, answered late, must not replace this one.
+    let current = true;
     const t = setTimeout(() => {
       api
         .grid(section)
-        .then((g) => (setGrid(g), setError(null)))
-        .catch((e) => setError(errorText(e)));
+        .then((g) => current && (setGrid(g), setError(null)))
+        .catch((e) => current && setError(errorText(e)));
     }, 120);
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [section, revision, model?.path]);
 
   useEffect(() => {
@@ -123,9 +119,9 @@ export function TablePanel() {
   const scrollTo = (r: number) => {
     const el = box.current;
     if (!el) return;
-    const top = (r + 1) * ROW_H;
-    if (top < el.scrollTop + ROW_H) el.scrollTop = top - ROW_H;
-    else if (top + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_H - el.clientHeight;
+    const top = (r + 1) * ROW_HEIGHT;
+    if (top < el.scrollTop + ROW_HEIGHT) el.scrollTop = top - ROW_HEIGHT;
+    else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_HEIGHT - el.clientHeight;
   };
   const move = (dr: number, dc: number, extend: boolean) => {
     if (!active) return;
@@ -203,7 +199,10 @@ export function TablePanel() {
         if (r >= view.length || c >= ncol) return void skipped++;
         const row = rowOf(r);
         if (c === 0 || row.cells[c] === null) return void skipped++;
-        if (row.cells[c] !== v.trim()) cells.push({ key: row.key, field: grid.columns[c].key, value: v.trim() });
+        // Numbers copied from a spreadsheet set to a decimal comma.
+        const column = grid.columns[c];
+        const value = column.type === "real" ? v.trim().replace(",", ".") : v.trim();
+        if (row.cells[c] !== value) cells.push({ key: row.key, field: column.key, value });
       }),
     );
     if (cells.length === 0) return notify(skipped ? `Nothing pasted: ${skipped} cell(s) cannot be edited here` : "Nothing changed");
@@ -224,7 +223,7 @@ export function TablePanel() {
     }
     if (k === "PageDown" || k === "PageUp") {
       e.preventDefault();
-      return move((k === "PageDown" ? 1 : -1) * Math.floor(height / ROW_H), 0, e.shiftKey);
+      return move((k === "PageDown" ? 1 : -1) * Math.floor(height / ROW_HEIGHT), 0, e.shiftKey);
     }
     const editable = active.c > 0 && rowOf(active.r)?.cells[active.c] !== null;
     if ((k === "Enter" || k === "F2") && editable) {
@@ -253,8 +252,7 @@ export function TablePanel() {
     const obj = rowOf(r).object;
     if (c === 0 && obj !== null && grid) setState({ selection: [{ kind: grid.object_kind, index: obj }] });
   };
-  const first = Math.max(0, Math.floor(scroll / ROW_H) - 10);
-  const last = Math.min(view.length, first + Math.ceil(height / ROW_H) + 20);
+  const { first, last, before, after } = rowsInView(view.length);
   const doExport = () =>
     grid &&
     exportTable(
@@ -297,7 +295,7 @@ export function TablePanel() {
           onKeyDown={onKey}
           onCopy={onCopy}
           onPaste={onPaste}
-          onScroll={(e) => setScroll((e.target as HTMLDivElement).scrollTop)}
+          onScroll={onScroll}
         >
           <textarea ref={keys} className="grid-keys" value=" " onChange={() => {}} aria-label="Table keyboard" />
           <table className="grid">
@@ -313,7 +311,7 @@ export function TablePanel() {
               </tr>
             </thead>
             <tbody>
-              <tr style={{ height: first * ROW_H }} />
+              <tr style={{ height: before }} />
               {view.slice(first, last).map((ri, k) => {
                 const r = first + k;
                 const row = grid.rows[ri];
@@ -348,7 +346,7 @@ export function TablePanel() {
                   </tr>
                 );
               })}
-              <tr style={{ height: (view.length - last) * ROW_H }} />
+              <tr style={{ height: after }} />
             </tbody>
           </table>
           {choices && (

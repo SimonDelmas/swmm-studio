@@ -1,12 +1,11 @@
+import { NumberInput } from "./CommitInput";
 import { useEffect, useState } from "react";
-import { api, errorText } from "../api";
-import { computeBreaks, formatNumber, RAMPS, rampColors, type RGB } from "../classify";
-import { formatDateTime, periodAt, periodMs } from "../format";
-import { LINK_TYPE_COLORS, LINK_TYPE_NAMES, NODE_TYPE_COLORS, NODE_TYPE_NAMES, SUB_COLOR } from "../map/colors";
-import { LINK_TYPE_SHAPES, NODE_TYPE_SHAPES, SHAPE_PATHS, type Shape } from "../map/shapes";
-import { statValues } from "../map/useLayerValues";
-import { getState, makeStat, notify, setState, setStyle, useStore, type LayerStyle, type StatName, type StyledKind } from "../store";
-import type { Basemap } from "../types";
+import { api } from "../api";
+import { RAMPS } from "../classify";
+import { makeStat, setState, setStyle, useStore, type LayerStyle, type StatName, type StyledKind } from "../store";
+import { applyStyle } from "../actions/style";
+import { BasemapSection } from "./style/BasemapSection";
+import { Legend, TypeList } from "./style/Legend";
 
 const TITLES: Record<StyledKind, string> = { node: "Nodes", link: "Links", subcatchment: "Subcatchments" };
 
@@ -26,166 +25,6 @@ const SCOPES: [LayerStyle["scope"], string][] = [
   ["day", "day of the current time"],
 ];
 
-const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
-/** Type symbols when the colour comes from a value. */
-const TYPE_NEUTRAL: RGB = [110, 110, 110];
-
-/** Values of a style, for its class limits. Results: each object's maximum over the run, so colours stay comparable while animating. */
-async function styleValues(kind: StyledKind, s: LayerStyle): Promise<Float32Array> {
-  if (s.source === "attribute") return api.attribute(kind, s.field);
-  const v = Number(s.field);
-  if (s.source === "result") {
-    try {
-      return await api.envelope(kind, v);
-    } catch {
-      return api.frame(kind, v, getState().period);
-    }
-  }
-  if (s.source === "compare" && s.stat === "value") {
-    // Differences over the run are not known in advance: use the difference of the maxima.
-    try {
-      return await statValues(kind, { ...s, stat: "max", scope: "run" }, getState().period);
-    } catch {
-      return statValues(kind, s, getState().period);
-    }
-  }
-  return statValues(kind, s, getState().period);
-}
-
-async function recompute(kind: StyledKind, s: LayerStyle): Promise<number[]> {
-  if (s.source === "type" || s.field === "") return [];
-  const values = await styleValues(kind, s);
-  if (s.source === "compare") {
-    // Classes symmetric around zero for differences.
-    let m = 0;
-    for (const x of values) if (Number.isFinite(x)) m = Math.max(m, Math.abs(x));
-    if (m === 0) return [0];
-    return computeBreaks([-m, m], "equal", s.classes);
-  }
-  return computeBreaks(values, s.method === "custom" ? "equal" : s.method, s.classes);
-}
-
-export async function applyStyle(kind: StyledKind, patch: Partial<LayerStyle>) {
-  const next = { ...getState().styles[kind], ...patch };
-  setStyle(kind, patch);
-  if (next.source === "type" || next.method === "custom") return;
-  try {
-    const breaks = await recompute(kind, next);
-    setStyle(kind, { breaks });
-  } catch (e) {
-    notify(errorText(e), true);
-  }
-}
-
-/** Formats and parses class limits: dates for times of maximum. */
-function limitFormat(style: LayerStyle): [(v: number) => string, (s: string) => number] {
-  const r = getState().model?.results;
-  if (style.stat === "time_of_max" && style.source === "stat" && r) {
-    return [
-      (v) => (Number.isFinite(v) ? formatDateTime(periodMs(r, v)) : "–"),
-      (s) => {
-        const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/.exec(s.trim());
-        return m ? periodAt(r, Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0))) : NaN;
-      },
-    ];
-  }
-  return [formatNumber, (s) => Number(s)];
-}
-
-/** Legend symbol as on the map: the node type's shape, a line with the link type's symbol, an area. */
-function Swatch({ kind, color, shape }: { kind: StyledKind; color: RGB; shape?: Shape | null }) {
-  const fill = css(color);
-  if (kind === "subcatchment") return <span className="swatch" style={{ background: fill }} />;
-  if (kind === "node") {
-    return (
-      <svg className="swatch-svg" width={22} height={14} viewBox="-28 -6 120 76">
-        <path d={SHAPE_PATHS[shape ?? "circle"]} fill={fill} stroke="rgba(0,0,0,0.35)" strokeWidth={4} />
-      </svg>
-    );
-  }
-  return (
-    <svg className="swatch-svg" width={22} height={14} viewBox="-28 -6 120 76">
-      <rect x={-28} y={26} width={120} height={12} rx={6} fill={fill} />
-      {shape && (
-        <g transform="translate(14 14) scale(0.56)">
-          <path d={SHAPE_PATHS[shape]} fill={fill} stroke="#fff" strokeWidth={6} paintOrder="stroke" />
-        </g>
-      )}
-    </svg>
-  );
-}
-
-function toggleType(kind: StyledKind, style: LayerStyle, t: number, shown: boolean) {
-  const hiddenTypes = shown ? style.hiddenTypes.filter((h) => h !== t) : [...style.hiddenTypes, t].sort((a, b) => a - b);
-  setStyle(kind, { hiddenTypes });
-}
-
-/** Node and link types: their symbol, and whether they are drawn (whatever they are coloured by). */
-function TypeList({ kind, style }: { kind: StyledKind; style: LayerStyle }) {
-  if (kind === "subcatchment") return null;
-  const [names, colors, shapes] =
-    kind === "node" ? [NODE_TYPE_NAMES, NODE_TYPE_COLORS, NODE_TYPE_SHAPES] : [LINK_TYPE_NAMES, LINK_TYPE_COLORS, LINK_TYPE_SHAPES];
-  const byType = style.source === "type" || style.field === "";
-  return (
-    <div className="legend">
-      {names.map((n, t) => (
-        <label key={n} className="legend-row" title="Show or hide this type on the map">
-          <input type="checkbox" checked={!style.hiddenTypes.includes(t)} onChange={(e) => toggleType(kind, style, t, e.target.checked)} />
-          <Swatch kind={kind} color={byType ? colors[t] : TYPE_NEUTRAL} shape={shapes[t]} /> {n}
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerStyle; unit: string }) {
-  if (style.source === "type" || style.field === "") {
-    if (kind !== "subcatchment") return null;
-    return (
-      <div className="legend">
-        <div className="legend-row">
-          <Swatch kind={kind} color={SUB_COLOR} /> Subcatchment
-        </div>
-      </div>
-    );
-  }
-  const [fmt, parse] = limitFormat(style);
-  const colors = rampColors(style.ramp, style.breaks.length + 1);
-  const setBreak = (i: number, v: string) => {
-    const x = parse(v);
-    if (!Number.isFinite(x)) return;
-    const b = [...style.breaks];
-    b[i] = x;
-    setStyle(kind, { breaks: b.sort((p, q) => p - q), method: "custom" });
-  };
-  return (
-    <div className="legend">
-      {colors.map((c, i) => (
-        <div key={i} className="legend-row">
-          <Swatch kind={kind} color={c} />
-          {i === 0 ? "≤ " : "> "}
-          {i < style.breaks.length ? (
-            <input
-              className={style.stat === "time_of_max" && style.source === "stat" ? "" : "narrow"}
-              key={`${i}:${style.breaks[i]}`}
-              defaultValue={fmt(style.breaks[i])}
-              onBlur={(e) => setBreak(i, e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            />
-          ) : (
-            <span>{fmt(style.breaks[i - 1])}</span>
-          )}
-          {i > 0 && i < style.breaks.length && <span className="muted"> (to {fmt(style.breaks[i])})</span>}
-          <span className="muted"> {unit}</span>
-        </div>
-      ))}
-      <div className="legend-row">
-        <Swatch kind={kind} color={[150, 150, 150]} /> no data
-      </div>
-    </div>
-  );
-}
-
 /** Unit shown in the legend. */
 function useUnit(kind: StyledKind, style: LayerStyle): string {
   const results = useStore((s) => s.model?.results ?? null);
@@ -196,10 +35,15 @@ function useUnit(kind: StyledKind, style: LayerStyle): string {
     if (style.source === "type" || style.source === "attribute" || !results) return setUnit("");
     if (style.source === "result" || style.stat === "value") return setUnit(base);
     if (style.stat === "time_of_max") return setUnit("");
+    // The unit of a statistic chosen earlier, answered late, is dropped.
+    let current = true;
     api
       .statUnit(kind, Number(style.field), makeStat(style.stat, style.threshold))
-      .then(setUnit)
-      .catch(() => setUnit(base));
+      .then((u) => current && setUnit(u))
+      .catch(() => current && setUnit(base));
+    return () => {
+      current = false;
+    };
   }, [kind, style.source, style.field, style.stat, results?.path, base]);
   return unit;
 }
@@ -311,13 +155,7 @@ function LayerSection({ kind }: { kind: StyledKind }) {
           {style.stat === "periods_above" && (
             <label className="field">
               Threshold ({vars[Number(style.field)]?.unit})
-              <input
-                className="narrow"
-                key={style.threshold}
-                defaultValue={style.threshold}
-                onBlur={(e) => Number.isFinite(Number(e.target.value)) && applyStyle(kind, { threshold: Number(e.target.value) })}
-                onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-              />
+              <NumberInput className="narrow" value={style.threshold} onCommit={(threshold) => applyStyle(kind, { threshold })} />
             </label>
           )}
           {style.stat !== "value" && (
@@ -383,39 +221,6 @@ function LayerSection({ kind }: { kind: StyledKind }) {
       )}
       <TypeList kind={kind} style={style} />
       <Legend kind={kind} style={style} unit={unit} />
-    </div>
-  );
-}
-
-function setBasemap(patch: Partial<Basemap>) {
-  const m = getState().model;
-  if (!m) return;
-  const basemap = { ...m.project.basemap, ...patch };
-  setState({ model: { ...m, project: { ...m.project, basemap } } });
-  api.updateProject(basemap).catch(() => {});
-}
-
-/** Basemap tiles: only with a coordinate system (the cartesian view has none). */
-function BasemapSection({ basemap: bm }: { basemap: Basemap }) {
-  return (
-    <div className="style-section">
-      <div className="style-head">
-        <label title="Basemap (OpenStreetMap)">
-          <input type="checkbox" checked={bm.visible} onChange={(e) => setBasemap({ visible: e.target.checked })} />
-          <b>Basemap</b>
-        </label>
-        <label title="Basemap opacity">
-          opacity
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={bm.opacity}
-            onChange={(e) => setBasemap({ opacity: Number(e.target.value) })}
-          />
-        </label>
-      </div>
     </div>
   );
 }

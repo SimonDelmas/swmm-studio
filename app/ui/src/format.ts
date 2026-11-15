@@ -5,6 +5,12 @@ import type { State } from "./store";
 
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
 
+/** A number typed by the user, with a decimal point or comma (NaN when it is not one). */
+export function parseNumber(text: string): number {
+  const t = text.trim().replace(",", ".");
+  return t === "" ? NaN : Number(t);
+}
+
 export function periodMs(r: ResultsInfo, p: number): number {
   return r.start_ms + p * r.step_secs * 1000;
 }
@@ -35,7 +41,7 @@ export function periodAt(r: ResultsInfo, ms: number): number {
 const DEFAULT_VAR: Record<string, number> = { node: 0, link: 0, subcatchment: 4, system: 0 };
 
 /** Result variable "of interest" for an object: the one its layer is coloured by. */
-export function focusVar(s: State, o: ObjRef): { kind: ElementKind; var: number } | null {
+export function focusVar(s: Pick<State, "styles">, o: ObjRef): { kind: ElementKind; var: number } | null {
   if (o.kind === "gage") return null;
   const st = s.styles[o.kind];
   const fromResults = st.source === "result" || st.source === "stat" || st.source === "compare";

@@ -93,6 +93,8 @@ pub struct Crs {
     /// As given by the user: `EPSG:2154` or a PROJ string.
     pub id: String,
     pub name: String,
+    /// PROJ definition the projection was built from.
+    definition: String,
     proj: Proj,
     wgs84: Proj,
 }
@@ -110,13 +112,33 @@ impl Crs {
         let wgs84 = Proj::from_proj_string(WGS84).expect("WGS 84 definition");
         if t.starts_with('+') {
             let proj = Proj::from_proj_string(t).map_err(|e| GeoError::InvalidCrs(t.into(), e.to_string()))?;
-            return Ok(Crs { id: t.to_string(), name: "Custom (PROJ string)".into(), proj, wgs84 });
+            let name = "Custom (PROJ string)".into();
+            return Ok(Crs { id: t.to_string(), name, definition: t.to_string(), proj, wgs84 });
         }
         let code_str = t.strip_prefix("EPSG:").or_else(|| t.strip_prefix("epsg:")).unwrap_or(t).trim();
         let code: u16 = code_str.parse().map_err(|_| GeoError::UnknownCrs(t.into()))?;
         let def = crs_definitions::from_code(code).ok_or_else(|| GeoError::UnknownCrs(t.into()))?;
         let proj = Proj::from_proj_string(def.proj4).map_err(|e| GeoError::InvalidCrs(t.into(), e.to_string()))?;
-        Ok(Crs { id: format!("EPSG:{code}"), name: info_of(&def).name, proj, wgs84 })
+        let definition = def.proj4.to_string();
+        Ok(Crs { id: format!("EPSG:{code}"), name: info_of(&def).name, definition, proj, wgs84 })
+    }
+
+    /// Longitude / latitude of the origin of a projected system (its false easting and
+    /// northing): a place inside the area it is used for, to show an empty model there.
+    /// `None` for geographic systems.
+    pub fn origin(&self) -> Option<[f64; 2]> {
+        if self.is_geographic() {
+            return None;
+        }
+        let param = |key: &str| -> f64 {
+            self.definition
+                .split_whitespace()
+                .find_map(|p| p.strip_prefix(key).and_then(|v| v.parse().ok()))
+                .unwrap_or(0.0)
+        };
+        let mut p = [[param("+x_0="), param("+y_0=")]];
+        self.to_lonlat(&mut p);
+        p[0].iter().all(|v| v.is_finite()).then_some(p[0])
     }
 
     pub fn is_geographic(&self) -> bool {
@@ -191,6 +213,14 @@ mod tests {
         let mut m = [[848_500.0, 112_000.0]];
         crs.to_lonlat(&mut m);
         assert!((m[0][0] - 5.38).abs() < 0.05 && (m[0][1] - 43.3).abs() < 0.05, "{m:?}");
+    }
+
+    #[test]
+    fn origin_is_inside_the_area_of_use() {
+        // Lambert-93: 3°E, 46.5°N.
+        let o = Crs::parse("EPSG:2154").unwrap().origin().unwrap();
+        assert!((o[0] - 3.0).abs() < 1e-6 && (o[1] - 46.5).abs() < 1e-6, "{o:?}");
+        assert_eq!(Crs::parse("EPSG:4326").unwrap().origin(), None);
     }
 
     #[test]

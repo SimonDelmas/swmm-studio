@@ -3,7 +3,8 @@ import { api, errorText } from "../api";
 import { tryEdit } from "../edit";
 import { setState, useStore } from "../store";
 import type { Climate } from "../types";
-import { useNames } from "./PropertiesPanel";
+import { LoadingModal, Modal } from "./Modal";
+import { useNames } from "../hooks/useNames";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SNOW = ["Dividing temperature (snow / rain)", "ATI weight", "Negative melt ratio", "Elevation above MSL", "Latitude (degrees)", "Longitude correction (min)"];
@@ -49,7 +50,7 @@ export function ClimateDialog() {
     api.climate().then(setC, (e) => setError(errorText(e)));
   }, []);
   const close = () => setState({ dialog: null });
-  if (!c) return null;
+  if (!c) return <LoadingModal title="Climatology" error={error} onClose={close} />;
   const set = (p: Partial<Climate>) => setC({ ...c, ...p });
   const ok = async () => {
     try {
@@ -66,9 +67,7 @@ export function ClimateDialog() {
     set({ evap_source: s, evap_values: values });
   };
   return (
-    <div className="modal-back">
-      <div className="modal wide-modal">
-        <h3>Climatology</h3>
+    <Modal title="Climatology" onClose={close} modal className="wide-modal">
         <div className="tabs">
           {TABS.map((t) => (
             <button key={t} className={t === tab ? "active" : ""} onClick={() => setTab(t)}>
@@ -228,7 +227,6 @@ export function ClimateDialog() {
           </button>
           <button onClick={close}>Cancel</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
