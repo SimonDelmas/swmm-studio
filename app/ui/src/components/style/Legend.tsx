@@ -1,13 +1,14 @@
 // Legend of a layer: its classes or its object types, which can be shown or hidden.
 
-import { cancelPendingLimits } from "../../actions/style";
+import { cancelPendingLimits, setStyle } from "../../actions/style";
+import { getState } from "../../store";
+import type { LayerStyle, StyledKind } from "../../uiTypes";
 import { CommitInput } from "../CommitInput";
 
-import { formatNumber, rampColors, type RGB } from "../../classify";
-import { formatDateTime, periodAt, periodMs } from "../../format";
+import { rampColors, type RGB } from "../../classify";
+import { formatDateTime, formatNumber, periodAt, periodMs } from "../../format";
 import { LINK_TYPE_COLORS, LINK_TYPE_NAMES, NODE_TYPE_COLORS, NODE_TYPE_NAMES, SUB_COLOR } from "../../map/colors";
 import { LINK_TYPE_SHAPES, NODE_TYPE_SHAPES, SHAPE_PATHS, type Shape } from "../../map/shapes";
-import { getState, setStyle, type LayerStyle, type StyledKind } from "../../store";
 
 export const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 /** Type symbols when the colour comes from a value. */

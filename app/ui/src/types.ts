@@ -1,9 +1,12 @@
 // Mirrors of the Rust DTOs (app/src-tauri/src: session, editing, commands); the analysis ones are in analysisTypes.ts.
 
-import type { Climate, GridCell } from "./analysisTypes";
 
 export type ObjKind = "node" | "link" | "subcatchment" | "gage";
 export type ElementKind = "node" | "link" | "subcatchment" | "system";
+
+export function sameRef(a: ObjRef, b: ObjRef) {
+  return a.kind === b.kind && a.index === b.index;
+}
 
 export interface ObjRef {
   kind: ObjKind;
@@ -223,7 +226,33 @@ export type NodeType = "junction" | "outfall" | "divider" | "storage";
 export type LinkType = "conduit" | "pump" | "orifice" | "weir" | "outlet";
 export type Pt = [number, number];
 
-/** Edits understood by the backend (app/src-tauri/src/editing.rs). */
+export interface GridCell {
+  key: string[];
+  field: string;
+  value: string;
+}
+
+export interface Climate {
+  evap_source: string;
+  evap_values: string[];
+  evap_recovery: string;
+  evap_dry_only: boolean;
+  temp_source: string;
+  temp_series: string;
+  temp_file: string;
+  temp_file_start: string;
+  wind_source: string;
+  wind_monthly: string[];
+  snowmelt: string[];
+  adc_impervious: string[];
+  adc_pervious: string[];
+  adj_temperature: string[];
+  adj_evaporation: string[];
+  adj_rainfall: string[];
+  adj_conductivity: string[];
+}
+
+/** Edits understood by the backend (app/src-tauri/src/editing/request.rs). */
 export type EditRequest =
   | { op: "set_field"; section: string; key: string[]; field: number; value: string }
   | { op: "set_field_bulk"; objects: ObjRef[]; section: string; field: string; value: string }
@@ -372,5 +401,3 @@ export interface RunFinished {
   console: string[];
   info: ModelInfo | null;
 }
-
-export * from "./analysisTypes";

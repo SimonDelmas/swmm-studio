@@ -3,19 +3,9 @@
 
 import { ensureIds, indexOfId } from "../actions/ids";
 import { updateProjectUi } from "../actions/project";
-import {
-  currentPlotView,
-  getState,
-  newPlotId,
-  newPlotView,
-  notify,
-  openPlotView,
-  setState,
-  updatePlotView,
-  type PlotAgg,
-  type PlotGraph,
-  type PlotSeries,
-} from "../store";
+import { currentPlotView, newPlotId, newPlotView, openPlotView, updatePlotView } from "../actions/views";
+import { getState, notify, setState } from "../store";
+import type { PlotAgg, PlotGraph, PlotSeries } from "../uiTypes";
 import type { ElementKind } from "../types";
 import { makeSeries } from "./series";
 

@@ -6,11 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use swmm_engine::history::{self, RunRecord};
 
-use crate::session::{LoadedResults, Res, Session};
-
-fn err(e: impl std::fmt::Display) -> String {
-    e.to_string()
-}
+use crate::session::{err, LoadedResults, Res, Session};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunDto {
@@ -54,8 +50,7 @@ impl Session {
             return Err("this run has no results file".into());
         }
         self.open_results(&out)?;
-        self.report = None;
-        self.project.results.rpt = None;
+        self.close_report();
         if rpt.is_file() {
             self.open_report(&rpt)?;
         }
@@ -78,15 +73,13 @@ impl Session {
     /// Deletes a run, unloading its results first (open files cannot be deleted).
     pub fn delete_run(&mut self, dir: &Path) -> Res<()> {
         if self.results.as_ref().is_some_and(|lr| lr.path.starts_with(dir)) {
-            self.results = None;
-            self.project.results.out = None;
+            self.close_results();
         }
         if self.report.as_ref().is_some_and(|(p, _)| p.starts_with(dir)) {
-            self.report = None;
-            self.project.results.rpt = None;
+            self.close_report();
         }
         if self.compare.as_ref().is_some_and(|lr| lr.path.starts_with(dir)) {
-            self.compare = None;
+            self.close_comparison();
         }
         history::delete_run(&self.inp_path, dir).map_err(err)?;
         self.save_project()

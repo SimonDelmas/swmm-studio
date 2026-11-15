@@ -4,21 +4,20 @@ import { ensureIds } from "../actions/ids";
 import { updateProjectUi } from "../actions/project";
 import { api, errorText } from "../api";
 import { profileClick } from "../profile/profiles";
-import { getState, notify, sameRef, setState, useStore } from "../store";
-import type { ObjRef } from "../types";
+import { getState, notify, setState, useStore } from "../store";
+import { sameRef, type ObjRef } from "../types";
 import { styleObjects } from "./colors";
 import { baseLayers, staticGeometry } from "./layers";
 import { outletSegments } from "./outlets";
 import { labelLayer, profileLayers, selectionLayers } from "./overlayLayers";
 import { ToolHint } from "./ToolHint";
-import { useEditTools, type EditTools } from "./useEditTools";
+import { useEditTools } from "./useEditTools";
 import { useLayerValues } from "./useLayerValues";
 import { createDeckViewer, createMapViewer, selectionBounds, type Extent, type Pt, type Viewer } from "./viewers";
+import { mapTools } from "../actions/mapTools";
 
 /** Rendering measurements, read by the UI tests. */
 export const mapPerf = { steps: [] as { period: number; ms: number }[] };
-/** Editing tools of the map, for keyboard shortcuts (Escape, Enter, Backspace). */
-export const mapTools: { current: EditTools | null } = { current: null };
 /** Display coordinates → page coordinates on the map (UI tests). */
 export const mapProject: { current: ((p: Pt) => Pt) | null } = { current: null };
 

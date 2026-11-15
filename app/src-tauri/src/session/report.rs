@@ -55,6 +55,12 @@ pub struct BlockDto {
 }
 
 impl Session {
+    /// Unloads the report and forgets it in the project.
+    pub fn close_report(&mut self) {
+        self.report = None;
+        self.project.results.rpt = None;
+    }
+
     pub fn open_report(&mut self, path: &Path) -> Res<()> {
         let report = Report::read(path).map_err(|e| e.to_string())?;
         self.report = Some((path.to_path_buf(), report));

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { errorText } from "../../api";
-import { tryEdit } from "../../edit";
+import { tryEdit } from "../../actions/edit";
 import { setState, useStore } from "../../store";
 import { useNames } from "../../hooks/useNames";
 

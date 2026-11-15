@@ -5,8 +5,10 @@ import { useEffect } from "react";
 import { ensureIds } from "../actions/ids";
 import { updateProjectUi } from "../actions/project";
 import { api, errorText } from "../api";
-import { currentProfileView, getState, notify, openProfileView, setState, showProfile, updateProfileView, useStore } from "../store";
+import { currentProfileView, openProfileView, showProfile, updateProfileView } from "../actions/views";
+import { getState, notify, setState, useStore } from "../store";
 import type { ObjRef } from "../types";
+import { latest } from "../latest";
 
 /** A profile saved in the project: its control nodes, by ID (indices change with edits). */
 export interface SavedProfile {
@@ -79,17 +81,12 @@ export function useProfile() {
     if (nodes.length < 2) return;
     // The node names let the profiles follow their nodes when an edit changes the indices.
     void ensureIds(["node"]);
-    let live = true;
-    const t = setTimeout(() => {
-      api
-        .profile(nodes)
-        .then((profile) => live && setState({ profile }))
-        .catch((e) => live && setState({ profileError: errorText(e) }));
-    }, 100);
-    return () => {
-      live = false;
-      clearTimeout(t);
-    };
+    return latest(
+      () => api.profile(nodes),
+      (profile) => setState({ profile }),
+      (e) => setState({ profileError: errorText(e) }),
+      100,
+    );
   }, [nodes, revision, resultsPath, cacheState]);
 }
 

@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
-import { tryEdit } from "../edit";
+import { tryEdit } from "../actions/edit";
 import { setState, useStore } from "../store";
 import type { Table } from "../types";
 import { Modal } from "./Modal";
 import { CurveForm, HydrographForm, PatternForm, TimeseriesForm, TransectForm } from "./tables/forms";
+import { latest } from "../latest";
 
 const TITLES: Record<Table["kind"], string> = {
   curve: "Curve",
@@ -30,18 +31,14 @@ export function TableEditor() {
     setError(null);
     if (!target) return;
     setName(target.name);
-    let current = true;
-    api.table(target.kind, target.name).then(
+    return latest(
+      () => api.table(target.kind, target.name),
       (t) => {
-        if (!current) return;
         setTable(t);
         setName(t.name);
       },
-      (e) => current && setError(errorText(e)),
+      (e) => setError(errorText(e)),
     );
-    return () => {
-      current = false;
-    };
   }, [target?.kind, target?.name]);
 
   if (!target) return null;

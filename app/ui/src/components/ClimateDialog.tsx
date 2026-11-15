@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
-import { tryEdit } from "../edit";
+import { tryEdit } from "../actions/edit";
 import { setState, useStore } from "../store";
 import type { Climate } from "../types";
 import { LoadingModal, Modal } from "./Modal";

@@ -1,7 +1,7 @@
 // Time helpers. Model times are shown as they are in the model (UTC, no time zone).
 
 import type { ElementKind, ObjRef, ResultsInfo } from "./types";
-import type { State } from "./store";
+import type { LayerStyle, StyledKind } from "./uiTypes";
 
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
 
@@ -41,7 +41,7 @@ export function periodAt(r: ResultsInfo, ms: number): number {
 const DEFAULT_VAR: Record<string, number> = { node: 0, link: 0, subcatchment: 4, system: 0 };
 
 /** Result variable "of interest" for an object: the one its layer is coloured by. */
-export function focusVar(s: Pick<State, "styles">, o: ObjRef): { kind: ElementKind; var: number } | null {
+export function focusVar(s: { styles: Record<StyledKind, LayerStyle> }, o: ObjRef): { kind: ElementKind; var: number } | null {
   if (o.kind === "gage") return null;
   const st = s.styles[o.kind];
   const fromResults = st.source === "result" || st.source === "stat" || st.source === "compare";
@@ -74,4 +74,12 @@ export function bucketRange(r: ResultsInfo, unit: "day" | "month" | "year", p: n
 export function bucketLabel(unit: "day" | "month" | "year", ms: number): string {
   const t = formatDateTime(ms);
   return unit === "day" ? t.slice(0, 10) : unit === "month" ? t.slice(0, 7) : t.slice(0, 4);
+}
+
+export function formatNumber(v: number): string {
+  if (!Number.isFinite(v)) return "–";
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 1e6 || a < 1e-3)) return v.toExponential(2);
+  if (a >= 100) return v.toFixed(1).replace(/\.0$/, "");
+  return Number(v.toPrecision(4)).toString();
 }

@@ -108,32 +108,6 @@ export interface Grid {
   rows: GridRow[];
 }
 
-export interface GridCell {
-  key: string[];
-  field: string;
-  value: string;
-}
-
-export interface Climate {
-  evap_source: string;
-  evap_values: string[];
-  evap_recovery: string;
-  evap_dry_only: boolean;
-  temp_source: string;
-  temp_series: string;
-  temp_file: string;
-  temp_file_start: string;
-  wind_source: string;
-  wind_monthly: string[];
-  snowmelt: string[];
-  adc_impervious: string[];
-  adc_pervious: string[];
-  adj_temperature: string[];
-  adj_evaporation: string[];
-  adj_rainfall: string[];
-  adj_conductivity: string[];
-}
-
 export interface RunRecord {
   label: string | null;
   model: string;

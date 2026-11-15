@@ -11,7 +11,6 @@ use swmm_out::OutFile;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::cache::start_cache_job;
-use super::engines::{effective_engine, load_settings};
 use super::AppState;
 use crate::session::{ModelInfo, Res, Session};
 
@@ -38,11 +37,10 @@ struct RunFinished {
 /// leaves the loaded results alone; a failed one shows its report (with the errors) and
 /// the periods it wrote, if any. `None`: nothing was loaded (other model, cancelled).
 fn load_outcome(app: &AppHandle, s: &mut Session, model: &Path, o: &RunOutcome) -> Res<Option<ModelInfo>> {
-    if s.inp_path != model || o.status == RunStatus::Cancelled {
+    if s.model_path() != model || o.status == RunStatus::Cancelled {
         return Ok(None);
     }
-    s.results = None;
-    s.project.results.out = None;
+    s.close_results();
     if o.out_complete {
         s.open_results(&o.out)?;
     } else if OutFile::open(&o.out).is_ok_and(|f| f.n_periods() > 0) {
@@ -67,11 +65,11 @@ pub fn run_start(app: AppHandle, state: State<'_, AppState>, label: Option<Strin
     if slot.is_some() {
         return Err("a simulation is already running".into());
     }
-    let (settings, _) = load_settings();
+    let (settings, _) = swmm_engine::Settings::load_or_default();
     let (inp, path, engine) = state.read(|s| {
-        let engine = effective_engine(&settings, s.project.engine.as_deref())
-            .ok_or("no SWMM engine configured: add one in Engines")?;
-        Ok((s.inp.clone(), s.inp_path.clone(), engine))
+        let engine =
+            settings.engine_for(s.project_engine()).cloned().ok_or("no SWMM engine configured: add one in Engines")?;
+        Ok((s.model_copy(), s.model_path().to_path_buf(), engine))
     })?;
     let cancel = Arc::new(AtomicBool::new(false));
     *slot = Some(cancel.clone());

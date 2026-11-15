@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { api, errorText } from "../api";
 import { getState, setState, useStore } from "../store";
-import type { Issue } from "../types";
+import type { Issue } from "../analysisTypes";
 
 /** Runs the model checks; the result is kept in the store. Errors are thrown. */
 export async function validateModel(): Promise<Issue[]> {

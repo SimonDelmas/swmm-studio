@@ -2,10 +2,13 @@
 // model and its undo history. Requests are queued so that they apply in order.
 
 import { ask, save } from "@tauri-apps/plugin-dialog";
-import { indexOfId } from "./actions/ids";
-import { api, errorText } from "./api";
-import { getState, mapPlotSeries, notify, resetForModel, sameRef, seriesKey, setState, type PlotView, type State } from "./store";
-import type { EditOutcome, EditRequest, Geometry, GeometryPatch, ObjKind, ObjRef } from "./types";
+import { api, errorText } from "../api";
+import { applyPatch } from "../geometryPatch";
+import { getState, notify, setState, type State } from "../store";
+import { sameRef, type EditOutcome, type EditRequest, type ObjKind, type ObjRef } from "../types";
+import { seriesKey, type PlotView } from "../uiTypes";
+import { indexOfId } from "./ids";
+import { mapPlotSeries } from "./views";
 
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -14,68 +17,6 @@ function enqueue<T>(f: () => Promise<T>): Promise<T> {
   const next = queue.then(f, f);
   queue = next.catch(() => {});
   return next;
-}
-
-const num = (v: number | null) => (v === null ? NaN : v);
-
-/** Replaces the paths of some objects in flat (starts, points) arrays. */
-function splice(starts: Uint32Array, pts: Float64Array, changed: Map<number, (number | null)[][]>) {
-  const n = starts.length - 1;
-  let sameSize = true;
-  let total = pts.length / 2;
-  for (const [i, p] of changed) {
-    const old = starts[i + 1] - starts[i];
-    if (p.length !== old) sameSize = false;
-    total += p.length - old;
-  }
-  if (sameSize) {
-    const out = pts.slice();
-    for (const [i, p] of changed) p.forEach((xy, k) => ((out[2 * (starts[i] + k)] = num(xy[0])), (out[2 * (starts[i] + k) + 1] = num(xy[1]))));
-    return { starts, pts: out };
-  }
-  const s2 = new Uint32Array(n + 1);
-  const p2 = new Float64Array(2 * total);
-  let k = 0;
-  for (let i = 0; i < n; i++) {
-    s2[i] = k;
-    const c = changed.get(i);
-    if (c) {
-      for (const xy of c) ((p2[2 * k] = num(xy[0])), (p2[2 * k + 1] = num(xy[1])), k++);
-    } else {
-      p2.set(pts.subarray(2 * starts[i], 2 * starts[i + 1]), 2 * k);
-      k += starts[i + 1] - starts[i];
-    }
-  }
-  s2[n] = k;
-  return { starts: s2, pts: p2 };
-}
-
-/** Geometry with the objects of a patch replaced (the arrays are copied, not changed). */
-export function applyPatch(g: Geometry, p: GeometryPatch): Geometry {
-  const out = { ...g };
-  if (p.nodes.length) {
-    out.nodes = g.nodes.slice();
-    for (const [i, xy] of p.nodes) ((out.nodes[2 * i] = num(xy[0])), (out.nodes[2 * i + 1] = num(xy[1])));
-  }
-  if (p.gages.length) {
-    out.gages = g.gages.slice();
-    for (const [i, xy] of p.gages) ((out.gages[2 * i] = num(xy[0])), (out.gages[2 * i + 1] = num(xy[1])));
-  }
-  if (p.links.length) {
-    out.linkEnds = g.linkEnds.slice();
-    for (const [i, ends] of p.links) ((out.linkEnds[2 * i] = ends[0]), (out.linkEnds[2 * i + 1] = ends[1]));
-    const r = splice(g.linkStarts, g.linkPts, new Map(p.links.map(([i, , pts]) => [i, pts])));
-    out.linkStarts = r.starts;
-    out.linkPts = r.pts;
-  }
-  if (p.subcatchments.length) {
-    out.subOutlets = g.subOutlets.slice();
-    for (const [i, o] of p.subcatchments) ((out.subOutlets[2 * i] = o[0]), (out.subOutlets[2 * i + 1] = o[1]));
-    const r = splice(g.subStarts, g.subPts, new Map(p.subcatchments.map(([i, , pts]) => [i, pts])));
-    out.subStarts = r.starts;
-    out.subPts = r.pts;
-  }
-  return out;
 }
 
 /** Plotted series found again by name after the indices changed (dropped when gone). */
@@ -157,11 +98,11 @@ export async function edit(req: EditRequest): Promise<EditOutcome | null> {
   }
 }
 
-export function undo() {
-  if (!getState().model?.undo) return;
+/** Undoes or redoes one edit, and says which. */
+function step(apply: (selection: ObjRef[]) => Promise<EditOutcome>) {
   return enqueue(async () => {
     try {
-      const o = await api.undo(getState().selection);
+      const o = await apply(getState().selection);
       await applyOutcome(o);
       notify(o.label);
     } catch (e) {
@@ -170,17 +111,12 @@ export function undo() {
   });
 }
 
+export function undo() {
+  if (getState().model?.undo) return step(api.undo);
+}
+
 export function redo() {
-  if (!getState().model?.redo) return;
-  return enqueue(async () => {
-    try {
-      const o = await api.redo(getState().selection);
-      await applyOutcome(o);
-      notify(o.label);
-    } catch (e) {
-      notify(errorText(e), true);
-    }
-  });
+  if (getState().model?.redo) return step(api.redo);
 }
 
 /** Saves the model; `as` asks for a new file name. Returns false when nothing was saved. */
@@ -218,21 +154,6 @@ export async function confirmDiscard(): Promise<boolean> {
   });
   return saveFirst ? saveModel() : true;
 }
-
-export async function newModel(path: string, flowUnits: string) {
-  setState({ busy: "Creating model…" });
-  try {
-    const model = await api.newModel(path, flowUnits);
-    const geometry = await api.geometry();
-    resetForModel(model, geometry);
-    setState({ dialog: null, crsDialog: true });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
-}
-
 /** Asks for confirmation (with what else goes away), then deletes. */
 export async function deleteObjects(objects: ObjRef[]) {
   if (objects.length === 0) return;

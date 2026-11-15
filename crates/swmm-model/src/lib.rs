@@ -42,6 +42,18 @@ pub enum ObjKind {
 }
 
 impl ObjKind {
+    /// Kind of the objects a section defines (one line per object), if it defines any.
+    pub fn defined_in(section: &SectionKind) -> Option<ObjKind> {
+        use SectionKind as S;
+        match section {
+            S::Junctions | S::Outfalls | S::Dividers | S::Storage => Some(ObjKind::Node),
+            S::Conduits | S::Pumps | S::Orifices | S::Weirs | S::Outlets => Some(ObjKind::Link),
+            S::Subcatchments => Some(ObjKind::Subcatchment),
+            S::Raingages => Some(ObjKind::Gage),
+            _ => None,
+        }
+    }
+
     pub const ALL: [ObjKind; 4] = [ObjKind::Node, ObjKind::Link, ObjKind::Subcatchment, ObjKind::Gage];
 
     pub fn name(self) -> &'static str {

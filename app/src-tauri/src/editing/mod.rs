@@ -4,7 +4,6 @@
 
 mod fields;
 mod map_edits;
-mod measure;
 mod new_model;
 mod request;
 mod table_edits;
@@ -12,6 +11,7 @@ mod table_edits;
 use std::collections::HashSet;
 use std::path::Path;
 
+use swmm_geo::measure;
 use swmm_inp::SectionKind;
 use swmm_model::edit::{Applied, Change};
 use swmm_model::ops::{self, DeletePlan};
@@ -76,19 +76,7 @@ fn table_prefix(k: RefKind) -> &'static str {
 fn defined(changes: &[Change]) -> Vec<(ObjKind, String)> {
     let mut out = Vec::new();
     for c in changes {
-        let k = match c.kind {
-            SectionKind::Junctions | SectionKind::Outfalls | SectionKind::Dividers | SectionKind::Storage => {
-                ObjKind::Node
-            }
-            SectionKind::Conduits
-            | SectionKind::Pumps
-            | SectionKind::Orifices
-            | SectionKind::Weirs
-            | SectionKind::Outlets => ObjKind::Link,
-            SectionKind::Subcatchments => ObjKind::Subcatchment,
-            SectionKind::Raingages => ObjKind::Gage,
-            _ => continue,
-        };
+        let Some(k) = ObjKind::defined_in(&c.kind) else { continue };
         let gone: HashSet<String> = c
             .removed
             .iter()

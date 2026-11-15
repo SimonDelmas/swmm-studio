@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { addToPlot } from "../plot/series";
 import { savePlotView } from "../plot/savedViews";
-import { getState, notify, updatePlotView, useStore, type PlotView, type StatName } from "../store";
-import type { Calendar, ElementKind } from "../types";
+import { updatePlotView } from "../actions/views";
+import { getState, notify, useStore } from "../store";
+import { STATS, type PlotView, type StatName } from "../uiTypes";
+import type { Calendar } from "../analysisTypes";
+import type { ElementKind } from "../types";
 import { NumberInput } from "./CommitInput";
 import { PlotGraph } from "./PlotGraph";
-import { STATS } from "../store";
 
 /** A time series tab: graphs stacked on one time axis. */
 export function PlotPanel({ view }: { view: PlotView }) {

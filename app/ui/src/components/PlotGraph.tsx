@@ -3,25 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { errorText } from "../api";
-import { chartSvg, exportTable, savePng, saveSvg } from "../exporting";
-import { bucketLabel, formatDateTime, periodAt, periodMs } from "../format";
+import { exportTable, savePng, saveSvg } from "../exporting";
+import { useSize } from "../hooks/useSize";
+import { formatDateTime, periodAt, periodMs } from "../format";
 import { cacheReason, fetchGraph, zoomPeriods, type Built } from "../plot/data";
+import { chartOptions } from "../plot/chart";
+import { graphSvg, graphTable } from "../plot/exportGraph";
 import { COLORS } from "../plot/series";
-import { getState, setState, updatePlotView, useStore, type PlotGraph as GraphDef, type PlotSeries, type PlotView } from "../store";
-import { cssVar, useSize } from "../useSize";
-
-/** Time axis labels in the model clock (UTC), 24 h. */
-function timeLabels(_u: uPlot, splits: number[], _ax: number, _space: number, incr: number): string[] {
-  return splits.map((s, i) => {
-    const t = formatDateTime(s * 1000);
-    const date = t.slice(0, 10);
-    const prevDate = i > 0 ? formatDateTime(splits[i - 1] * 1000).slice(0, 10) : "";
-    if (incr >= 28 * 86400) return t.slice(0, 7);
-    if (incr >= 86400) return date;
-    return date !== prevDate ? `${t.slice(11)}
-${date}` : t.slice(11);
-  });
-}
+import { updatePlotView } from "../actions/views";
+import { getState, setState, useStore } from "../store";
+import type { PlotGraph as GraphDef, PlotSeries, PlotView } from "../uiTypes";
 
 /** One chart of a view; the charts of a view share their cursor and their zoom. */
 export function PlotGraph({ view, graph, number, removable }: { view: PlotView; graph: GraphDef; number: number; removable: boolean }) {
@@ -99,77 +90,8 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
     chart.current?.destroy();
     chart.current = null;
     if (!wrap.current || !built || built.series.length === 0 || size.h < 50) return;
-    const fg = cssVar("--fg", "#222");
-    const stepped = built.stepped ? uPlot.paths.stepped!({ align: 1 }) : undefined;
-    const opts: uPlot.Options = {
-      width: size.w,
-      height: size.h - 34,
-      tzDate: (ts) => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC"),
-      cursor: {
-        drag: { x: true, y: false },
-        // Share the cursor with the other graphs of the view, not the drag selection.
-        sync: { key: `plot-view-${view.id}`, setSeries: false, filters: { pub: (type) => type !== "mousedown" && type !== "mouseup" } },
-      },
-      scales: { x: { time: true }, ...Object.fromEntries(units.map((u) => [u, { auto: true }])) },
-      axes: [
-        { stroke: fg, grid: { stroke: "rgba(128,128,128,0.15)" }, values: timeLabels, size: 44 },
-        ...units.map((u, i) => ({
-          scale: u,
-          label: u,
-          side: i % 2 === 0 ? 3 : 1,
-          stroke: fg,
-          grid: { show: i === 0, stroke: "rgba(128,128,128,0.15)" },
-          size: 60,
-        })),
-      ] as uPlot.Axis[],
-      series: [
-        { value: (_u, v) => (v == null ? "" : formatDateTime(v * 1000)) },
-        ...built.series.map((p, i) => ({
-          label: p.label,
-          scale: built.units[i],
-          stroke: COLORS[i % COLORS.length],
-          width: 1.25,
-          dash: p.b ? [6, 3] : undefined,
-          points: { show: false },
-          spanGaps: false,
-          paths: stepped,
-        })),
-      ],
-      hooks: {
-        draw: [
-          (u) => {
-            const r = getState().model?.results;
-            if (!r || viewRef.current.agg) return;
-            const x = u.valToPos(periodMs(r, periodRef.current) / 1000, "x", true);
-            if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
-            u.ctx.save();
-            u.ctx.strokeStyle = "#e5534b";
-            u.ctx.lineWidth = 1.5 * devicePixelRatio;
-            u.ctx.beginPath();
-            u.ctx.moveTo(x, u.bbox.top);
-            u.ctx.lineTo(x, u.bbox.top + u.bbox.height);
-            u.ctx.stroke();
-            u.ctx.restore();
-          },
-        ],
-        setSelect: [
-          (u) => {
-            if (u.select.width < 5) return;
-            const r = getState().model?.results;
-            if (!r) return;
-            const a = u.posToVal(u.select.left, "x");
-            const b = u.posToVal(u.select.left + u.select.width, "x");
-            u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-            const v = viewRef.current;
-            if (!v.agg) {
-              const [p0, p1] = zoomPeriods(r, [a, b]);
-              if (p1 - p0 < 2) return;
-            }
-            updatePlotView(v.id, { zoom: [a, b] });
-          },
-        ],
-      },
-    };
+    const live = { view: () => viewRef.current, period: () => periodRef.current };
+    const opts = chartOptions(built, units, size, `plot-view-${view.id}`, live);
     const u = new uPlot(opts, built.data, wrap.current);
     chart.current = u;
     applyAggZoom(u);
@@ -207,31 +129,10 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
     chart.current?.redraw(false, false);
   }, [period]);
 
-  const timeText = (x: number) => (agg ? bucketLabel(agg.unit, x * 1000) : formatDateTime(x * 1000, true));
   const exportData = () => {
     if (!built) return;
-    const [x, ...ys] = built.data;
-    const head = [
-      agg ? agg.unit : "time",
-      ...built.series.map((p, i) => `${p.label} (${built.units[i]})${built.decimated ? " [min/max per bucket]" : ""}`),
-    ];
-    const rows = Array.from(x, (t, i) => [timeText(Number(t)), ...ys.map((y) => y[i] ?? null)]);
+    const { head, rows } = graphTable(built, agg);
     exportTable(agg ? `series_${agg.unit}` : "series", name, head, rows);
-  };
-  const svg = () => {
-    if (!built) return null;
-    const [x, ...ys] = built.data;
-    return chartSvg(
-      built.series.map((p, i) => ({
-        label: p.label,
-        unit: built.units[i],
-        color: COLORS[i % COLORS.length],
-        x: Array.from(x),
-        y: Array.from(ys[i] as (number | null)[]),
-        stepped: built.stepped,
-      })),
-      { width: Math.max(600, size.w), height: Math.max(320, size.h), xLabel: (t) => timeText(t).slice(0, 16) },
-    );
   };
   const setSeries = (series: PlotSeries[]) =>
     updatePlotView(view.id, (v) => ({ graphs: v.graphs.map((g) => (g.id === graph.id ? { ...g, series } : g)) }));
@@ -269,7 +170,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
         <button disabled={!built} onClick={exportData} title="Export the plotted values (CSV or Excel)">
           Data
         </button>
-        <button disabled={!built} onClick={() => saveSvg("plot", svg()!)}>
+        <button disabled={!built} onClick={() => built && saveSvg("plot", graphSvg(built, agg, size))}>
           SVG
         </button>
         <button disabled={!built} onClick={() => chart.current && savePng("plot", chart.current.ctx.canvas)}>

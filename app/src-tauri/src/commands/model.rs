@@ -65,15 +65,7 @@ pub fn set_crs(state: State<'_, AppState>, crs: Option<String>) -> Res<ModelInfo
 
 #[tauri::command(async)]
 pub fn update_project(state: State<'_, AppState>, basemap: Option<Basemap>, ui: Option<serde_json::Value>) -> Res<()> {
-    state.write(|s| {
-        if let Some(b) = basemap {
-            s.project.basemap = b;
-        }
-        if let Some(ui) = ui {
-            s.project.ui = ui;
-        }
-        s.save_project()
-    })
+    state.write(|s| s.update_project(basemap, ui))
 }
 
 #[tauri::command(async)]

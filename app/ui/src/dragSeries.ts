@@ -23,7 +23,7 @@ type DropHandler = (s: DraggedSeries, t: DropTarget) => void;
 
 let onDrop: DropHandler | null = null;
 
-/** Set by the time series panel (avoids an import cycle). */
+/** Set by the time series panel, which is where a dragged series is dropped. */
 export function setSeriesDropHandler(h: DropHandler) {
   onDrop = h;
 }

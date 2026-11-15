@@ -1,4 +1,4 @@
-import { confirmDelete } from "../edit";
+import { confirmDelete } from "../actions/edit";
 import { setState, useStore } from "../store";
 import { Modal } from "./Modal";
 

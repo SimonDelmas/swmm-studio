@@ -2,8 +2,10 @@
 
 import { api, errorText } from "../api";
 import { computeBreaks } from "../classify";
-import { statValues } from "../map/useLayerValues";
-import { getState, notify, setStyle, type LayerStyle, type StyledKind } from "../store";
+import { bucketRange, periodAt, periodMs } from "../format";
+import type { ResultsInfo } from "../types";
+import { getState, notify, setState } from "../store";
+import { makeStat, type LayerStyle, type StyledKind } from "../uiTypes";
 
 /** Values of a style, for its class limits. Results: each object's maximum over the run, so colours stay comparable while animating. */
 async function styleValues(kind: StyledKind, s: LayerStyle): Promise<Float32Array> {
@@ -27,6 +29,34 @@ async function styleValues(kind: StyledKind, s: LayerStyle): Promise<Float32Arra
   return statValues(kind, s, getState().period);
 }
 
+/** Periods `[p0, p1)` of a style's statistic in a results set, at the time of period `p` of the loaded results. */
+export function statRange(style: LayerStyle, r: ResultsInfo, loaded: ResultsInfo, p: number): [number, number] {
+  if (style.scope === "run") return [0, r.n_periods];
+  const q = r === loaded ? p : periodAt(r, periodMs(loaded, p));
+  const [a, b] = bucketRange(r, style.scope, q);
+  return [a, b];
+}
+
+/** Values of a style: a statistic over its period range, or loaded minus compared. */
+export async function statValues(kind: StyledKind, style: LayerStyle, period: number): Promise<Float32Array> {
+  const m = getState().model;
+  const a = m?.results;
+  if (!a) throw new Error("no results loaded");
+  const v = Number(style.field);
+  if (style.stat === "value") {
+    return style.source === "compare" ? api.compareFrame(kind, v, period) : api.frame(kind, v, period);
+  }
+  const stat = makeStat(style.stat, style.threshold);
+  const [p0, p1] = statRange(style, a, a, period);
+  const va = await api.statValues(kind, v, stat, p0, p1);
+  if (style.source !== "compare") return va;
+  const b = m.compare;
+  if (!b) throw new Error("no results to compare with");
+  const [q0, q1] = statRange(style, b, a, period);
+  const vb = await api.statValues(kind, v, stat, q0, q1, true);
+  return va.map((x, i) => x - vb[i]);
+}
+
 async function recompute(kind: StyledKind, s: LayerStyle): Promise<number[]> {
   if (s.source === "type" || s.field === "") return [];
   const values = await styleValues(kind, s);
@@ -38,6 +68,10 @@ async function recompute(kind: StyledKind, s: LayerStyle): Promise<number[]> {
     return computeBreaks([-m, m], "equal", s.classes);
   }
   return computeBreaks(values, s.method === "custom" ? "equal" : s.method, s.classes);
+}
+
+export function setStyle(kind: StyledKind, patch: Partial<LayerStyle>) {
+  setState((s) => ({ styles: { ...s.styles, [kind]: { ...s.styles[kind], ...patch } } }));
 }
 
 /** Latest `applyStyle` call per layer: class limits computed for an earlier one are dropped. */

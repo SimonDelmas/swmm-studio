@@ -2,12 +2,13 @@ import { selectObject, selectObjects } from "../actions/selection";
 import { ObjLink } from "./ObjLink";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { formatNumber } from "../classify";
+import { formatDateTime, formatNumber, periodMs } from "../format";
+import { useSize } from "../hooks/useSize";
 import { exportTable, savePng, saveSvg } from "../exporting";
-import { formatDateTime, periodMs } from "../format";
-import { getState, setState, updateProfileView, useStore, type ProfileView } from "../store";
+import { updateProfileView } from "../actions/views";
+import { getState, setState, useStore } from "../store";
+import type { ProfileView } from "../uiTypes";
 import type { ObjRef } from "../types";
-import { useSize } from "../useSize";
 import { profileFromSelection, saveProfile } from "../profile/profiles";
 import { profileInfo, profileSvg, type Selected } from "../profile/svg";
 

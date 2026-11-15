@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
-import { tryEdit } from "../edit";
+import { tryEdit } from "../actions/edit";
 import { setState } from "../store";
-import type { SectionInfo } from "../types";
+import type { SectionInfo } from "../analysisTypes";
 import { Modal } from "./Modal";
+import { latest } from "../latest";
 
 /** Sections whose lines define the network: editing them as text rebuilds it. */
 const NETWORK = new Set(["JUNCTIONS", "OUTFALLS", "DIVIDERS", "STORAGE", "CONDUITS", "PUMPS", "ORIFICES", "WEIRS", "OUTLETS", "SUBCATCHMENTS", "RAINGAGES", "COORDINATES", "VERTICES", "POLYGONS", "SYMBOLS"]);
@@ -30,14 +31,11 @@ export function SectionsDialog() {
   useEffect(() => {
     setText(null);
     // The text of another section, answered late, must not be shown (and saved) under this name.
-    let current = true;
-    api.sectionText(name).then(
-      (t) => current && (setText(t), setOrig(t), setError(null)),
-      (e) => current && setError(errorText(e)),
+    return latest(
+      () => api.sectionText(name),
+      (t) => (setText(t), setOrig(t), setError(null)),
+      (e) => setError(errorText(e)),
     );
-    return () => {
-      current = false;
-    };
   }, [name]);
   const close = () => setState({ dialog: null });
   const changed = text !== null && text !== orig;

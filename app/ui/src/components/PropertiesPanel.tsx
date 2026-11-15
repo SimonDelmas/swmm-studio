@@ -3,9 +3,8 @@ import { ObjLink } from "./ObjLink";
 import { LinkButton } from "./LinkButton";
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
-import { formatNumber } from "../classify";
-import { deleteObjects, edit } from "../edit";
-import { formatDateTime, periodMs } from "../format";
+import { formatDateTime, formatNumber, periodMs } from "../format";
+import { deleteObjects, edit } from "../actions/edit";
 import { setState, useStore } from "../store";
 import type { ElementKind, ObjectInfo, RefKind } from "../types";
 import { addToPlot } from "../plot/series";
@@ -13,6 +12,7 @@ import { startSeriesDrag } from "../dragSeries";
 import { GroupEditor } from "./properties/GroupEditor";
 import { MultiSelection } from "./properties/MultiSelection";
 import { LISTED, NameList } from "./properties/ValueInput";
+import { latest } from "../latest";
 
 export function PropertiesPanel() {
   const selection = useStore((s) => s.selection);
@@ -25,25 +25,17 @@ export function PropertiesPanel() {
 
   useEffect(() => {
     if (!one) return setInfo(null);
-    // An answer for an object selected earlier must not replace the one for this object.
-    let current = true;
-    const t = setTimeout(
-      () => {
-        api
-          .objectInfo(one, results ? period : null)
-          .then((i) => {
-            if (!current) return;
-            setInfo(i);
-            setError(null);
-          })
-          .catch((e) => current && setError(errorText(e)));
+    // The values of the object shown follow the time without a request per period played.
+    const delay = info && info.object.kind === one.kind && info.object.index === one.index ? 120 : 0;
+    return latest(
+      () => api.objectInfo(one, results ? period : null),
+      (i) => {
+        setInfo(i);
+        setError(null);
       },
-      info && info.object.kind === one.kind && info.object.index === one.index ? 120 : 0,
+      (e) => setError(errorText(e)),
+      delay,
     );
-    return () => {
-      current = false;
-      clearTimeout(t);
-    };
   }, [one?.kind, one?.index, period, results?.path, results?.cache.state, revision]);
 
   if (selection.length === 0)

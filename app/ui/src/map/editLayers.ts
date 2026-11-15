@@ -3,7 +3,7 @@
 
 import { COORDINATE_SYSTEM, type Layer } from "@deck.gl/core";
 import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
-import type { Tool } from "../store";
+import type { Tool } from "../uiTypes";
 import type { Geometry, LinkType, NodeType, ObjRef, Pt } from "../types";
 import { hasEnds, linkPath, nodePt, subRing, nearest } from "./hitTest";
 

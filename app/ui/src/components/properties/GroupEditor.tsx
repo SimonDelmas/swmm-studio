@@ -1,6 +1,6 @@
 import { NameLink } from "../ObjLink";
 import { LinkButton } from "../LinkButton";
-import { edit, tryEdit } from "../../edit";
+import { edit, tryEdit } from "../../actions/edit";
 import type { ObjectInfo, PropertyGroup } from "../../types";
 import { LISTED, OBJECT_REF, RefJump, ValueInput } from "./ValueInput";
 

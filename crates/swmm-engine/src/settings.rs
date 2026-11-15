@@ -62,6 +62,19 @@ impl Settings {
         self.engines.iter().find(|e| e.name.eq_ignore_ascii_case(name))
     }
 
+    /// The settings of this user, or empty ones with the error when the file cannot be read.
+    pub fn load_or_default() -> (Settings, Option<EngineError>) {
+        match Settings::load(&Settings::default_path()) {
+            Ok(s) => (s, None),
+            Err(e) => (Settings::default(), Some(e)),
+        }
+    }
+
+    /// Engine that runs a model: the one its project names, else the default one.
+    pub fn engine_for(&self, project: Option<&str>) -> Option<&EngineConfig> {
+        project.and_then(|n| self.engine(n)).or_else(|| self.default_engine())
+    }
+
     /// The default engine, or the only one when there is a single engine (also when the
     /// default named in the file is no longer registered).
     pub fn default_engine(&self) -> Option<&EngineConfig> {

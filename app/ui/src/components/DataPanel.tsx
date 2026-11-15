@@ -1,6 +1,6 @@
 import { LinkButton } from "./LinkButton";
 import { useState } from "react";
-import { edit } from "../edit";
+import { edit } from "../actions/edit";
 import { setState, useStore } from "../store";
 import type { TableKind } from "../types";
 import { useNames } from "../hooks/useNames";

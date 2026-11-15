@@ -1,56 +1,52 @@
 // The names of the model's objects, to recognise them wherever the UI shows text.
 
-import { useEffect, useState } from "react";
-import { api } from "../api";
-import { useStore } from "../store";
+import { useEffect } from "react";
+import { ensureIds } from "../actions/ids";
+import { useStore, type State } from "../store";
 import type { ObjKind, ObjRef } from "../types";
 
 const KINDS: ObjKind[] = ["node", "link", "subcatchment", "gage"];
 
 /** Objects by upper-case name (SWMM names are case-insensitive), in kind order. */
-export type NameIndex = Map<string, ObjRef[]> & { names?: string[][] };
+export type NameIndex = Map<string, ObjRef[]> & { names: string[][] };
 
-let cache: { key: string; index: NameIndex | null; loading: Promise<void> | null } = { key: "", index: null, loading: null };
-const waiting = new Set<() => void>();
-
-function load(key: string) {
-  const samePath = (k: string) => k.slice(0, k.lastIndexOf("#")) === key.slice(0, key.lastIndexOf("#"));
-  cache = { key, index: samePath(cache.key) ? cache.index : null, loading: null };
-  cache.loading = Promise.all(KINDS.map((k) => api.ids(k).catch(() => [] as string[]))).then((lists) => {
-    if (cache.key !== key) return;
-    const index: NameIndex = new Map();
-    lists.forEach((ids, ki) =>
-      ids.forEach((id, i) => {
-        const u = id.toUpperCase();
-        const refs = index.get(u);
-        const r = { kind: KINDS[ki], index: i };
-        if (refs) refs.push(r);
-        else index.set(u, [r]);
-      }),
-    );
-    index.names = lists;
-    cache.index = index;
-    cache.loading = null;
-    waiting.forEach((f) => f());
-  });
+function build(names: string[][]): NameIndex {
+  const index = Object.assign(new Map<string, ObjRef[]>(), { names });
+  names.forEach((ids, ki) =>
+    ids.forEach((id, i) => {
+      const u = id.toUpperCase();
+      const refs = index.get(u);
+      const r = { kind: KINDS[ki], index: i };
+      if (refs) refs.push(r);
+      else index.set(u, [r]);
+    }),
+  );
+  return index;
 }
 
-/** Index of the model's object names, loaded on first use and reloaded when the model changes. */
+/** The index of the names last seen in the store: built once for all the components that read it. */
+let built: { ids: State["ids"]; index: NameIndex | null } = { ids: {}, index: null };
+
+function indexOf(ids: State["ids"]): NameIndex | null {
+  if (built.ids !== ids) {
+    const names = KINDS.map((k) => ids[k]);
+    built = { ids, index: names.every((n) => n !== undefined) ? build(names as string[][]) : null };
+  }
+  return built.index;
+}
+
+/**
+ * Index of the model's object names. The names are those of the store (`state.ids`),
+ * loaded on first use and kept in step with the edits there.
+ */
 export function useNameIndex(): NameIndex | null {
-  const [, bump] = useState(0);
-  const key = useStore((s) => (s.model ? `${s.model.path}#${s.model.revision}` : null));
+  const ids = useStore((s) => s.ids);
+  const model = useStore((s) => s.model?.path ?? null);
   useEffect(() => {
-    const f = () => bump((n) => n + 1);
-    waiting.add(f);
-    return () => {
-      waiting.delete(f);
-    };
-  }, []);
-  useEffect(() => {
-    if (key && (cache.key !== key || (!cache.index && !cache.loading))) load(key);
-  }, [key]);
-  // A stale index (the model was just edited) still serves until the new one is loaded.
-  return key ? cache.index : null;
+    // Without the names the text is shown as it is, without links.
+    if (model) ensureIds(KINDS).catch(() => {});
+  }, [model, ids]);
+  return model ? indexOf(ids) : null;
 }
 
 /** The object a name refers to, preferring kind `prefer` when several share it. */
@@ -62,5 +58,5 @@ export function resolveName(index: NameIndex | null, name: string, prefer?: ObjK
 
 /** Name of an object, from the index. */
 export function nameOf(index: NameIndex | null, o: ObjRef): string | null {
-  return index?.names?.[KINDS.indexOf(o.kind)]?.[o.index] ?? null;
+  return index?.names[KINDS.indexOf(o.kind)]?.[o.index] ?? null;
 }

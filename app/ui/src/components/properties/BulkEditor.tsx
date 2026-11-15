@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, errorText } from "../../api";
-import { tryEdit } from "../../edit";
+import { tryEdit } from "../../actions/edit";
 import type { ObjectInfo, ObjKind, ObjRef } from "../../types";
+import { latest } from "../../latest";
 
 export const KIND_LABEL: Record<ObjKind, string> = { node: "Nodes", link: "Links", subcatchment: "Subcatchments", gage: "Rain gages" };
 
@@ -17,15 +18,7 @@ export function BulkEditor({ selection }: { selection: ObjRef[] }) {
   useEffect(() => {
     const first = selection.find((o) => o.kind === k);
     if (!first) return setSample(null);
-    // The fields of a selection made earlier, answered late, are dropped.
-    let current = true;
-    api.objectInfo(first, null).then(
-      (info) => current && setSample(info),
-      () => current && setSample(null),
-    );
-    return () => {
-      current = false;
-    };
+    return latest(() => api.objectInfo(first, null), setSample, () => setSample(null));
   }, [k, selection]);
   if (!k || !sample) return null;
   const groups = sample.groups.filter((g) => g.editable);

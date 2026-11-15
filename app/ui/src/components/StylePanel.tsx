@@ -2,10 +2,12 @@ import { NumberInput } from "./CommitInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { RAMPS } from "../classify";
-import { makeStat, setState, setStyle, STATS, useStore, type LayerStyle, type StyledKind } from "../store";
-import { applyStyle } from "../actions/style";
+import { applyStyle, setStyle } from "../actions/style";
+import { setState, useStore } from "../store";
+import { makeStat, STATS, type LayerStyle, type StyledKind } from "../uiTypes";
 import { BasemapSection } from "./style/BasemapSection";
 import { Legend, TypeList } from "./style/Legend";
+import { latest } from "../latest";
 
 const TITLES: Record<StyledKind, string> = { node: "Nodes", link: "Links", subcatchment: "Subcatchments" };
 
@@ -26,15 +28,8 @@ function useUnit(kind: StyledKind, style: LayerStyle): string {
     if (style.source === "type" || style.source === "attribute" || !results) return setUnit("");
     if (style.source === "result" || style.stat === "value") return setUnit(base);
     if (style.stat === "time_of_max") return setUnit("");
-    // The unit of a statistic chosen earlier, answered late, is dropped.
-    let current = true;
-    api
-      .statUnit(kind, Number(style.field), makeStat(style.stat, style.threshold))
-      .then((u) => current && setUnit(u))
-      .catch(() => current && setUnit(base));
-    return () => {
-      current = false;
-    };
+    const stat = makeStat(style.stat, style.threshold);
+    return latest(() => api.statUnit(kind, Number(style.field), stat), setUnit, () => setUnit(base));
   }, [kind, style.source, style.field, style.stat, results?.path, base]);
   return unit;
 }

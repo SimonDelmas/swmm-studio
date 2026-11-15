@@ -23,6 +23,15 @@ pub struct EventParams {
     pub min_gap: usize,
 }
 
+impl EventParams {
+    /// Parameters from a minimum inter-event time in hours, for results with a report
+    /// step of `step_secs` (at least one period apart).
+    pub fn with_gap_hours(threshold: f32, hours: f64, step_secs: f64) -> EventParams {
+        let min_gap = ((hours.max(0.0) * 3600.0) / step_secs.max(1.0)).ceil().max(1.0) as usize;
+        EventParams { threshold, min_gap }
+    }
+}
+
 /// One event (periods are indices of the results file).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Event {

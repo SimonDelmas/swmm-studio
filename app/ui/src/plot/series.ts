@@ -2,7 +2,9 @@
 
 import { ensureIds } from "../actions/ids";
 import { setSeriesDropHandler } from "../dragSeries";
-import { currentPlotView, getState, newPlotId, newPlotView, seriesKey, setState, type PlotSeries } from "../store";
+import { currentPlotView, newPlotId, newPlotView } from "../actions/views";
+import { getState, setState } from "../store";
+import { seriesKey, type PlotSeries } from "../uiTypes";
 import type { ElementKind } from "../types";
 
 /** Colours of the series of a graph, in order. */

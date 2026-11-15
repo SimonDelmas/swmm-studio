@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { saveModel } from "../edit";
+import { saveModel } from "../actions/edit";
 import { getState } from "../store";
 
 interface Caught {

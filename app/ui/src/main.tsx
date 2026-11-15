@@ -5,13 +5,14 @@ import { startRun } from "./actions/run";
 import { validateModel } from "./actions/validate";
 import { api } from "./api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { edit, redo, saveModel, tryEdit, undo } from "./edit";
+import { edit, redo, saveModel, tryEdit, undo } from "./actions/edit";
 import { loadPlotView, savePlotView } from "./plot/savedViews";
 import { addToPlot } from "./plot/series";
 import { profileFromSelection } from "./profile/profiles";
 import { applyStyle } from "./actions/style";
 import { mapPerf, mapProject } from "./map/MapView";
-import { currentPlotView, getState, setState } from "./store";
+import { currentPlotView } from "./actions/views";
+import { getState, setState } from "./store";
 import "./styles.css";
 
 // Entry points for automated UI tests (e2e/smoke.mjs drives the app over CDP).

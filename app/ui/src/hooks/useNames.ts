@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { latest } from "../latest";
 import { useStore } from "../store";
 import type { RefKind } from "../types";
 
@@ -10,15 +11,7 @@ export function useNames(kind: RefKind | null): string[] {
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => {
     if (!kind || !path) return setNames([]);
-    // The names of a kind asked for earlier, answered late, are dropped.
-    let current = true;
-    api.names(kind).then(
-      (n) => current && setNames(n),
-      () => current && setNames([]),
-    );
-    return () => {
-      current = false;
-    };
+    return latest(() => api.names(kind), setNames, () => setNames([]));
   }, [kind, revision, path]);
   return names;
 }

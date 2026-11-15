@@ -1,8 +1,9 @@
 // The longitudinal profile as an SVG drawing, and the details of what is under the pointer.
 
-import { formatNumber } from "../classify";
-import { esc, ticks } from "../exporting";
-import type { ObjRef, ProfileDto } from "../types";
+import { esc, ticks } from "../chartSvg";
+import { formatNumber } from "../format";
+import type { ProfileDto } from "../analysisTypes";
+import type { ObjRef } from "../types";
 
 export const fin = (v: number | null | undefined): v is number => v !== null && v !== undefined && Number.isFinite(v);
 

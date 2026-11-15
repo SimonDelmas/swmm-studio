@@ -134,6 +134,22 @@ Basemap tiles come from OpenStreetMap (© OpenStreetMap contributors); the app i
 with its own User-Agent, as the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
 requires. The tile URL is stored in the project file.
 
+### Front-end layout
+
+The modules of `app/ui/src` are in layers; a module imports only from its own layer or from a
+lower one. `npm run build` checks it (`scripts/check-layers.mjs`).
+
+| Layer | Modules | Holds |
+|---|---|---|
+| types | `types`, `analysisTypes`, `uiTypes` | What the back-end sends and what the state of the interface is made of. |
+| libraries | `api`, `format`, `classify`, `chartSvg`, `geometryPatch`, `latest` | Calls to the back-end and functions that know nothing of the state. |
+| store | `store` | The state and how to read, change and follow it. |
+| actions | `actions/`, `exporting`, `dragSeries` | What the user can do: open, edit, run, style, open and close tabs, save files. |
+| features | `hooks/`, `plot/`, `profile/` | Hooks shared by components; time series and profiles. |
+| map | `map/` | The map: viewers, layers, drawing tools. |
+| components | `components/` | Panels and dialogs. |
+| application | `App`, `main` | The window. |
+
 ## CLI
 
 ```bash

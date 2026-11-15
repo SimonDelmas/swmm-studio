@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getState, newPlotName, newPlotView, openPlotView, openProfileView, selectProfileView, setState, updatePlotView, updateProfileView, useStore, type BottomTab, type State } from "../store";
+import { closeAllViewTabs, closeViewTab, isViewTabOpen, newPlotName, newPlotView, openPlotView, openProfileView, openViewTab, updatePlotView, updateProfileView, viewTabs, type ViewTab } from "../actions/views";
+import { setState, useStore, type State } from "../store";
+import type { BottomTab } from "../uiTypes";
 import { ComparePanel } from "./ComparePanel";
 import { EventsPanel } from "./EventsPanel";
 import { IssuesPanel } from "./IssuesPanel";
@@ -17,41 +19,6 @@ const FIXED: [BottomTab, string, string][] = [
   ["events", "Events", "Rain and flood events of the results"],
   ["compare", "Compare", "Compare the results with another run"],
 ];
-
-/** A time series or profile tab. */
-interface DynTab {
-  type: "plot" | "profile";
-  id: number;
-  name: string;
-}
-
-/** The tabs created as needed, in creation order. */
-function dynTabs(s: Pick<State, "plotViews" | "profileViews">): DynTab[] {
-  return [
-    ...s.plotViews.map((v) => ({ type: "plot" as const, id: v.id, name: v.name })),
-    ...s.profileViews.map((v) => ({ type: "profile" as const, id: v.id, name: v.name })),
-  ].sort((a, b) => a.id - b.id);
-}
-
-const isOpen = (s: Pick<State, "bottomTab" | "plotView" | "profileView">, t: DynTab) => s.bottomTab === t.type && (t.type === "plot" ? s.plotView : s.profileView) === t.id;
-
-function openTab(t: DynTab) {
-  if (t.type === "plot") setState({ plotView: t.id, bottomTab: "plot" });
-  else selectProfileView(t.id);
-}
-
-/** Closes a tab; when it was open, the next one (or the previous, or the table) opens. */
-function closeTab(s: State, t: DynTab) {
-  const tabs = dynTabs(s);
-  const i = tabs.findIndex((x) => x.type === t.type && x.id === t.id);
-  const wasOpen = isOpen(s, t);
-  if (t.type === "plot") setState({ plotViews: s.plotViews.filter((v) => v.id !== t.id) });
-  else setState({ profileViews: s.profileViews.filter((v) => v.id !== t.id), ...(wasOpen ? { profileNodes: [], profileStart: null } : {}) });
-  if (!wasOpen) return;
-  const next = tabs[i + 1] ?? tabs[i - 1];
-  if (next) openTab(next);
-  else setState({ bottomTab: "table" });
-}
 
 /** The "+" menu: new time series or profile tab, or one rebuilt from a view or profile saved in the project. */
 function AddMenu() {
@@ -117,18 +84,8 @@ function AddMenu() {
 }
 
 /** All the time series and profile tabs, when they do not fit in the tab bar: open or close one, or close them all. */
-function TabList({ tabs, s }: { tabs: DynTab[]; s: Pick<State, "bottomTab" | "plotView" | "profileView"> }) {
+function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "plotView" | "profileView"> }) {
   const { open, setOpen, ref, run } = useDropdown();
-  const closeAll = () => {
-    const st = getState();
-    setState({
-      plotViews: [],
-      profileViews: [],
-      profileNodes: [],
-      profileStart: null,
-      ...(st.bottomTab === "plot" || st.bottomTab === "profile" ? { bottomTab: "table" as const } : {}),
-    });
-  };
   return (
     <div className="menu" ref={ref}>
       <button className={`tab-add${open ? " active" : ""}`} title={`All the ${tabs.length} tabs`} onClick={() => setOpen(!open)}>
@@ -137,18 +94,18 @@ function TabList({ tabs, s }: { tabs: DynTab[]; s: Pick<State, "bottomTab" | "pl
       {open && (
         <div className="menu-items menu-right tab-list">
           {tabs.map((t) => (
-            <div key={`${t.type}:${t.id}`} className={`menu-row${isOpen(s, t) ? " current" : ""}`}>
-              <button title={t.name} onClick={run(() => openTab(t))}>
+            <div key={`${t.type}:${t.id}`} className={`menu-row${isViewTabOpen(s, t) ? " current" : ""}`}>
+              <button title={t.name} onClick={run(() => openViewTab(t))}>
                 <span className="view-tab-icon">{t.type === "plot" ? "〜" : "⟋"}</span>
                 {t.name}
               </button>
-              <button className="menu-del" title="Close this tab" onClick={() => closeTab(getState(), t)}>
+              <button className="menu-del" title="Close this tab" onClick={() => closeViewTab(t)}>
                 ×
               </button>
             </div>
           ))}
           <hr />
-          <button onClick={run(closeAll)}>Close all the time series and profile tabs</button>
+          <button onClick={run(closeAllViewTabs)}>Close all the time series and profile tabs</button>
         </div>
       )}
     </div>
@@ -156,7 +113,7 @@ function TabList({ tabs, s }: { tabs: DynTab[]; s: Pick<State, "bottomTab" | "pl
 }
 
 /** The tab of a time series or profile view: double-click renames it, × closes it. */
-function ViewTab({ t, active, children }: { t: DynTab; active: boolean; children?: React.ReactNode }) {
+function ViewTab({ t, active, children }: { t: ViewTab; active: boolean; children?: React.ReactNode }) {
   const [editing, setEditing] = useState(false);
   const rename = (name: string) => {
     setEditing(false);
@@ -181,14 +138,14 @@ function ViewTab({ t, active, children }: { t: DynTab; active: boolean; children
     <span className={`view-tab${active ? " active" : ""}`} {...(t.type === "plot" ? { "data-drop-view": t.id } : {})}>
       <button
         title={`${t.type === "plot" ? "Time series" : "Profile"} “${t.name}” – double-click to rename`}
-        onClick={() => openTab(t)}
+        onClick={() => openViewTab(t)}
         onDoubleClick={() => setEditing(true)}
       >
         <span className="view-tab-icon">{t.type === "plot" ? "〜" : "⟋"}</span>
         <span className="view-tab-name">{t.name}</span>
         {children}
       </button>
-      <button className="view-tab-close" title="Close this tab" onClick={() => closeTab(getState(), t)}>
+      <button className="view-tab-close" title="Close this tab" onClick={() => closeViewTab(t)}>
         ×
       </button>
     </span>
@@ -226,7 +183,7 @@ export function BottomPanel() {
   const modelErrors = useStore((x) => x.issues?.filter((i) => i.severity === "error").length ?? 0);
   const comparing = useStore((x) => !!x.model?.compare);
   const s = { bottomTab, plotView, profileView, bottomMax };
-  const tabs = dynTabs({ plotViews, profileViews });
+  const tabs = viewTabs({ plotViews, profileViews });
   // The time series and profile tabs scroll when they do not fit (wheel, or the list).
   const strip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
@@ -266,7 +223,7 @@ export function BottomPanel() {
             }}
           >
             {tabs.map((t) => (
-              <ViewTab key={`${t.type}:${t.id}`} t={t} active={isOpen(s, t)} />
+              <ViewTab key={`${t.type}:${t.id}`} t={t} active={isViewTabOpen(s, t)} />
             ))}
           </div>
         )}

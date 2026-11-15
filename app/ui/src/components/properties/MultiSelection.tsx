@@ -2,7 +2,7 @@ import { zoomToSelection } from "../../actions/selection";
 import { ObjLink } from "../ObjLink";
 import { useEffect } from "react";
 import { ensureIds } from "../../actions/ids";
-import { deleteObjects } from "../../edit";
+import { deleteObjects } from "../../actions/edit";
 import { setState, useStore } from "../../store";
 import type { ObjKind, ObjRef } from "../../types";
 import { BulkEditor, KIND_LABEL } from "./BulkEditor";

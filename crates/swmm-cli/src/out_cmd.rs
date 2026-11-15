@@ -315,8 +315,7 @@ fn events(
             .collect::<Result<_>>()?
     };
     let step = m.report_step_secs.max(1) as f64;
-    let params =
-        swmm_analysis::EventParams { threshold, min_gap: ((gap_hours * 3600.0) / step).ceil().max(1.0) as usize };
+    let params = swmm_analysis::EventParams::with_gap_hours(threshold, gap_hours, step);
     let t0 = std::time::Instant::now();
     let sums = swmm_analysis::summarize(&r, kind, &objs, v, 0..m.n_periods, params)?;
     let years = m.n_periods as f64 * step / (365.25 * 86_400.0);

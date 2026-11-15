@@ -2,8 +2,9 @@ import { selectObject } from "../actions/selection";
 import { useState } from "react";
 import { askNewModel, chooseModel, chooseResults } from "../actions/model";
 import { api, errorText } from "../api";
-import { redo, saveModel, undo } from "../edit";
-import { getState, notify, setState, useStore, type Tool } from "../store";
+import { redo, saveModel, undo } from "../actions/edit";
+import { getState, notify, setState, useStore } from "../store";
+import type { Tool } from "../uiTypes";
 import { useDropdown } from "../hooks/useDropdown";
 import { RunControls } from "./RunPanel";
 

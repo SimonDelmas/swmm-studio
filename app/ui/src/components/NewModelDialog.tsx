@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { newModel } from "../edit";
+import { newModel } from "../actions/model";
 import { setState } from "../store";
 import { Modal } from "./Modal";
 

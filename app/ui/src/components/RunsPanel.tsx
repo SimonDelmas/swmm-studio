@@ -4,7 +4,8 @@ import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
 import { setResultsInfo } from "../actions/model";
 import { notify, setState, useStore } from "../store";
-import type { ModelInfo, RunDto } from "../types";
+import type { RunDto } from "../analysisTypes";
+import type { ModelInfo } from "../types";
 import { CommitInput } from "./CommitInput";
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${v.toFixed(2)} %`);

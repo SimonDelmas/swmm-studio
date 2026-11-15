@@ -52,6 +52,21 @@ fn registry() -> &'static [CrsInfo] {
     ALL.get_or_init(|| (0..=u16::MAX).filter_map(crs_definitions::from_code).map(|d| info_of(&d)).collect())
 }
 
+/// Coordinate system suggested by the extent of a model's coordinates
+/// (`[min_x, min_y, max_x, max_y]`): degrees, or French Lambert 93. A guess, to be
+/// confirmed by the user.
+pub fn guess(b: [f64; 4]) -> Option<CrsInfo> {
+    let degrees = b[0] >= -180.0 && b[2] <= 180.0 && b[1] >= -90.0 && b[3] <= 90.0 && b[2] - b[0] < 20.0;
+    let lambert_93 = b[0] > 50_000.0 && b[2] < 1_300_000.0 && b[1] > 6_000_000.0 && b[3] < 7_200_000.0;
+    if degrees {
+        lookup(4326)
+    } else if lambert_93 {
+        lookup(2154)
+    } else {
+        None
+    }
+}
+
 /// Registry entry for an EPSG code.
 pub fn lookup(code: u16) -> Option<CrsInfo> {
     crs_definitions::from_code(code).map(|d| info_of(&d))
@@ -87,6 +102,23 @@ pub fn search(query: &str, limit: usize) -> Vec<CrsInfo> {
 fn normalize(s: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
+
+/// Prime meridians PROJ knows by name, in degrees east of Greenwich.
+const PRIME_MERIDIANS: [(&str, f64); 13] = [
+    ("greenwich", 0.0),
+    ("lisbon", -9.131_906_111_111),
+    ("paris", 2.337_229_166_667),
+    ("bogota", -74.080_916_666_667),
+    ("madrid", -3.687_938_888_889),
+    ("rome", 12.452_333_333_333),
+    ("bern", 7.439_583_333_333),
+    ("jakarta", 106.807_719_444_444),
+    ("ferro", -17.666_666_666_667),
+    ("brussels", 4.367_975),
+    ("stockholm", 18.058_277_777_778),
+    ("athens", 23.716_337_5),
+    ("oslo", 10.722_916_666_667),
+];
 
 /// A coordinate system the model coordinates can be converted from.
 pub struct Crs {
@@ -138,15 +170,19 @@ impl Crs {
             // Zones are 6° wide, zone 1 starting at 180°W.
             return number("+zone=").map(|zone| [6.0 * zone - 183.0, 0.0]);
         }
-        let (lon, lat) = (number("+lon_0="), number("+lat_0="));
+        // `+lonc`: the centre of an oblique Mercator projection.
+        let (lon, lat) = (number("+lon_0=").or_else(|| number("+lonc=")), number("+lat_0="));
         if lon.is_none() && lat.is_none() {
             return None;
         }
-        // Longitudes of older national grids are counted from their own meridian.
+        // Longitudes of older national grids are counted from their own meridian: a
+        // name PROJ knows, or degrees. An unknown name gives no origin rather than a wrong one.
         let prime_meridian = match text("+pm=") {
-            Some("paris") => 2.337_229_166_667,
-            Some(value) => value.parse().unwrap_or(0.0),
             None => 0.0,
+            Some(value) => match PRIME_MERIDIANS.iter().find(|(name, _)| *name == value) {
+                Some((_, degrees)) => *degrees,
+                None => value.parse().ok()?,
+            },
         };
         Some([lon.unwrap_or(0.0) + prime_meridian, lat.unwrap_or(0.0)])
     }
@@ -237,6 +273,10 @@ mod tests {
         let o = origin("EPSG:27572").unwrap();
         assert!((o[0] - 2.337).abs() < 1e-3 && o[1] > 46.0 && o[1] < 47.5, "{o:?}");
         assert_eq!(origin("EPSG:4326"), None);
+        // A named meridian other than Paris (the projection library refuses unknown names).
+        let custom = |def: &str| Crs::parse(def).unwrap().origin();
+        let o = custom("+proj=tmerc +lat_0=0 +lon_0=20 +pm=ferro +k=1 +x_0=0 +y_0=0 +ellps=bessel +units=m").unwrap();
+        assert!((o[0] - 2.333).abs() < 1e-3, "{o:?}");
     }
 
     #[test]

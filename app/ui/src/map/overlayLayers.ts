@@ -2,8 +2,9 @@
 
 import type { CoordinateSystem, Layer } from "@deck.gl/core";
 import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
-import type { LayerStyle } from "../store";
-import type { Geometry, ObjKind, ObjRef, ProfileDto } from "../types";
+import type { LayerStyle } from "../uiTypes";
+import type { ProfileDto } from "../analysisTypes";
+import type { Geometry, ObjKind, ObjRef } from "../types";
 import type { Extent, Pt } from "./viewers";
 
 type Rgba = [number, number, number, number];

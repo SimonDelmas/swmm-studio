@@ -2,8 +2,10 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
-import { confirmDiscard } from "../edit";
-import { defaultStyle, getState, mapPlotSeries, notify, resetForModel, setState, styleUsable, type StyledKind } from "../store";
+import { confirmDiscard } from "./edit";
+import { getState, notify, resetForModel, setState } from "../store";
+import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
+import { mapPlotSeries } from "./views";
 import type { ModelInfo } from "../types";
 
 export async function openModel(path: string) {
@@ -17,6 +19,21 @@ export async function openModel(path: string) {
     // One message: the status bar shows the last one only.
     if (notes.length > 0) notify(notes.join(" — "), true);
     if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
+  } catch (e) {
+    notify(errorText(e), true);
+  } finally {
+    setState({ busy: null });
+  }
+}
+
+/** Creates an empty model in a new file and opens it. */
+export async function newModel(path: string, flowUnits: string) {
+  setState({ busy: "Creating model…" });
+  try {
+    const model = await api.newModel(path, flowUnits);
+    const geometry = await api.geometry();
+    resetForModel(model, geometry);
+    setState({ dialog: null, crsDialog: true });
   } catch (e) {
     notify(errorText(e), true);
   } finally {

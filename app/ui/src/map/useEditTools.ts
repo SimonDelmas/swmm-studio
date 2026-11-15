@@ -4,10 +4,12 @@
 // Hit tests run in JS on the geometry the map already has, so that a drag can start on
 // pointer-down before the map begins to pan. Edits are committed on release; the
 // backend writes them in model coordinates and the map reloads its geometry.
+import type { MapToolKeys } from "../actions/mapTools";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Layer } from "@deck.gl/core";
-import { edit } from "../edit";
-import { notify, setState, type Tool } from "../store";
+import { edit } from "../actions/edit";
+import { notify, setState } from "../store";
+import type { Tool } from "../uiTypes";
 import type { Geometry, LinkType, NodeType, ObjRef, Pt } from "../types";
 import type { Viewer as MapViewer } from "./viewers";
 import { editLayers, isAddLink, isAddNode, type Drag, type Sketch } from "./editLayers";
@@ -21,20 +23,13 @@ const DRAG_START = 3;
 /** What the tools need from the map viewer. */
 type Viewer = Pick<MapViewer, "unproject" | "unitsPerPixel">;
 
-export interface EditTools {
+export interface EditTools extends MapToolKeys {
   layers: Layer[];
   /** Pointer-down before the map sees it; true when a drag started. */
   onDownCapture(e: React.PointerEvent, rel: Pt): boolean;
   /** A click (press and release without moving); true when handled. */
   onClick(rel: Pt, e: React.PointerEvent): boolean;
   onMove(rel: Pt): void;
-  /** Escape: drops the current sketch or drag; true if there was one. */
-  cancel(): boolean;
-  /** Enter: finishes a subcatchment outline. */
-  finish(): void;
-  /** Backspace: removes the last sketch point. */
-  back(): boolean;
-  busy: boolean;
 }
 
 export function useEditTools(

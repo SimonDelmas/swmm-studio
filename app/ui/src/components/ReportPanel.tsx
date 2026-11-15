@@ -8,6 +8,7 @@ import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
 import { notify, setState, useStore } from "../store";
 import type { BlockDto, MessageDto } from "../types";
+import { latest } from "../latest";
 
 
 /** Continuity error thresholds (%): warning above the first, problem above the second. */
@@ -125,15 +126,7 @@ export function ReportPanel() {
 
   useEffect(() => {
     if (blockIndex < 0) return setBlock(null);
-    // A block asked for earlier, answered late, must not replace this one.
-    let current = true;
-    api
-      .reportBlock(blockIndex)
-      .then((b) => current && setBlock(b))
-      .catch((e) => current && notify(errorText(e), true));
-    return () => {
-      current = false;
-    };
+    return latest(() => api.reportBlock(blockIndex), setBlock, (e) => notify(errorText(e), true));
   }, [blockIndex, report?.path]);
 
   if (!hasModel) return <div className="panel-empty">Open a model first.</div>;

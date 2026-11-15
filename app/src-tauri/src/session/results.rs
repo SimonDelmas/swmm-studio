@@ -8,7 +8,7 @@ use serde::Serialize;
 use swmm_model::{Network, ObjKind};
 use swmm_out::{ElementKind, MinMax, Results};
 
-use super::{Res, Session};
+use super::{err, Res, Session};
 
 /// Series read straight from a `.out` without a cache touch every page of the range;
 /// beyond this many bytes the request waits for the cache.
@@ -31,6 +31,16 @@ pub struct LoadedResults {
     to_out: [Vec<u32>; 3],
     matched: [usize; 3],
     pub cache: CacheState,
+}
+
+/// Kind of the network objects an element kind of the results stands for (none for the system).
+pub(crate) fn object_kind(kind: ElementKind) -> Option<ObjKind> {
+    match kind {
+        ElementKind::Node => Some(ObjKind::Node),
+        ElementKind::Link => Some(ObjKind::Link),
+        ElementKind::Subcatchment => Some(ObjKind::Subcatchment),
+        ElementKind::System => None,
+    }
 }
 
 pub(crate) fn element(kind: ObjKind) -> Option<ElementKind> {
@@ -90,9 +100,20 @@ impl Session {
         Ok(())
     }
 
+    /// Unloads the results (their files are no longer open) and forgets them in the project.
+    pub fn close_results(&mut self) {
+        self.results = None;
+        self.project.results.out = None;
+    }
+
+    /// Unloads the compared results.
+    pub fn close_comparison(&mut self) {
+        self.compare = None;
+    }
+
     /// Loads results to compare with the loaded ones.
     pub fn open_comparison(&mut self, path: &Path) -> Res<()> {
-        self.compare = None;
+        self.close_comparison();
         self.compare = Some(LoadedResults::open(path, &self.net)?);
         Ok(())
     }
@@ -117,14 +138,14 @@ impl Session {
     /// object is not in the results).
     pub fn frame(&self, kind: ElementKind, var: usize, period: usize) -> Res<Vec<f32>> {
         let lr = self.loaded()?;
-        let raw = lr.results.frame(kind, var, period).map_err(|e| e.to_string())?;
+        let raw = lr.results.frame(kind, var, period).map_err(err)?;
         Ok(lr.to_network(kind, &raw, f32::NAN))
     }
 
     /// Whole-run maximum of a variable for every network object (needs the cache).
     pub fn envelope_max(&self, kind: ElementKind, var: usize) -> Res<Vec<f32>> {
         let lr = self.loaded()?;
-        let env = lr.results.envelope(kind, var).map_err(|e| e.to_string())?;
+        let env = lr.results.envelope(kind, var).map_err(err)?;
         let max: Vec<f32> = env.iter().map(|s| s.max).collect();
         Ok(lr.to_network(kind, &max, f32::NAN))
     }
@@ -145,18 +166,8 @@ impl Session {
         let lr = self.source(b)?;
         let o = lr.out_index(kind, index)?;
         let p1 = p1.min(lr.results.out().n_periods());
-        if lr.results.cache().is_none() {
-            let bytes = (p1.saturating_sub(p0)) as u64 * lr.results.out().layout().bytes_per_period();
-            if bytes > DIRECT_READ_LIMIT {
-                return Err(match &lr.cache {
-                    CacheState::Building { progress } => {
-                        format!("building the results cache ({:.0}%): zoom in or wait", progress * 100.0)
-                    }
-                    _ => "range too long to read without the results cache: zoom in".into(),
-                });
-            }
-        }
-        lr.results.series_minmax(kind, o, var, p0..p1, buckets).map_err(|e| e.to_string())
+        lr.check_long_read(p1.saturating_sub(p0)).map_err(|e| format!("{e}; zoom in for a shorter range"))?;
+        lr.results.series_minmax(kind, o, var, p0..p1, buckets).map_err(err)
     }
 
     /// Period of the maximum of a series over the whole run.
@@ -164,7 +175,7 @@ impl Session {
         let lr = self.loaded()?;
         lr.check_long_read(lr.results.out().n_periods())?;
         let o = lr.out_index(kind, index)?;
-        lr.results.stats(kind, o, var).map(|s| s.argmax).map_err(|e| e.to_string())
+        lr.results.stats(kind, o, var).map(|s| s.argmax).map_err(err)
     }
 
     /// Start of the next event (rise above `threshold`) after `from`.
@@ -179,7 +190,7 @@ impl Session {
         let lr = self.loaded()?;
         lr.check_long_read(lr.results.out().n_periods())?;
         let o = lr.out_index(kind, index)?;
-        lr.results.next_rise(kind, o, var, from, threshold).map_err(|e| e.to_string())
+        lr.results.next_rise(kind, o, var, from, threshold).map_err(err)
     }
 
     /// `.out` files to cache in the background (loaded and compared results).
@@ -201,7 +212,7 @@ impl Session {
     /// Called when the background build of `path` ends.
     pub fn cache_done(&mut self, path: &Path, outcome: Result<(), String>) {
         for lr in self.results_at(path) {
-            lr.cache = match outcome.clone().and_then(|()| lr.results.reload_cache().map_err(|e| e.to_string())) {
+            lr.cache = match outcome.clone().and_then(|()| lr.results.reload_cache().map_err(err)) {
                 Ok(()) => CacheState::Ready,
                 Err(message) => CacheState::Failed { message },
             };
@@ -222,11 +233,7 @@ impl Session {
 fn match_results(meta: &swmm_out::OutMeta, net: &Network) -> ([Vec<u32>; 3], [usize; 3]) {
     let mut to_out: [Vec<u32>; 3] = Default::default();
     let mut matched = [0usize; 3];
-    for (ek, ok) in [
-        (ElementKind::Subcatchment, ObjKind::Subcatchment),
-        (ElementKind::Node, ObjKind::Node),
-        (ElementKind::Link, ObjKind::Link),
-    ] {
+    for (ek, ok) in ElementKind::ALL.into_iter().filter_map(|ek| object_kind(ek).map(|ok| (ek, ok))) {
         let mut map = vec![u32::MAX; net.len(ok)];
         for (oi, id) in meta.ids(ek).iter().enumerate() {
             if let Some(ni) = net.find(ok, id) {
@@ -242,7 +249,7 @@ fn match_results(meta: &swmm_out::OutMeta, net: &Network) -> ([Vec<u32>; 3], [us
 impl LoadedResults {
     /// Opens a results file and matches its objects with the network.
     pub(crate) fn open(path: &Path, net: &Network) -> Res<LoadedResults> {
-        let results = Results::open(path).map_err(|e| e.to_string())?;
+        let results = Results::open(path).map_err(err)?;
         let meta = results.meta();
         let (to_out, matched) = match_results(meta, net);
         if matched.iter().sum::<usize>() == 0

@@ -1,212 +1,10 @@
-// Minimal global store (no dependency): state + subscribe, read with `useStore`.
+// The state of the application and a minimal store for it (no dependency): read it with
+// `useStore` in components and `getState` elsewhere, change it with `setState`.
 
 import { useSyncExternalStore } from "react";
-import type { Calendar, DeletePlan, ElementKind, Geometry, Issue, LinkType, ModelInfo, NodeType, ObjKind, ObjRef, ProfileDto, RunFinished, Stat, TableKind } from "./types";
-
-export type StyledKind = "node" | "link" | "subcatchment";
-export type ClassMethod = "equal" | "quantile" | "custom";
-export type StatName = Stat["stat"];
-/** Period range of a statistic: the whole run, or the day / month / year of the current time. */
-export type Scope = "run" | Calendar;
-
-/** The statistics of a result variable, with their labels. */
-export const STATS: [StatName, string][] = [
-  ["max", "Maximum"],
-  ["min", "Minimum"],
-  ["mean", "Mean"],
-  ["time_of_max", "Time of maximum"],
-  ["total", "Total (volume, depth)"],
-  ["periods_above", "Duration above threshold"],
-];
-
-export function makeStat(name: StatName, threshold: number): Stat {
-  return name === "periods_above" ? { stat: name, threshold } : ({ stat: name } as Stat);
-}
-
-export interface LayerStyle {
-  visible: boolean;
-  /**
-   * `type`: colour by object type; `attribute`: an input attribute; `result`: a result
-   * variable at the current time; `stat`: a statistic of a result variable over a period
-   * range (envelope map); `compare`: loaded minus compared results.
-   */
-  source: "type" | "attribute" | "result" | "stat" | "compare";
-  /** Attribute name, or result variable index (as a string). */
-  field: string;
-  method: ClassMethod;
-  classes: number;
-  /** Inner class limits (classes - 1 values, ascending). */
-  breaks: number[];
-  ramp: string;
-  /** Size of points / width of lines in pixels. */
-  size: number;
-  /** Wider lines / bigger points for higher classes. */
-  sizeByClass: boolean;
-  /** Statistic (`stat` and `compare` sources; `value` = at the current time, compare only). */
-  stat: StatName | "value";
-  threshold: number;
-  scope: Scope;
-  /** Subcatchments: lines from each subcatchment to its outlet. */
-  outletLinks: boolean;
-  /** Nodes and links: types not drawn (indices into the type names). */
-  hiddenTypes: number[];
-}
-
-export interface PlotSeries {
-  key: string;
-  kind: ElementKind;
-  index: number;
-  /** Object name, to find it again after objects are added or removed. */
-  id?: string;
-  var: number;
-  label: string;
-  unit: string;
-  /** From the compared results (run B). */
-  b?: boolean;
-}
-
-/** Identity of a series: the same object and variable is plotted once per graph. */
-export const seriesKey = (kind: string, index: number, v: number, b?: boolean) => `${kind}:${index}:${v}${b ? ":b" : ""}`;
-
-/** Time aggregation of a plot view (null: the series themselves). */
-export type PlotAgg = { unit: Calendar; stat: StatName; threshold: number };
-
-/** One chart of a plot view. */
-export interface PlotGraph {
-  id: number;
-  series: PlotSeries[];
-}
-
-/** A tab of the time series panel: a group of graphs stacked on one time axis. */
-export interface PlotView {
-  id: number;
-  name: string;
-  /** Never empty. */
-  graphs: PlotGraph[];
-  /** Graph new series go to (`new`: each addition opens a new graph). */
-  target: number | "new";
-  agg: PlotAgg | null;
-  /** Zoomed time range in seconds (null: the whole run). */
-  zoom: [number, number] | null;
-}
-
-let plotIds = 0;
-export const newPlotId = () => ++plotIds;
-
-export function newPlotView(name: string, graphs: PlotGraph[] = [], agg: PlotAgg | null = null): PlotView {
-  if (graphs.length === 0) graphs = [{ id: newPlotId(), series: [] }];
-  return { id: newPlotId(), name, graphs, target: graphs[graphs.length - 1].id, agg, zoom: null };
-}
-
-/** The last opened plot view (none before a time series tab is created). */
-export function currentPlotView(s: State = state): PlotView | undefined {
-  return s.plotViews.find((v) => v.id === s.plotView);
-}
-
-/** Opens a plot view in a new tab of the bottom panel. */
-export function openPlotView(view: PlotView) {
-  setState((s) => ({ plotViews: [...s.plotViews, view], plotView: view.id, bottomTab: "plot" }));
-}
-
-/** A tab of the bottom panel showing a longitudinal profile. */
-export interface ProfileView {
-  id: number;
-  name: string;
-  /** Nodes the profile goes through (in order; empty: not drawn yet). */
-  nodes: number[];
-}
-
-/** The open profile tab, if the bottom panel shows one. */
-export function currentProfileView(s: State = state): ProfileView | undefined {
-  return s.bottomTab === "profile" ? s.profileViews.find((v) => v.id === s.profileView) : undefined;
-}
-
-function uniqueName(prefix: string, names: string[]): string {
-  for (let i = names.length + 1; ; i++) if (!names.includes(`${prefix} ${i}`)) return `${prefix} ${i}`;
-}
-
-export const newPlotName = (s: State = state) => uniqueName("Time series", s.plotViews.map((v) => v.name));
-
-/** Opens a profile through `nodes` in a new tab. */
-export function openProfileView(nodes: number[], name?: string) {
-  setState((s) => {
-    const v: ProfileView = { id: newPlotId(), name: name ?? uniqueName("Profile", s.profileViews.map((p) => p.name)), nodes };
-    return { profileViews: [...s.profileViews, v], profileView: v.id, profileNodes: nodes, profileStart: null, bottomTab: "profile" };
-  });
-}
-
-/** Shows a profile tab (its path is computed and highlighted on the map). */
-export function selectProfileView(id: number) {
-  const v = state.profileViews.find((p) => p.id === id);
-  if (v) setState({ profileView: id, profileNodes: v.nodes, bottomTab: "profile" });
-}
-
-export function updateProfileView(id: number, patch: Partial<ProfileView>) {
-  setState((s) => ({
-    profileViews: s.profileViews.map((v) => (v.id === id ? { ...v, ...patch } : v)),
-    ...(patch.nodes && s.profileView === id ? { profileNodes: patch.nodes, profileStart: null } : {}),
-  }));
-}
-
-/**
- * Draws a profile through `nodes`: in the open profile tab when it is still empty (or
- * `here`), else in a new tab.
- */
-export function showProfile(nodes: number[], here = false) {
-  const cur = currentProfileView();
-  if (cur && (here || cur.nodes.length < 2)) updateProfileView(cur.id, { nodes });
-  else openProfileView(nodes);
-}
-
-export function updatePlotView(id: number, patch: Partial<PlotView> | ((v: PlotView) => Partial<PlotView>)) {
-  setState((s) => ({
-    plotViews: s.plotViews.map((v) => (v.id === id ? { ...v, ...(typeof patch === "function" ? patch(v) : patch) } : v)),
-  }));
-}
-
-/** Maps every plotted series of every view (null drops it; graphs it leaves empty are removed). */
-export function mapPlotSeries(views: PlotView[], f: (p: PlotSeries) => PlotSeries | null): PlotView[] {
-  return views.map((v) => {
-    const graphs = v.graphs
-      .map((g) => ({ ...g, series: g.series.flatMap((p) => f(p) ?? []) }))
-      .filter((g, i) => g.series.length > 0 || v.graphs[i].series.length === 0);
-    if (graphs.length === 0) graphs.push({ id: newPlotId(), series: [] });
-    const target = v.target === "new" || graphs.some((g) => g.id === v.target) ? v.target : graphs[graphs.length - 1].id;
-    return { ...v, graphs, target };
-  });
-}
-
-export type Tool =
-  | "select"
-  | "box"
-  | "lasso"
-  /** Drag objects. */
-  | "move"
-  /** Drag, add and remove the vertices of the selected link or subcatchment. */
-  | "vertex"
-  /** Click a start and an end node to draw their longitudinal profile. */
-  | "profile"
-  | `add-${NodeType}`
-  | `add-${LinkType}`
-  | "add-subcatchment"
-  | "add-gage";
-
-export interface RunState {
-  running: boolean;
-  progress: number | null;
-  elapsed: number;
-  log: string[];
-  last: RunFinished | null;
-}
-
-/** "engines" is the options dialog opened on its engine tab. */
-export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | null;
-
-/** Tabs of the bottom panel: fixed views, then time series (`plotView`) and profile (`profileView`) tabs. */
-export type BottomTab = "table" | "issues" | "events" | "compare" | "plot" | "profile";
-
-/** Tabs of the simulation side panel. */
-export type SimTab = "run" | "runs" | "report";
+import type { Issue, ProfileDto } from "./analysisTypes";
+import type { DeletePlan, Geometry, ModelInfo, ObjKind, ObjRef, TableKind } from "./types";
+import { defaultStyle, styleUsable, type BottomTab, type Dialog, type LayerStyle, type PlotView, type ProfileView, type RunState, type SimTab, type StyledKind, type Tool } from "./uiTypes";
 
 export interface State {
   model: ModelInfo | null;
@@ -265,23 +63,6 @@ export interface State {
   /** Incremented when a model is opened (the map view is rebuilt). */
   modelSeq: number;
 }
-
-export const defaultStyle = (kind: StyledKind): LayerStyle => ({
-  visible: true,
-  source: "type",
-  field: "",
-  method: "equal",
-  classes: 5,
-  breaks: [],
-  ramp: kind === "subcatchment" ? "greens" : "blue-red",
-  size: kind === "node" ? 4 : kind === "link" ? 2 : 1,
-  sizeByClass: kind === "link",
-  stat: "max",
-  threshold: 0,
-  scope: "run",
-  outletLinks: false,
-  hiddenTypes: [],
-});
 
 /** No time series or profile tab: they are opened as needed. */
 function noViews(): Pick<State, "plotViews" | "plotView" | "profileViews" | "profileView"> {
@@ -377,13 +158,6 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
   });
 }
 
-/** A style still applies to the model's results (a result variable needs results). */
-export function styleUsable(s: LayerStyle, kind: StyledKind, model: ModelInfo): boolean {
-  if (s.source === "type" || s.source === "attribute") return true;
-  if (!model.results?.variables[kind]?.[Number(s.field)]) return false;
-  return s.source !== "compare" || !!model.compare?.variables[kind]?.[Number(s.field)];
-}
-
 export function subscribe(l: () => void) {
   listeners.add(l);
   return () => listeners.delete(l);
@@ -395,12 +169,4 @@ export function useStore<T>(sel: (s: State) => T): T {
 
 export function notify(text: string, error = false) {
   setState({ message: { text, error } });
-}
-
-export function setStyle(kind: StyledKind, patch: Partial<LayerStyle>) {
-  setState((s) => ({ styles: { ...s.styles, [kind]: { ...s.styles[kind], ...patch } } }));
-}
-
-export function sameRef(a: ObjRef, b: ObjRef) {
-  return a.kind === b.kind && a.index === b.index;
 }

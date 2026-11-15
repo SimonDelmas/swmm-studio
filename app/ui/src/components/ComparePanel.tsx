@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { setResultsInfo } from "../actions/model";
 import { api, errorText } from "../api";
-import { formatNumber } from "../classify";
+import { formatDateTime, formatNumber, parseNumber, periodMs } from "../format";
 import { exportTable } from "../exporting";
-import { formatDateTime, parseNumber, periodMs } from "../format";
-import { getState, makeStat, notify, setState, STATS, useStore, type StatName } from "../store";
+import { getState, notify, setState, useStore } from "../store";
+import { makeStat, STATS, type StatName } from "../uiTypes";
 import { addToPlot } from "../plot/series";
 import { applyStyle } from "../actions/style";
 import { VirtualTable, type CellValue } from "./VirtualTable";
+import { latest } from "../latest";
 
 type Kind = "node" | "link" | "subcatchment";
 
@@ -51,19 +52,16 @@ export function ComparePanel() {
     if (!a || !b || shared.length === 0) return;
     const th = parseNumber(threshold);
     if (!Number.isFinite(th)) return;
-    let live = true;
     const st = makeStat(stat, th);
-    Promise.all([api.statValues(kind, vi, st, 0, a.n_periods), api.statValues(kind, vi, st, 0, b.n_periods, true), api.ids(kind)])
-      .then(([x, y, names]) => {
-        if (!live) return;
+    return latest(
+      () => Promise.all([api.statValues(kind, vi, st, 0, a.n_periods), api.statValues(kind, vi, st, 0, b.n_periods, true), api.ids(kind)]),
+      ([x, y, names]) => {
         setValues([x, y]);
         setIds(names);
         setError(null);
-      })
-      .catch((e) => live && setError(errorText(e)));
-    return () => {
-      live = false;
-    };
+      },
+      (e) => setError(errorText(e)),
+    );
   }, [a?.path, a?.cache.state, b?.path, b?.cache.state, kind, vi, stat, threshold, revision]);
 
   const rows: CellValue[][] = useMemo(() => {

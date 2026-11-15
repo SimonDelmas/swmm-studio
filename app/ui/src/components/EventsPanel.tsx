@@ -2,11 +2,11 @@ import { selectObject } from "../actions/selection";
 import { ObjLink } from "./ObjLink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { formatNumber } from "../classify";
+import { formatDateTime, formatNumber, parseNumber, periodAt, periodMs } from "../format";
 import { exportTable } from "../exporting";
-import { formatDateTime, parseNumber, periodAt, periodMs } from "../format";
 import { getState, setState, useStore } from "../store";
-import type { ElementKind, EventDto, EventTable, ObjKind } from "../types";
+import type { EventDto, EventTable } from "../analysisTypes";
+import type { ElementKind, ObjKind } from "../types";
 import { addToPlot } from "../plot/series";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 

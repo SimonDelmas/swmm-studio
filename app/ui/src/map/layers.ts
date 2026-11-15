@@ -3,7 +3,7 @@
 
 import type { CoordinateSystem, Layer } from "@deck.gl/core";
 import { IconLayer, LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer } from "@deck.gl/layers";
-import type { StyledKind } from "../store";
+import type { StyledKind } from "../uiTypes";
 import type { Geometry } from "../types";
 import type { styleObjects } from "./colors";
 import { ICON_SCALE, LINK_TYPE_SHAPES, NODE_TYPE_SHAPES, SHAPE_SCALE, shapeAtlas, type Shape } from "./shapes";

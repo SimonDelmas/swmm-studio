@@ -6,14 +6,10 @@ use swmm_analysis::{self as an, Calendar, EventParams, Profile, Stat, YearStats}
 use swmm_model::ObjKind;
 use swmm_out::ElementKind;
 
-use crate::session::{LoadedResults, Res, Session};
+use crate::session::{element_by_name, err, object_kind, LoadedResults, Res, Session};
 
 /// Head is node variable 1 in every `.out` file.
 const HEAD: usize = 1;
-
-fn err(e: impl std::fmt::Display) -> String {
-    e.to_string()
-}
 
 /// Statistics are returned per object; durations above a threshold in hours.
 fn finish(stat: Stat, v: f64, step_secs: f64) -> f32 {
@@ -194,17 +190,11 @@ impl Session {
         Ok(stat_unit(self.source(b)?, kind, var, stat))
     }
 
+    /// Kinds of the objects events are computed for (not the system).
     fn element(kind: &str) -> Res<(ElementKind, ObjKind)> {
-        match kind {
-            "node" => Ok((ElementKind::Node, ObjKind::Node)),
-            "link" => Ok((ElementKind::Link, ObjKind::Link)),
-            "subcatchment" => Ok((ElementKind::Subcatchment, ObjKind::Subcatchment)),
-            k => Err(format!("no events for {k}")),
-        }
-    }
-
-    fn gap_periods(lr: &LoadedResults, hours: f64) -> usize {
-        ((hours.max(0.0) * 3600.0) / step(lr)).ceil().max(1.0) as usize
+        let ek = element_by_name(kind)?;
+        let ok = object_kind(ek).ok_or_else(|| format!("no events for {kind}"))?;
+        Ok((ek, ok))
     }
 
     /// Event statistics of many objects.
@@ -232,7 +222,7 @@ impl Session {
             .filter_map(|i| lr.out_index(ek, i as usize).ok().map(|o| (i, o)))
             .collect();
         let objs: Vec<usize> = net_objs.iter().map(|x| x.1).collect();
-        let params = EventParams { threshold: q.threshold, min_gap: Self::gap_periods(lr, q.min_gap_hours) };
+        let params = EventParams::with_gap_hours(q.threshold, q.min_gap_hours, step(lr));
         let sums = an::summarize(&lr.results, ek, &objs, q.var, 0..m.n_periods, params).map_err(err)?;
         let years = m.n_periods as f64 * step(lr) / (365.25 * 86_400.0);
         let rows = net_objs
@@ -274,7 +264,7 @@ impl Session {
         let m = lr.results.meta();
         lr.check_long_read(m.n_periods)?;
         let o = lr.out_index(ek, index as usize)?;
-        let params = EventParams { threshold, min_gap: Self::gap_periods(lr, min_gap_hours) };
+        let params = EventParams::with_gap_hours(threshold, min_gap_hours, step(lr));
         let events = an::detect(&lr.results, ek, o, var, 0..m.n_periods, params).map_err(err)?;
         let h = step(lr) / 3600.0;
         Ok(events

@@ -4,6 +4,7 @@ import { api, errorText } from "../api";
 import { setState, useStore } from "../store";
 import type { CrsEntry } from "../types";
 import { Modal } from "./Modal";
+import { latest } from "../latest";
 
 export function CrsDialog() {
   const model = useStore((s) => s.model);
@@ -14,18 +15,7 @@ export function CrsDialog() {
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2 || q.startsWith("+")) return setList([]);
-    // A late answer to an earlier query must not replace the list.
-    let current = true;
-    const t = setTimeout(() => {
-      api
-        .searchCrs(q)
-        .then((l) => current && setList(l))
-        .catch((e) => current && setError(errorText(e)));
-    }, 150);
-    return () => {
-      current = false;
-      clearTimeout(t);
-    };
+    return latest(() => api.searchCrs(q), setList, (e) => setError(errorText(e)), 150);
   }, [query]);
 
   if (!model) return null;

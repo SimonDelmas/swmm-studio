@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
-import { tryEdit } from "../edit";
+import { tryEdit } from "../actions/edit";
 import { setState } from "../store";
 import { EnginesPane } from "./EnginesPane";
 import { LoadingModal, Modal } from "./Modal";

@@ -1,46 +1,50 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ROW_HEIGHT, useVirtualRows } from "../hooks/useVirtualRows";
 import { api, errorText } from "../api";
-import { edit } from "../edit";
+import { edit } from "../actions/edit";
 import { exportTable } from "../exporting";
 import { notify, setState, useStore } from "../store";
-import type { Grid, GridCell } from "../types";
+import type { Grid } from "../analysisTypes";
+import type { GridCell } from "../types";
+import { latest } from "../latest";
+import { GRID_SECTIONS, pastedCells, rangeLines, rowsShown, withCells, type Cell, type Sort } from "./tables/gridData";
 
+/** The grid of a section of the open model, reloaded after every edit, and how to edit its cells. */
+function useGrid(section: string) {
+  const path = useStore((s) => s.model?.path);
+  const revision = useStore((s) => s.model?.revision ?? 0);
+  const [grid, setGrid] = useState<Grid | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-export const GRID_SECTIONS: [string, string][] = [
-  ["JUNCTIONS", "Junctions"],
-  ["OUTFALLS", "Outfalls"],
-  ["DIVIDERS", "Dividers"],
-  ["STORAGE", "Storage units"],
-  ["CONDUITS", "Conduits"],
-  ["PUMPS", "Pumps"],
-  ["ORIFICES", "Orifices"],
-  ["WEIRS", "Weirs"],
-  ["OUTLETS", "Outlets"],
-  ["XSECTIONS", "Cross-sections"],
-  ["LOSSES", "Losses"],
-  ["SUBCATCHMENTS", "Subcatchments"],
-  ["SUBAREAS", "Subareas"],
-  ["INFILTRATION", "Infiltration"],
-  ["RAINGAGES", "Rain gages"],
-  ["INFLOWS", "Direct inflows"],
-  ["DWF", "Dry weather flows"],
-  ["RDII", "RDII"],
-  ["COORDINATES", "Node coordinates"],
-];
+  useEffect(() => {
+    if (!path) return;
+    // A short wait: one reload for a burst of edits.
+    return latest(
+      () => api.grid(section),
+      (g) => (setGrid(g), setError(null)),
+      (e) => setError(errorText(e)),
+      120,
+    );
+  }, [section, revision, path]);
 
-type Cell = { r: number; c: number };
+  /** Edits cells; the table shows the new values at once (the reload that follows confirms them). */
+  const setCells = async (cells: GridCell[]) => {
+    if (!grid) return;
+    const o = await edit({ op: "set_cells", section: grid.section, cells });
+    if (o) setGrid((g) => (g && g.section === grid.section ? withCells(g, cells) : g));
+  };
+  return { grid, error, setCells };
+}
 
 /** Spreadsheet-like editor of one section: one row per line, one column per field. */
 export function TablePanel() {
-  const model = useStore((s) => s.model);
+  const hasModel = useStore((s) => !!s.model);
   const selection = useStore((s) => s.selection);
   const [section, setSection] = useState("CONDUITS");
-  const [grid, setGrid] = useState<Grid | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { grid, error, setCells } = useGrid(section);
   const [filter, setFilter] = useState("");
   const [selOnly, setSelOnly] = useState(false);
-  const [sort, setSort] = useState<{ col: number; asc: boolean } | null>(null);
+  const [sort, setSort] = useState<Sort | null>(null);
   const [active, setActive] = useState<Cell | null>(null);
   const [anchor, setAnchor] = useState<Cell | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -53,25 +57,7 @@ export function TablePanel() {
     k.focus({ preventScroll: true });
     k.select();
   };
-  const revision = model?.revision ?? 0;
-
   const { box, onScroll, rowsInView, height } = useVirtualRows(grid !== null);
-
-  useEffect(() => {
-    if (!model) return;
-    // The grid of a section chosen earlier, answered late, must not replace this one.
-    let current = true;
-    const t = setTimeout(() => {
-      api
-        .grid(section)
-        .then((g) => current && (setGrid(g), setError(null)))
-        .catch((e) => current && setError(errorText(e)));
-    }, 120);
-    return () => {
-      current = false;
-      clearTimeout(t);
-    };
-  }, [section, revision, model?.path]);
 
   useEffect(() => {
     setActive(null);
@@ -80,34 +66,16 @@ export function TablePanel() {
     setSort(null);
   }, [section]);
 
-  // Rows shown: filtered (text, selection) and sorted.
-  const view = useMemo(() => {
-    if (!grid) return [];
-    const f = filter.trim().toLowerCase();
-    const sel = selOnly ? new Set(selection.filter((o) => o.kind === grid.object_kind).map((o) => o.index)) : null;
-    let idx = grid.rows.map((_, i) => i);
-    if (sel) idx = idx.filter((i) => grid.rows[i].object !== null && sel.has(grid.rows[i].object!));
-    if (f) idx = idx.filter((i) => grid.rows[i].cells.some((c) => c !== null && c.toLowerCase().includes(f)));
-    if (sort) {
-      const c = sort.col;
-      const key = (i: number) => grid.rows[i].cells[c] ?? "";
-      const allNum = idx.every((i) => key(i) === "" || Number.isFinite(Number(key(i))));
-      idx.sort((a, b) => {
-        const x = key(a);
-        const y = key(b);
-        const d = allNum ? (x === "" ? Infinity : Number(x)) - (y === "" ? Infinity : Number(y)) || 0 : x.localeCompare(y, undefined, { numeric: true });
-        return sort.asc ? d : -d;
-      });
-    }
-    return idx;
-  }, [grid, filter, selOnly, selection, sort]);
-
+  /** Rows of the objects selected on the map. */
   const selected = useMemo(() => {
     if (!grid) return new Set<number>();
     return new Set(selection.filter((o) => o.kind === grid.object_kind).map((o) => o.index));
   }, [grid, selection]);
 
-  if (!model) return <div className="panel-empty">Open a model first.</div>;
+  // Rows shown: filtered (text, selection) and sorted.
+  const view = useMemo(() => (grid ? rowsShown(grid, filter, selOnly ? selected : null, sort) : []), [grid, filter, selOnly, selected, sort]);
+
+  if (!hasModel) return <div className="panel-empty">Open a model first.</div>;
 
   const ncol = grid?.columns.length ?? 0;
   const inRange = (r: number, c: number) => {
@@ -131,32 +99,6 @@ export function TablePanel() {
     setActive(next);
     scrollTo(next.r);
   };
-  /** Edits cells; the table shows the new values at once (the reload that follows confirms them). */
-  const setCells = async (cells: GridCell[]) => {
-    if (!grid) return;
-    const o = await edit({ op: "set_cells", section: grid.section, cells });
-    if (!o) return;
-    const col = new Map(grid.columns.map((c, i) => [c.key, i]));
-    const byKey = new Map<string, GridCell[]>();
-    for (const c of cells) {
-      const k = c.key.join(" ").toUpperCase();
-      byKey.set(k, [...(byKey.get(k) ?? []), c]);
-    }
-    setGrid((g) => {
-      if (!g || g.section !== grid.section) return g;
-      const rows = g.rows.map((r) => {
-        const mine = byKey.get(r.key.join(" ").toUpperCase());
-        if (!mine) return r;
-        const out = [...r.cells];
-        for (const c of mine) {
-          const i = col.get(c.field);
-          if (i !== undefined && out[i] !== null) out[i] = c.value;
-        }
-        return { ...r, cells: out };
-      });
-      return { ...g, rows };
-    });
-  };
   const commit = async (value: string, then?: () => void) => {
     setEditing(null);
     if (!grid || !active) return;
@@ -172,13 +114,7 @@ export function TablePanel() {
   const onCopy = (e: React.ClipboardEvent) => {
     if (!grid || !active || editing !== null) return;
     e.preventDefault();
-    const a = anchor ?? active;
-    const lines: string[] = [];
-    for (let r = Math.min(a.r, active.r); r <= Math.max(a.r, active.r); r++) {
-      const cells: string[] = [];
-      for (let c = Math.min(a.c, active.c); c <= Math.max(a.c, active.c); c++) cells.push(rowOf(r).cells[c] ?? "");
-      lines.push(cells.join("\t"));
-    }
+    const lines = rangeLines(grid, view, anchor ?? active, active);
     e.clipboardData.setData("text/plain", lines.join("\r\n"));
     notify(`Copied ${lines.length} row(s)`);
   };
@@ -189,22 +125,7 @@ export function TablePanel() {
   };
   const paste = async (text: string) => {
     if (!grid || !active || !text) return;
-    const data = text.replace(/\r?\n$/, "").split(/\r?\n/).map((l) => l.split("\t"));
-    const cells: GridCell[] = [];
-    let skipped = 0;
-    data.forEach((line, i) =>
-      line.forEach((v, j) => {
-        const r = active.r + i;
-        const c = active.c + j;
-        if (r >= view.length || c >= ncol) return void skipped++;
-        const row = rowOf(r);
-        if (c === 0 || row.cells[c] === null) return void skipped++;
-        // Numbers copied from a spreadsheet set to a decimal comma.
-        const column = grid.columns[c];
-        const value = column.type === "real" ? v.trim().replace(",", ".") : v.trim();
-        if (row.cells[c] !== value) cells.push({ key: row.key, field: column.key, value });
-      }),
-    );
+    const { cells, skipped } = pastedCells(grid, view, active, text);
     if (cells.length === 0) return notify(skipped ? `Nothing pasted: ${skipped} cell(s) cannot be edited here` : "Nothing changed");
     await setCells(cells);
     if (skipped) notify(`${skipped} cell(s) skipped (names, fields that do not apply, outside the table)`);

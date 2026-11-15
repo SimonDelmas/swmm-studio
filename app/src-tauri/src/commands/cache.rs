@@ -1,6 +1,6 @@
 //! Background build of the results caches.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -81,10 +81,10 @@ pub(super) fn start_cache_job(app: &AppHandle, state: &AppState) {
 #[tauri::command(async)]
 pub fn rebuild_cache(app: AppHandle, state: State<'_, AppState>) -> Res<ModelInfo> {
     state.cancel_job();
-    let path = state.read(|s| s.results.as_ref().map(|r| r.path.clone()).ok_or("no results loaded".into()))?;
+    let path = state.read(|s| s.results_path().map(Path::to_path_buf).ok_or("no results loaded".into()))?;
     let info = state.write(|s| {
-        // Reopen without the cache, then build it again.
-        s.results = None;
+        // Reopen without the cache (its file must not be mapped), then build it again.
+        s.close_results();
         let _ = std::fs::remove_file(cache::default_cache_path(&path));
         s.open_results(&path)?;
         Ok(s.info())

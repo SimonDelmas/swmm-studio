@@ -1,11 +1,11 @@
-//! Lengths and areas of what is drawn on the map, for the default length of a new link
-//! and the default area of a new subcatchment.
+//! Lengths and areas: of polylines and rings in plane coordinates, or on the globe from
+//! WGS 84 longitude / latitude.
 
 /// Mean radius of the Earth, in metres.
 const EARTH_RADIUS: f64 = 6_371_008.8;
 
 /// Length of a polyline in metres from WGS 84 points (haversine).
-pub(super) fn geodesic_length(pts: &[[f64; 2]]) -> f64 {
+pub fn geodesic_length(pts: &[[f64; 2]]) -> f64 {
     pts.windows(2)
         .map(|w| {
             let (p1, p2) = (w[0][1].to_radians(), w[1][1].to_radians());
@@ -17,17 +17,17 @@ pub(super) fn geodesic_length(pts: &[[f64; 2]]) -> f64 {
         .sum()
 }
 
-pub(super) fn planar_length(pts: &[[f64; 2]]) -> f64 {
+pub fn planar_length(pts: &[[f64; 2]]) -> f64 {
     pts.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum()
 }
 
-pub(super) fn shoelace(pts: &[[f64; 2]]) -> f64 {
+pub fn shoelace(pts: &[[f64; 2]]) -> f64 {
     let n = pts.len();
     (0..n).map(|i| pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]).sum::<f64>().abs() / 2.0
 }
 
 /// Area in m² of a ring of WGS 84 points (local equirectangular projection).
-pub(super) fn geodesic_area(pts: &[[f64; 2]]) -> f64 {
+pub fn geodesic_area(pts: &[[f64; 2]]) -> f64 {
     let lat0 = (pts.iter().map(|p| p[1]).sum::<f64>() / pts.len() as f64).to_radians();
     let m: Vec<[f64; 2]> =
         pts.iter().map(|p| [EARTH_RADIUS * p[0].to_radians() * lat0.cos(), EARTH_RADIUS * p[1].to_radians()]).collect();

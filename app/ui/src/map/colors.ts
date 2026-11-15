@@ -1,7 +1,7 @@
 // Per-object colours and sizes from a style.
 
 import { classOf, rampColors, type RGB } from "../classify";
-import type { LayerStyle, StyledKind } from "../store";
+import type { LayerStyle, StyledKind } from "../uiTypes";
 
 export const NODE_TYPE_COLORS: RGB[] = [
   [40, 90, 160], // junction

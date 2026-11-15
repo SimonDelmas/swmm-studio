@@ -121,7 +121,7 @@ pub fn open_comparison(app: AppHandle, state: State<'_, AppState>, path: PathBuf
 #[tauri::command(async)]
 pub fn close_comparison(state: State<'_, AppState>) -> Res<ModelInfo> {
     state.write(|s| {
-        s.compare = None;
+        s.close_comparison();
         Ok(s.info())
     })
 }

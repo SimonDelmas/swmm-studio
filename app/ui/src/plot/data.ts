@@ -3,7 +3,8 @@
 import uPlot from "uplot";
 import { api } from "../api";
 import { periodAt, periodMs } from "../format";
-import { getState, makeStat, type PlotAgg, type PlotSeries } from "../store";
+import { getState } from "../store";
+import { makeStat, type PlotAgg, type PlotSeries } from "../uiTypes";
 import type { ResultsInfo } from "../types";
 
 /** What a graph draws. */

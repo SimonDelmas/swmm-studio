@@ -19,14 +19,20 @@ use swmm_inp::InpFile;
 use swmm_model::{Network, ObjKind, ObjRef, PropertyGroup};
 use swmm_rpt::Report;
 
-use crate::project::Project;
+use crate::project::{Basemap, Project};
 
 pub(crate) use display::Display;
 pub use display::{GeometryPatch, Space};
 pub use report::{BlockDto, ReportSummary};
+pub(crate) use results::object_kind;
 pub use results::{element_by_name, LoadedResults, ResultsInfo, VarValue};
 
 pub type Res<T> = Result<T, String>;
+
+/// The message of an error of the libraries, for the UI.
+pub(crate) fn err(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Counts {
@@ -96,17 +102,19 @@ pub struct ObjectInfo {
 }
 
 pub struct Session {
-    pub inp_path: PathBuf,
-    pub inp: InpFile,
-    pub net: Network,
-    pub project: Project,
+    // The fields are for the modules that implement the session (`session`, `editing`,
+    // `analysis`, `runs`, `model_views`, `export`); the commands go through its methods.
+    pub(crate) inp_path: PathBuf,
+    pub(crate) inp: InpFile,
+    pub(crate) net: Network,
+    pub(crate) project: Project,
     project_error: Option<String>,
     pub(crate) crs: Option<Crs>,
     pub(crate) display: Display,
-    pub results: Option<LoadedResults>,
+    pub(crate) results: Option<LoadedResults>,
     /// Second results, for comparisons (difference maps, overlaid series).
-    pub compare: Option<LoadedResults>,
-    pub report: Option<(PathBuf, Report)>,
+    pub(crate) compare: Option<LoadedResults>,
+    pub(crate) report: Option<(PathBuf, Report)>,
     notes: Vec<String>,
     pub(crate) history: swmm_model::edit::History,
     /// Incremented on every change of the model (edit, undo, redo).
@@ -235,17 +243,9 @@ impl Session {
         Some([lon - HALF, lat - HALF, lon + HALF, lat + HALF])
     }
 
-    /// Guess from the coordinate ranges: degrees, or French Lambert 93.
+    /// Coordinate system suggested by the extent of the model.
     fn crs_hint(&self) -> Option<CrsDto> {
-        let b = self.net.bounds()?;
-        let code = if b[0] >= -180.0 && b[2] <= 180.0 && b[1] >= -90.0 && b[3] <= 90.0 && b[2] - b[0] < 20.0 {
-            4326
-        } else if b[0] > 50_000.0 && b[2] < 1_300_000.0 && b[1] > 6_000_000.0 && b[3] < 7_200_000.0 {
-            2154
-        } else {
-            return None;
-        };
-        swmm_geo::crs::lookup(code).map(|c| CrsDto { id: c.id(), name: c.name })
+        swmm_geo::crs::guess(self.net.bounds()?).map(|c| CrsDto { id: c.id(), name: c.name })
     }
 
     /// Sets the coordinate system (`None` = local coordinates) and saves the project.
@@ -262,6 +262,43 @@ impl Session {
 
     pub fn save_project(&self) -> Res<()> {
         self.project.save(&self.inp_path).map_err(|e| format!("cannot save the project file: {e}"))
+    }
+
+    /// Name of the engine chosen for this model (`None`: the default engine).
+    pub fn project_engine(&self) -> Option<&str> {
+        self.project.engine.as_deref()
+    }
+
+    /// Chooses the engine of this model and saves the choice in the project.
+    pub fn set_project_engine(&mut self, name: Option<String>) -> Res<()> {
+        self.project.engine = name;
+        self.save_project()
+    }
+
+    /// Saves in the project what the UI keeps there: the basemap, and its own settings.
+    pub fn update_project(&mut self, basemap: Option<Basemap>, ui: Option<serde_json::Value>) -> Res<()> {
+        if let Some(b) = basemap {
+            self.project.basemap = b;
+        }
+        if let Some(ui) = ui {
+            self.project.ui = ui;
+        }
+        self.save_project()
+    }
+
+    /// File of the model.
+    pub fn model_path(&self) -> &Path {
+        &self.inp_path
+    }
+
+    /// The model as it is now, unsaved edits included, to run it.
+    pub fn model_copy(&self) -> InpFile {
+        self.inp.clone()
+    }
+
+    /// File of the loaded results.
+    pub fn results_path(&self) -> Option<&Path> {
+        self.results.as_ref().map(|r| r.path.as_path())
     }
 
     pub fn ids(&self, kind: ObjKind) -> Vec<&str> {
