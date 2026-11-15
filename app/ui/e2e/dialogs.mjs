@@ -1,6 +1,7 @@
-// Dialog keyboard test of the running desktop app (see edit.mjs for how to start it):
-// Escape closes a confirmation without touching the selection, does not discard a dialog
-// with unsaved input, and Tab stays inside the dialog.
+// Dialog keyboard and name link test of the running desktop app (see edit.mjs for how to
+// start it): Escape closes a confirmation without touching the selection, does not discard
+// a dialog with unsaved input, and Tab stays inside the dialog; the object names shown as
+// links are loaded once and select their object.
 //
 //   node e2e/dialogs.mjs <copy of testdata/tiny.inp>
 
@@ -66,6 +67,37 @@ await step("Escape does not discard the options dialog; Tab and Shift+Tab stay i
   await page.locator(".modal button", { hasText: "Cancel" }).click();
   await page.waitForSelector(".modal", { state: "detached", timeout: 5000 });
   return (await state()).dialog;
+});
+
+await step("object names are asked once for all the links of a panel; a link selects its object", async () => {
+  // A model opened anew has no names loaded yet.
+  await S((p) => window.swmmStudio.openModel(p), model);
+  await page.waitForFunction(() => window.swmmStudio.getState().busy === null && window.swmmStudio.getState().model, null, { timeout: 30000 });
+  await S(() => {
+    const api = window.swmmStudio.api;
+    const ids = api.ids;
+    window.idsCalls = [];
+    api.ids = (kind) => (window.idsCalls.push(kind), ids(kind));
+    window.swmmStudio.setState({ crsDialog: false, sideTab: "props" });
+  });
+  // C1 goes from J1 to J2: its properties show both names as links.
+  const c1 = await S(() => window.swmmStudio.api.findObject("C1"));
+  await S((o) => window.swmmStudio.setState({ selection: [o] }), c1);
+  const link = page.locator(".tab-body .obj-link", { hasText: /^J2$/ }).first();
+  await link.waitFor({ timeout: 5000 });
+  const calls = await S(() => window.idsCalls.slice().sort());
+  if (calls.join() !== "gage,link,node,subcatchment") fail(`names asked ${calls.length} times: ${calls.join()}`);
+  await link.click();
+  await page.waitForFunction(() => window.swmmStudio.getState().selection[0]?.kind === "node", null, { timeout: 5000 });
+  const j2 = await S(() => window.swmmStudio.api.findObject("J2"));
+  const s = await state();
+  if (s.selection.length !== 1 || s.selection[0].index !== j2.index) fail(`the link selected ${JSON.stringify(s.selection)}`);
+  // Showing other links asks for no name again.
+  await S((o) => window.swmmStudio.setState({ selection: [o] }), c1);
+  await link.waitFor({ timeout: 5000 });
+  const after = await S(() => window.idsCalls.length);
+  if (after !== 4) fail(`names asked again: ${after} calls`);
+  return calls;
 });
 
 if (errors.length) fail(`page errors: ${errors.join(" | ")}`);
