@@ -165,7 +165,9 @@ cargo test --workspace
 
 Optional, with external resources:
 
-- `SWMM_ENGINE=<path to runswmm.exe>`: run the engine integration tests.
+- `SWMM_ENGINE=<path to runswmm.exe>`: run the engine integration tests. They also check, against
+  that engine, what the editors assume about the input format (required fields, where a custom
+  shape keeps its barrels, section names, comments and quotes, curves named by LID drains and inlets).
 - `SWMM_INP_CORPUS=<folder>`: byte-exact round-trip of every `.inp` under the folder.
 - `SWMM_OUT_SAMPLE=<file.out>`: read a file produced by a real engine.
 
@@ -194,6 +196,8 @@ node app/ui/e2e/edit.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)
 ```
 
 Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`.
+
+Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
 
 Analysis test (runs the model twice, then run history, comparison, envelope maps, profile, events,
 aggregated plots, tabular editor, validation, climatology, section text, exports):
