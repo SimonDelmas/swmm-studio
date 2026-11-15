@@ -9,6 +9,16 @@ export type StatName = Stat["stat"];
 /** Period range of a statistic: the whole run, or the day / month / year of the current time. */
 export type Scope = "run" | Calendar;
 
+/** The statistics of a result variable, with their labels. */
+export const STATS: [StatName, string][] = [
+  ["max", "Maximum"],
+  ["min", "Minimum"],
+  ["mean", "Mean"],
+  ["time_of_max", "Time of maximum"],
+  ["total", "Total (volume, depth)"],
+  ["periods_above", "Duration above threshold"],
+];
+
 export function makeStat(name: StatName, threshold: number): Stat {
   return name === "periods_above" ? { stat: name, threshold } : ({ stat: name } as Stat);
 }

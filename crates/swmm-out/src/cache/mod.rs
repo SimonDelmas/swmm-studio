@@ -30,7 +30,7 @@ use crate::format::ElementKind;
 use crate::reader::{Layout, OutFile};
 use crate::OutError;
 
-pub use build::{build, temp_path, BuildProgress, BuildReport};
+pub use build::{build, BuildProgress, BuildReport};
 use codec::*;
 pub use codec::{ChunkEntry, Fingerprint};
 
@@ -196,7 +196,11 @@ impl ResultsCache {
     fn decode_into(&self, series: usize, chunk: usize, out: &mut Vec<f32>) -> Result<(), OutError> {
         let e = self.entry(series, chunk);
         let n = self.chunk_periods(chunk).len();
-        let payload = &self.map[e.offset as usize..e.offset as usize + e.clen as usize];
+        // The index is read from the file: an entry that points outside it is a damaged cache.
+        let payload = (e.offset as usize)
+            .checked_add(e.clen as usize)
+            .and_then(|end| self.map.get(e.offset as usize..end))
+            .ok_or_else(|| OutError::Corrupt("results cache index points outside the file".into()))?;
         decode_chunk(&e, payload, n, out)
     }
 

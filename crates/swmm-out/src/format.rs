@@ -113,13 +113,24 @@ impl FlowUnits {
     }
 }
 
-/// Unit label of a variable (as SWMM reports it).
+/// Unit label of a pollutant variable.
+pub fn pollutant_unit(kind: ElementKind) -> &'static str {
+    if kind == ElementKind::Subcatchment {
+        "mass/time"
+    } else {
+        "concentration"
+    }
+}
+
+/// Unit label of a variable by its position among the fixed variables of the current
+/// format (those after them are pollutants). For a variable of a file, which may have
+/// fewer fixed variables, use [`OutMeta::unit`](crate::OutMeta::unit).
 pub fn unit(kind: ElementKind, var: usize, flow: FlowUnits) -> &'static str {
     let si = flow.is_metric();
     let pick = |us: &'static str, metric: &'static str| if si { metric } else { us };
     let base = kind.base_variables().len();
     if var >= base {
-        return if kind == ElementKind::Subcatchment { "mass/time" } else { "concentration" };
+        return pollutant_unit(kind);
     }
     match (kind, var) {
         (ElementKind::Subcatchment, 0) | (ElementKind::System, 1) => pick("in/hr", "mm/hr"),

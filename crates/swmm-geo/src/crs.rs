@@ -123,22 +123,19 @@ impl Crs {
         Ok(Crs { id: format!("EPSG:{code}"), name: info_of(&def).name, definition, proj, wgs84 })
     }
 
-    /// Longitude / latitude of the origin of a projected system (its false easting and
-    /// northing): a place inside the area it is used for, to show an empty model there.
-    /// `None` for geographic systems.
+    /// Longitude / latitude of the natural origin of a projected system (`+lon_0`,
+    /// `+lat_0`), to show an empty model near where it will be drawn: the centre of a
+    /// national grid, the central meridian (at the equator) of a UTM zone. `None` for
+    /// geographic systems and for projections that name no origin.
     pub fn origin(&self) -> Option<[f64; 2]> {
         if self.is_geographic() {
             return None;
         }
-        let param = |key: &str| -> f64 {
-            self.definition
-                .split_whitespace()
-                .find_map(|p| p.strip_prefix(key).and_then(|v| v.parse().ok()))
-                .unwrap_or(0.0)
+        let param = |key: &str| -> Option<f64> {
+            self.definition.split_whitespace().find_map(|p| p.strip_prefix(key).and_then(|v| v.parse().ok()))
         };
-        let mut p = [[param("+x_0="), param("+y_0=")]];
-        self.to_lonlat(&mut p);
-        p[0].iter().all(|v| v.is_finite()).then_some(p[0])
+        let (lon, lat) = (param("+lon_0="), param("+lat_0="));
+        (lon.is_some() || lat.is_some()).then(|| [lon.unwrap_or(0.0), lat.unwrap_or(0.0)])
     }
 
     pub fn is_geographic(&self) -> bool {

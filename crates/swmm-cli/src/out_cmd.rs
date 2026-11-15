@@ -10,7 +10,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use clap::Subcommand;
 use swmm_out::cache::{CacheOptions, SeriesStats};
 use swmm_out::synth::{self, SynthSpec};
-use swmm_out::{format, ElementKind, Results};
+use swmm_out::{ElementKind, Results};
 
 use crate::bar;
 
@@ -219,8 +219,7 @@ fn info(path: &Path) -> Result<ExitCode> {
     }
     for k in ElementKind::ALL {
         let names = m.var_names(k);
-        let vars: Vec<String> =
-            names.iter().enumerate().map(|(i, n)| format!("{n} [{}]", format::unit(k, i, m.flow_units))).collect();
+        let vars: Vec<String> = names.iter().enumerate().map(|(i, n)| format!("{n} [{}]", m.unit(k, i))).collect();
         let count = if k == ElementKind::System { String::new() } else { format!("{} ", m.count(k)) };
         println!("{count}{}s: {}", k.name(), vars.join(", "));
     }
@@ -278,7 +277,7 @@ fn stats(path: &Path, kind: ElementKind, var: &str, top: usize) -> Result<ExitCo
     let ids = m.ids(kind);
     let mut order: Vec<(usize, &SeriesStats)> = env.iter().enumerate().collect();
     order.sort_by(|a, b| b.1.max.total_cmp(&a.1.max));
-    let unit = format::unit(kind, v, m.flow_units);
+    let unit = m.unit(kind, v);
     println!("{} {var} [{unit}] over {} periods ({:.1} ms):", kind.name(), m.n_periods, elapsed.as_secs_f64() * 1000.0);
     println!("{:<20} {:>12} {:>20} {:>12} {:>10}", "id", "max", "time of max", "mean", "% nonzero");
     for (i, s) in order.into_iter().take(top) {
@@ -321,7 +320,7 @@ fn events(
     let t0 = std::time::Instant::now();
     let sums = swmm_analysis::summarize(&r, kind, &objs, v, 0..m.n_periods, params)?;
     let years = m.n_periods as f64 * step / (365.25 * 86_400.0);
-    let unit = format::unit(kind, v, m.flow_units);
+    let unit = m.unit(kind, v);
     let total_unit = swmm_analysis::integral(unit).map_or("value·s", |f| f.1);
     println!(
         "{} {var} > {threshold} {unit}, {gap_hours} h apart, over {years:.2} years ({:.0} ms):",

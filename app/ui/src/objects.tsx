@@ -1,6 +1,7 @@
-import { LinkButton } from "./components/LinkButton";
 // Clickable object names: wherever the UI shows the name of a network object, clicking it
 // selects the object (and zooms the map to it).
+
+import { LinkButton } from "./components/LinkButton";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { getState, setState, useStore } from "./store";

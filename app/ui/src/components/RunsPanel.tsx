@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
@@ -22,11 +22,14 @@ export function RunsPanel() {
   const lastRun = useStore((s) => s.run.last);
   const [runs, setRuns] = useState<RunDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const reload = () =>
-    api
+  const reloads = useRef(0);
+  const reload = () => {
+    const id = ++reloads.current;
+    return api
       .runs()
-      .then((r) => (setRuns(r), setError(null)))
-      .catch((e) => setError(errorText(e)));
+      .then((r) => id === reloads.current && (setRuns(r), setError(null)))
+      .catch((e) => id === reloads.current && setError(errorText(e)));
+  };
   useEffect(() => {
     if (model) reload();
   }, [model?.path, model?.results?.path, model?.compare?.path, lastRun]);

@@ -9,6 +9,7 @@ import { type Layer } from "@deck.gl/core";
 import { edit } from "../edit";
 import { notify, setState, type Tool } from "../store";
 import type { Geometry, LinkType, NodeType, ObjRef, Pt } from "../types";
+import type { Viewer as MapViewer } from "./viewers";
 import { editLayers, isAddLink, isAddNode, type Drag, type Sketch } from "./editLayers";
 import { dist, editablePoints, hasEnds, nearest, onObject, toIndex } from "./hitTest";
 
@@ -17,10 +18,8 @@ const TOL = 8;
 /** Pixels the pointer moves before a press becomes a drag. */
 const DRAG_START = 3;
 
-interface Viewer {
-  unproject(p: Pt): Pt;
-  unitsPerPixel(): number;
-}
+/** What the tools need from the map viewer. */
+type Viewer = Pick<MapViewer, "unproject" | "unitsPerPixel">;
 
 export interface EditTools {
   layers: Layer[];

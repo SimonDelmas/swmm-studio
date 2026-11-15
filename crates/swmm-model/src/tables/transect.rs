@@ -68,7 +68,7 @@ pub(super) fn parse_transects(inp: &InpFile) -> Vec<TransectBlock> {
     out
 }
 
-pub(super) fn transect_lines(t: &Transect, ending: swmm_inp::LineEnding) -> Vec<Line> {
+fn transect_lines(t: &Transect, ending: swmm_inp::LineEnding) -> Vec<Line> {
     let mut lines = vec![
         Line::from_tokens(&["NC", &t.n_left, &t.n_right, &t.n_channel], None, ending),
         Line::from_tokens(

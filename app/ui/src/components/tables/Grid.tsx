@@ -1,8 +1,6 @@
 // Building blocks of the table forms: an editable grid that accepts pasted cells, and a preview chart.
 
 import { LinkButton } from "../LinkButton";
-// Editors of curves, time series, time patterns, unit hydrographs and transects.
-
 
 /** Editable grid of text cells; pasting several lines (e.g. from Excel) fills rows. */
 export function Grid({

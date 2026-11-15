@@ -1,5 +1,6 @@
 //! Building the cache from a `.out` file in one sequential pass.
 
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::ops::Range;
@@ -14,10 +15,20 @@ use super::CacheOptions;
 use crate::reader::OutFile;
 use crate::OutError;
 
-/// File a cache is written to before it takes its name: one per process, so that two
-/// builds of the same cache do not write over each other.
-pub fn temp_path(path: &Path) -> std::path::PathBuf {
-    path.with_extension(format!("swcache.{}.tmp", std::process::id()))
+/// Series transposed together (cache-friendly gather from period rows).
+const TILE: usize = 64;
+
+thread_local! {
+    /// Per-thread transposition buffer (see the scratch buffers of the codec).
+    static TILE_BUF: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
+}
+
+/// File a cache is written to before it takes its name: one per build (process and
+/// build number), so that two builds of the same cache never write over each other.
+fn temp_path(path: &Path) -> std::path::PathBuf {
+    static BUILDS: AtomicU64 = AtomicU64::new(0);
+    let n = BUILDS.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!("swcache.{}-{n}.tmp", std::process::id()))
 }
 
 /// Progress of a cache build.

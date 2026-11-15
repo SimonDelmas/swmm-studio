@@ -166,6 +166,7 @@ impl Climate {
                 if self.temp_file.trim().is_empty() {
                     return Err("give the climate file".into());
                 }
+                crate::schema::check_text(&self.temp_file).map_err(|e| format!("climate file: {e}"))?;
                 if !self.temp_file_start.is_empty() && swmm_inp::datetime::parse_date(&self.temp_file_start).is_none() {
                     return Err(format!("climate file start {:?} is not a date (MM/DD/YYYY)", self.temp_file_start));
                 }

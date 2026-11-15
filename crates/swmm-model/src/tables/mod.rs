@@ -32,16 +32,16 @@ pub fn section_of(kind: RefKind) -> Option<SectionKind> {
     })
 }
 
-pub(super) fn is_number(s: &str) -> bool {
+fn is_number(s: &str) -> bool {
     s.parse::<f64>().is_ok()
 }
 
-pub(super) fn pairs(t: &[&str]) -> Vec<[String; 2]> {
+fn pairs(t: &[&str]) -> Vec<[String; 2]> {
     t.chunks(2).filter(|c| c.len() == 2).map(|c| [c[0].to_string(), c[1].to_string()]).collect()
 }
 
 /// Data lines of an object, in file order: `(section index, line index)`.
-pub(super) fn object_lines(inp: &InpFile, kind: &SectionKind, id: &str) -> Vec<(usize, usize)> {
+fn object_lines(inp: &InpFile, kind: &SectionKind, id: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     for (si, s) in inp.sections().iter().enumerate().filter(|(_, s)| s.kind() == kind) {
         for (li, l) in s.data() {
@@ -140,7 +140,7 @@ pub fn read(inp: &InpFile, kind: RefKind, name: &str) -> Option<Table> {
 }
 
 /// Line tokens of a (non-transect) table.
-pub(super) fn table_rows(t: &Table) -> Vec<Vec<String>> {
+fn table_rows(t: &Table) -> Vec<Vec<String>> {
     let mut rows: Vec<Vec<String>> = Vec::new();
     match t {
         Table::Curve(c) => {

@@ -268,7 +268,7 @@ impl LoadedResults {
                 .var_names(ek)
                 .into_iter()
                 .enumerate()
-                .map(|(v, name)| VarInfo { name, unit: swmm_out::format::unit(ek, v, m.flow_units).to_string() })
+                .map(|(v, name)| VarInfo { name, unit: m.unit(ek, v).to_string() })
                 .collect();
             variables.insert(ek.name().to_string(), vars);
             in_file.insert(ek.name().to_string(), m.count(ek));
@@ -345,7 +345,7 @@ impl LoadedResults {
                     let stats = self.results.cache().map(|c| c.stats(m.layout.series(kind, o, v)));
                     VarValue {
                         name: names[v].clone(),
-                        unit: swmm_out::format::unit(kind, v, m.flow_units).to_string(),
+                        unit: m.unit(kind, v).to_string(),
                         value,
                         max: stats.map(|s| s.max),
                         max_period: stats.map(|s| s.argmax),

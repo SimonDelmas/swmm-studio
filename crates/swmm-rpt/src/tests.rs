@@ -11,6 +11,8 @@ fn message_object_is_the_capitalised_type() {
     assert_eq!(object("Weir Divider D1 has invalid parameters").as_deref(), Some("D1"));
     assert_eq!(object("ambiguous outlet ID name for Subcatchment S1").as_deref(), Some("S1"));
     assert_eq!(object("undefined object J9 at line 12").as_deref(), Some("J9"));
+    assert_eq!(object("invalid sewer area for RDII at node N1.").as_deref(), Some("N1"));
+    assert_eq!(object("Storage node N1 has negative volume").as_deref(), Some("N1"));
 }
 
 #[test]

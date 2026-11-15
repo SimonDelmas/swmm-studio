@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn num_check(label: &str, v: &str) -> EditResult<()> {
+fn num_check(label: &str, v: &str) -> EditResult<()> {
     if v.trim().parse::<f64>().map(f64::is_finite).unwrap_or(false) {
         Ok(())
     } else {
@@ -27,6 +27,9 @@ pub fn validate(t: &Table) -> EditResult<()> {
             if let Some(f) = &ts.file {
                 if f.trim().is_empty() {
                     return Err("the file name is empty".into());
+                }
+                if let Err(e) = crate::schema::check_text(f) {
+                    return Err(format!("file name: {e}"));
                 }
             }
             for (i, r) in ts.rows.iter().enumerate() {

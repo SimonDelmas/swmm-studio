@@ -1,5 +1,7 @@
-import { CommitInput } from "../CommitInput";
 // Legend of a layer: its classes or its object types, which can be shown or hidden.
+
+import { cancelPendingLimits } from "../../actions/style";
+import { CommitInput } from "../CommitInput";
 
 import { formatNumber, rampColors, type RGB } from "../../classify";
 import { formatDateTime, periodAt, periodMs } from "../../format";
@@ -9,7 +11,7 @@ import { getState, setStyle, type LayerStyle, type StyledKind } from "../../stor
 
 export const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 /** Type symbols when the colour comes from a value. */
-export const TYPE_NEUTRAL: RGB = [110, 110, 110];
+const TYPE_NEUTRAL: RGB = [110, 110, 110];
 
 /** Formats and parses class limits: dates for times of maximum. */
 export function limitFormat(style: LayerStyle): [(v: number) => string, (s: string) => number] {
@@ -27,7 +29,7 @@ export function limitFormat(style: LayerStyle): [(v: number) => string, (s: stri
 }
 
 /** Legend symbol as on the map: the node type's shape, a line with the link type's symbol, an area. */
-export function Swatch({ kind, color, shape }: { kind: StyledKind; color: RGB; shape?: Shape | null }) {
+function Swatch({ kind, color, shape }: { kind: StyledKind; color: RGB; shape?: Shape | null }) {
   const fill = css(color);
   if (kind === "subcatchment") return <span className="swatch" style={{ background: fill }} />;
   if (kind === "node") {
@@ -49,7 +51,7 @@ export function Swatch({ kind, color, shape }: { kind: StyledKind; color: RGB; s
   );
 }
 
-export function toggleType(kind: StyledKind, style: LayerStyle, t: number, shown: boolean) {
+function toggleType(kind: StyledKind, style: LayerStyle, t: number, shown: boolean) {
   const hiddenTypes = shown ? style.hiddenTypes.filter((h) => h !== t) : [...style.hiddenTypes, t].sort((a, b) => a - b);
   setStyle(kind, { hiddenTypes });
 }
@@ -90,6 +92,8 @@ export function Legend({ kind, style, unit }: { kind: StyledKind; style: LayerSt
     if (!Number.isFinite(x)) return;
     const b = [...style.breaks];
     b[i] = x;
+    // Limits still being computed for the previous method must not replace this one.
+    cancelPendingLimits(kind);
     setStyle(kind, { breaks: b.sort((p, q) => p - q), method: "custom" });
   };
   return (

@@ -624,14 +624,21 @@ pub fn key_len(kind: &SectionKind) -> usize {
 }
 
 /// Checks and normalises a value for a field (choices in upper case).
-pub fn validate(def: &FieldDef, value: &str) -> Result<String, String> {
-    let v = value.trim();
-    if v.contains('"') {
+/// Characters no value can hold: the engine reads `"` as the start of a quoted value and
+/// `;` as the start of a comment, even inside quotes.
+pub fn check_text(value: &str) -> Result<(), String> {
+    if value.contains('"') {
         return Err("double quotes are not allowed".into());
     }
-    if v.contains(';') {
+    if value.contains(';') {
         return Err("a semicolon starts a comment: it is not allowed in a value".into());
     }
+    Ok(())
+}
+
+pub fn validate(def: &FieldDef, value: &str) -> Result<String, String> {
+    let v = value.trim();
+    check_text(v)?;
     if v.is_empty() {
         return if def.required && !def.default.is_empty() {
             Err(format!("{} is required", def.name))

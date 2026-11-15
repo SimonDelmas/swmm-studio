@@ -1,7 +1,7 @@
 // Basemap settings of the project: tiles, opacity, visibility.
 
-import { api } from "../../api";
-import { getState, setState } from "../../store";
+import { api, errorText } from "../../api";
+import { getState, notify, setState } from "../../store";
 import type { Basemap } from "../../types";
 
 function setBasemap(patch: Partial<Basemap>) {
@@ -9,7 +9,7 @@ function setBasemap(patch: Partial<Basemap>) {
   if (!m) return;
   const basemap = { ...m.project.basemap, ...patch };
   setState({ model: { ...m, project: { ...m.project, basemap } } });
-  api.updateProject(basemap).catch(() => {});
+  api.updateProject(basemap).catch((e) => notify(errorText(e), true));
 }
 
 /** Basemap tiles: only with a coordinate system (the cartesian view has none). */

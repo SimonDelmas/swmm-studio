@@ -45,6 +45,9 @@ pub enum TextEncoding {
     Utf8Bom,
     /// Legacy ANSI files (accents in IDs or comments written by the EPA GUI).
     Windows1252,
+    /// A byte order mark followed by text that is not UTF-8 (an ANSI file a tool marked
+    /// as UTF-8): read as Windows-1252, written back with its mark.
+    Windows1252Bom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,18 +114,20 @@ impl InpFile {
         match self.encoding {
             TextEncoding::Utf8 => Ok(text.into_bytes()),
             TextEncoding::Utf8Bom => {
-                let mut out = vec![0xEF, 0xBB, 0xBF];
+                let mut out = BOM.to_vec();
                 out.extend_from_slice(text.as_bytes());
                 Ok(out)
             }
-            TextEncoding::Windows1252 => {
+            TextEncoding::Windows1252 | TextEncoding::Windows1252Bom => {
                 let (bytes, _, had_errors) = encoding_rs::WINDOWS_1252.encode(&text);
                 if had_errors {
                     let bad: String =
                         text.chars().filter(|c| encoding_rs::WINDOWS_1252.encode(&c.to_string()).2).take(10).collect();
                     return Err(InpError::Encoding(self.encoding, format!("unsupported characters {bad:?}")));
                 }
-                Ok(bytes.into_owned())
+                let mut out = if self.encoding == TextEncoding::Windows1252Bom { BOM.to_vec() } else { Vec::new() };
+                out.extend_from_slice(&bytes);
+                Ok(out)
             }
         }
     }
@@ -130,9 +135,16 @@ impl InpFile {
     /// File content as text (before encoding).
     pub fn to_string_lossy(&self) -> String {
         let mut out = String::new();
-        for line in self.all_lines() {
+        let mut lines = self.all_lines().peekable();
+        while let Some(line) = lines.next() {
             out.push_str(line.text());
-            out.push_str(line.ending().as_str());
+            // Only the last line of a file may lack a line break: a line (or a section
+            // header) that was the last one and now has lines after it gets one.
+            let ending = match line.ending() {
+                LineEnding::None if lines.peek().is_some() => self.line_ending(),
+                ending => ending,
+            };
+            out.push_str(ending.as_str());
         }
         out
     }
@@ -253,11 +265,20 @@ impl InpFile {
     }
 }
 
+/// UTF-8 byte order mark.
+const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
+
 fn decode(bytes: &[u8]) -> (String, TextEncoding) {
     // A byte order mark announces UTF-8, but only valid UTF-8 can be written back as it
-    // was: otherwise the file is read as Windows-1252, mark included.
-    if let Some(Ok(text)) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).map(std::str::from_utf8) {
-        return (text.to_string(), TextEncoding::Utf8Bom);
+    // was: otherwise what follows the mark is read as Windows-1252.
+    if let Some(rest) = bytes.strip_prefix(&BOM) {
+        return match std::str::from_utf8(rest) {
+            Ok(text) => (text.to_string(), TextEncoding::Utf8Bom),
+            Err(_) => {
+                let (text, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(rest);
+                (text.into_owned(), TextEncoding::Windows1252Bom)
+            }
+        };
     }
     match std::str::from_utf8(bytes) {
         Ok(s) => (s.to_string(), TextEncoding::Utf8),
@@ -346,6 +367,14 @@ mod tests {
         assert_eq!(inp.to_bytes().unwrap(), bytes);
         let bom = InpFile::parse_bytes(&"\u{feff}[TITLE]\r\n".to_string().into_bytes());
         assert_eq!(bom.encoding(), TextEncoding::Utf8Bom);
+        // A mark followed by text that is not UTF-8: sections are still found, and the
+        // bytes are written back as they were.
+        let mut bytes = BOM.to_vec();
+        bytes.extend_from_slice(b"[OPTIONS]\r\nFLOW_UNITS LPS\r\n[JUNCTIONS]\r\nJ\xE9 1 2\r\n");
+        let odd = InpFile::parse_bytes(&bytes);
+        assert_eq!(odd.encoding(), TextEncoding::Windows1252Bom);
+        assert_eq!(odd.option("FLOW_UNITS").as_deref(), Some("LPS"));
+        assert_eq!(odd.to_bytes().unwrap(), bytes);
     }
 
     #[test]

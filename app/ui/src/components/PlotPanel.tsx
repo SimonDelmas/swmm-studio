@@ -5,7 +5,7 @@ import { getState, notify, updatePlotView, useStore, type PlotView, type StatNam
 import type { Calendar, ElementKind } from "../types";
 import { NumberInput } from "./CommitInput";
 import { PlotGraph } from "./PlotGraph";
-import { STATS } from "./StylePanel";
+import { STATS } from "../store";
 
 /** A time series tab: graphs stacked on one time axis. */
 export function PlotPanel({ view }: { view: PlotView }) {

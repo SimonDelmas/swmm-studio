@@ -5,7 +5,11 @@
 //! plain text, so every block of every SWMM version is available. Typed helpers give
 //! direct access to errors, warnings and continuity errors.
 
+mod parse;
+
 use std::path::Path;
+
+use parse::{is_block_start, parse_block, parse_message};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RptError {
@@ -28,12 +32,13 @@ pub struct Message {
 
 impl Message {
     /// The object ID quoted by a SWMM message, e.g. the `J9` in `undefined object J9 at
-    /// line…` or the `C1` in `... used for Conduit C1`. SWMM capitalises the type of the
-    /// object it names (`invalid pump curve assigned to Pump P1` is about `P1`), and a
-    /// type may be followed by a more precise one (`Weir Divider D1`).
+    /// line…` or the `C1` in `... used for Conduit C1`. A capitalised type is the one of
+    /// the object the message is about (`invalid pump curve assigned to Pump P1` is about
+    /// `P1`); without one, a type in lower case counts (`… for RDII at node N1`). A type
+    /// may be followed by a more precise one (`Weir Divider D1`, `Storage node N1`).
     pub fn object(&self) -> Option<&str> {
         let words: Vec<&str> = self.text.split_whitespace().collect();
-        let is_type = |w: &str| {
+        let is_type = |w: &str, any_case: bool| {
             let lw = w.to_ascii_lowercase();
             matches!(
                 lw.as_str(),
@@ -54,12 +59,14 @@ impl Message {
                     | "curve"
                     | "timeseries"
                     | "pattern"
-            ) && (lw == "object" || w.starts_with(|c: char| c.is_ascii_uppercase()))
+            ) && (any_case || lw == "object" || w.starts_with(|c: char| c.is_ascii_uppercase()))
         };
-        for (i, w) in words.iter().enumerate() {
-            if is_type(w) {
-                if let Some(id) = words.get(i + 1).filter(|next| !is_type(next)) {
-                    return Some(id.trim_end_matches([',', '.', ':']));
+        for any_case in [false, true] {
+            for (i, w) in words.iter().enumerate() {
+                if is_type(w, any_case) {
+                    if let Some(id) = words.get(i + 1).filter(|next| !is_type(next, true)) {
+                        return Some(id.trim_end_matches([',', '.', ':']));
+                    }
                 }
             }
         }
@@ -260,10 +267,6 @@ impl Report {
         self.errors.is_empty()
     }
 }
-
-mod parse;
-
-use parse::{is_block_start, parse_block, parse_message};
 
 #[cfg(test)]
 mod tests;

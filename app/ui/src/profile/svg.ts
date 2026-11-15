@@ -13,9 +13,9 @@ export interface Selected {
 }
 
 // The map highlights the selection in yellow (255, 200, 0): darker here, on white.
-export const SEL_STROKE = "#e0a000";
-export const SEL_FILL = "rgba(255,200,0,0.3)";
-export const SEL_HALO = "#ffe58a";
+const SEL_STROKE = "#e0a000";
+const SEL_FILL = "rgba(255,200,0,0.3)";
+const SEL_HALO = "#ffe58a";
 
 /** The profile as an SVG document: ground, conduits, node walls, HGL now and its maximum. */
 export function profileSvg(
@@ -149,7 +149,7 @@ export function profileSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif">${out.join("")}</svg>`;
 }
 
-export const ROUND = new Set(["CIRCULAR", "FORCE_MAIN", "FILLED_CIRCULAR"]);
+const ROUND = new Set(["CIRCULAR", "FORCE_MAIN", "FILLED_CIRCULAR"]);
 
 /** Geometry of a profile node or link, for the hover tooltip: a title, a subtitle and label / value rows. */
 export function profileInfo(p: ProfileDto, hit: ObjRef, unit: string): { title: string; sub: string; rows: [string, string][] } | null {

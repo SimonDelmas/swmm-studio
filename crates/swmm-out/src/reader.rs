@@ -119,9 +119,8 @@ impl OutMeta {
     /// fixed ones (older engines write fewer).
     pub fn var_names(&self, kind: ElementKind) -> Vec<String> {
         let base = kind.base_variables();
-        let n = self.nvars(kind);
-        let fixed = if kind == ElementKind::System { n } else { n.saturating_sub(self.pollutants.len()) };
-        (0..n)
+        let fixed = self.fixed_vars(kind);
+        (0..self.nvars(kind))
             .map(|v| match base.get(v).filter(|_| v < fixed) {
                 Some(n) => n.to_string(),
                 None if v < fixed => format!("variable_{}", v + 1),
@@ -135,6 +134,24 @@ impl OutMeta {
                 }
             })
             .collect()
+    }
+
+    /// Number of fixed variables of a kind in this file: those before the pollutants.
+    fn fixed_vars(&self, kind: ElementKind) -> usize {
+        let n = self.nvars(kind);
+        if kind == ElementKind::System {
+            n
+        } else {
+            n.saturating_sub(self.pollutants.len())
+        }
+    }
+
+    /// Unit label of a variable (as SWMM reports it).
+    pub fn unit(&self, kind: ElementKind, var: usize) -> &'static str {
+        if var >= self.fixed_vars(kind) {
+            return crate::format::pollutant_unit(kind);
+        }
+        crate::format::unit(kind, var, self.flow_units)
     }
 
     /// Variable index by name (case-insensitive).

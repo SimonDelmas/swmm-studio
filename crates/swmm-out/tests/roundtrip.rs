@@ -167,7 +167,11 @@ fn cancel_leaves_no_file() {
     let r = cache::build(&out, &cp, &CacheOptions::default(), |_| {}, &AtomicBool::new(true));
     assert!(matches!(r, Err(OutError::Cancelled)));
     assert!(!cp.exists());
-    assert!(!cache::temp_path(&cp).exists());
+    let leftovers = std::fs::read_dir(cp.parent().unwrap())
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "tmp"));
+    assert_eq!(leftovers.count(), 0);
 }
 
 /// Cross-check on a file written by the real engine: set `SWMM_OUT_SAMPLE` to a `.out` path.

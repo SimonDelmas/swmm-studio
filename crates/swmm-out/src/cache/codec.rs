@@ -8,12 +8,10 @@ use super::SeriesStats;
 use crate::reader::OutFile;
 use crate::OutError;
 
-pub(super) const MAGIC: &[u8; 8] = b"SWCACHE1";
-pub(super) const FORMAT_VERSION: u32 = 1;
+const MAGIC: &[u8; 8] = b"SWCACHE1";
+const FORMAT_VERSION: u32 = 1;
 pub(super) const HEADER_BYTES: u64 = 128;
 pub(super) const ENTRY_BYTES: usize = 40;
-/// Series transposed together (cache-friendly gather from period rows).
-pub(super) const TILE: usize = 64;
 
 pub(super) const ENC_ZSTD: u8 = 0;
 pub(super) const ENC_CONSTANT: u8 = 1;
@@ -141,12 +139,11 @@ impl ChunkEntry {
 }
 
 thread_local! {
-    pub(super) static COMPRESSOR: RefCell<Option<(i32, zstd::bulk::Compressor<'static>)>> = const { RefCell::new(None) };
-    pub(super) static DECOMPRESSOR: RefCell<Option<zstd::bulk::Decompressor<'static>>> = const { RefCell::new(None) };
+    static COMPRESSOR: RefCell<Option<(i32, zstd::bulk::Compressor<'static>)>> = const { RefCell::new(None) };
+    static DECOMPRESSOR: RefCell<Option<zstd::bulk::Decompressor<'static>>> = const { RefCell::new(None) };
     /// Per-thread buffers: fresh large allocations page-fault on every use, and Windows
     /// serializes page faults across threads.
-    pub(super) static SCRATCH: RefCell<(Vec<u8>, Vec<u8>)> = const { RefCell::new((Vec::new(), Vec::new())) };
-    pub(super) static TILE_BUF: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
+    static SCRATCH: RefCell<(Vec<u8>, Vec<u8>)> = const { RefCell::new((Vec::new(), Vec::new())) };
 }
 
 /// Encodes one chunk; returns the summary (offset left at 0) and the payload.

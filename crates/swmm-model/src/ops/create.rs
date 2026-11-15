@@ -8,7 +8,7 @@ use crate::schema::{self, Context, RefKind};
 use crate::tables::replace_object_lines;
 use crate::{LinkType, Network, NodeType, ObjKind, ObjRef};
 
-pub(super) fn fmt_coord(x: f64, decimals: usize) -> String {
+fn fmt_coord(x: f64, decimals: usize) -> String {
     format!("{x:.decimals$}")
 }
 
@@ -77,7 +77,7 @@ pub fn link_prefix(t: LinkType) -> &'static str {
     }
 }
 
-pub(super) fn new_tokens(tx: &Tx, kind: &SectionKind, key: &[&str]) -> Vec<String> {
+fn new_tokens(tx: &Tx, kind: &SectionKind, key: &[&str]) -> Vec<String> {
     schema::new_line_tokens(kind, key, &Context::of(tx.inp())).expect("section has a schema")
 }
 

@@ -27,7 +27,7 @@ import { Timeline } from "./components/Timeline";
 import { Toolbar } from "./components/Toolbar";
 import { confirmDiscard, deleteObjects, redo, saveModel, undo } from "./edit";
 import { MapView, mapTools } from "./map/MapView";
-import { getState, setState, useStore, type SimTab } from "./store";
+import { defaultStyle, getState, setState, useStore, type LayerStyle, type SimTab, type StyledKind } from "./store";
 
 /** Drag handle that resizes a panel. */
 function Splitter({ vertical, onDrag }: { vertical: boolean; onDrag: (delta: number) => void }) {
@@ -138,7 +138,8 @@ function useEvents() {
       // Shortcuts that also work in text fields.
       if (ctrl && k === "s") {
         e.preventDefault();
-        saveModel(e.shiftKey);
+        // Nothing is saved while a model or results are loading.
+        if (!s.busy && !e.repeat) saveModel(e.shiftKey);
         return;
       }
       const modal = s.dialog || s.tableEditor || s.pendingDelete || s.crsDialog;
@@ -189,11 +190,17 @@ function useEvents() {
   const styles = useStore((s) => s.styles);
   const labels = useStore((s) => s.labels);
   useEffect(() => {
-    const path = getState().model?.path;
-    const t = setTimeout(() => updateProjectUi({ styles, labels }, path), 1000);
+    const m = getState().model;
+    // A project that never had styles is not given the default ones just for being opened.
+    const untouched = m?.project.ui.styles === undefined && !labels && STYLED.every((k) => sameStyle(styles[k], defaultStyle(k)));
+    if (!m || untouched) return;
+    const t = setTimeout(() => updateProjectUi({ styles, labels }, m.path), 1000);
     return () => clearTimeout(t);
   }, [styles, labels]);
 }
+
+const STYLED: StyledKind[] = ["node", "link", "subcatchment"];
+const sameStyle = (a: LayerStyle, b: LayerStyle) => JSON.stringify(a) === JSON.stringify(b);
 
 const SIM_TABS: [SimTab, string, string][] = [
   ["run", "Console", "Run the model and follow its output"],

@@ -143,6 +143,7 @@ export function PropertiesPanel() {
                           addToPlot(one.kind as ElementKind, one.index, i, false, undefined, "new"),
                         )
                       }
+                      onActivate={() => void addToPlot(one.kind as ElementKind, one.index, i, false, undefined, "new")}
                     >
                       {v.name}
                     </LinkButton>

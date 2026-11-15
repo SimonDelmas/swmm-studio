@@ -106,7 +106,7 @@ pub fn integral(unit: &str) -> Option<(f64, &'static str)> {
 
 /// Factor and unit of the integral over time of a result variable (see [`integral`]).
 pub fn integral_of(meta: &OutMeta, kind: ElementKind, var: usize) -> Option<(f64, &'static str)> {
-    integral(swmm_out::format::unit(kind, var, meta.flow_units))
+    integral(meta.unit(kind, var))
 }
 
 fn total_factor(r: &Results, kind: ElementKind, var: usize) -> f64 {

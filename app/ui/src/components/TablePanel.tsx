@@ -213,8 +213,8 @@ export function TablePanel() {
     const ctrl = e.ctrlKey || e.metaKey;
     const k = e.key;
     // Keys stay in the table (arrows would move the timeline, Delete delete objects),
-    // except undo, redo and save.
-    if (!(ctrl && ["z", "y", "s"].includes(k.toLowerCase()))) e.stopPropagation();
+    // except undo, redo, save, open and new.
+    if (!(ctrl && ["z", "y", "s", "o", "n"].includes(k.toLowerCase()))) e.stopPropagation();
     if (editing !== null || !active) return;
     const moves: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], Tab: [0, e.shiftKey ? -1 : 1] };
     if (moves[k]) {

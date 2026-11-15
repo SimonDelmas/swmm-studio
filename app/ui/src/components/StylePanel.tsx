@@ -1,22 +1,14 @@
+import { STATS } from "../store";
 import { NumberInput } from "./CommitInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { RAMPS } from "../classify";
-import { makeStat, setState, setStyle, useStore, type LayerStyle, type StatName, type StyledKind } from "../store";
+import { makeStat, setState, setStyle, useStore, type LayerStyle, type StyledKind } from "../store";
 import { applyStyle } from "../actions/style";
 import { BasemapSection } from "./style/BasemapSection";
 import { Legend, TypeList } from "./style/Legend";
 
 const TITLES: Record<StyledKind, string> = { node: "Nodes", link: "Links", subcatchment: "Subcatchments" };
-
-export const STATS: [StatName, string][] = [
-  ["max", "Maximum"],
-  ["min", "Minimum"],
-  ["mean", "Mean"],
-  ["time_of_max", "Time of maximum"],
-  ["total", "Total (volume, depth)"],
-  ["periods_above", "Duration above threshold"],
-];
 
 const SCOPES: [LayerStyle["scope"], string][] = [
   ["run", "whole run"],

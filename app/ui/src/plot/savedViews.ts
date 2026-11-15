@@ -1,7 +1,7 @@
 // Plot views saved in the project: objects by ID and variables by name, since indices
 // change from one run or one edit to the next.
 
-import { ensureIds } from "../actions/ids";
+import { ensureIds, indexOfId } from "../actions/ids";
 import { updateProjectUi } from "../actions/project";
 import {
   currentPlotView,
@@ -68,7 +68,7 @@ export async function loadPlotView(name: string) {
     for (const p of list) {
       const r = p.b ? m.compare : m.results;
       const v = r?.variables[p.kind]?.findIndex((x) => x.name === p.var) ?? -1;
-      const index = p.kind === "system" ? 0 : (ids[p.kind]?.findIndex((x) => x.toUpperCase() === p.id?.toUpperCase()) ?? -1);
+      const index = p.kind === "system" ? 0 : p.id === undefined ? -1 : indexOfId(ids[p.kind], p.id);
       const made = v >= 0 && index >= 0 ? makeSeries(p.kind, index, v, !!p.b) : null;
       if (made) series.push(made);
       else missing.push(`${p.id ?? "System"} ${p.var}${p.b ? " [B]" : ""}`);

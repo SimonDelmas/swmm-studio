@@ -49,7 +49,7 @@ pub struct DeletePlan {
     pub rules: usize,
 }
 
-pub(super) fn ref_kind(k: ObjKind) -> RefKind {
+fn ref_kind(k: ObjKind) -> RefKind {
     match k {
         ObjKind::Node => RefKind::Node,
         ObjKind::Link => RefKind::Link,
@@ -59,7 +59,7 @@ pub(super) fn ref_kind(k: ObjKind) -> RefKind {
 }
 
 /// Plans (and with `tx`, performs) the deletion of objects.
-pub(super) fn delete_impl(inp: &InpFile, net: &Network, objects: &[ObjRef]) -> (DeletePlan, Vec<RefLoc>) {
+fn delete_impl(inp: &InpFile, net: &Network, objects: &[ObjRef]) -> (DeletePlan, Vec<RefLoc>) {
     let mut plan = DeletePlan::default();
     let mut sets: [HashSet<String>; 4] = Default::default();
     for o in objects {

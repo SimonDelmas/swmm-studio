@@ -45,19 +45,21 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 - Shortcuts: Ctrl+O opens a model, Ctrl+N creates one, Home / End jump to the start / end of
   the run; Space at the end of the run plays again from the start. Escape cancels a drag on
-  the map and closes any dialog.
-- Thresholds accept a decimal comma (events, statistics, timeline, plots).
-- Opening a model no longer rewrites its project file when nothing changed.
+  the map and closes the dialogs that hold no unsaved input (the others are closed by their
+  own buttons). In a dialog, Tab stays within the dialog.
+- Thresholds accept a decimal comma (events, statistics, timeline, plots, comparison).
+- Opening a model no longer rewrites its project file when its map styles and its view are
+  unchanged (a view restored in a window of another shape is still saved again).
 - The code is organised in smaller modules (back-end: session, commands and editing by
   domain; results cache and model operations by concern; front-end: actions, hooks, map
   viewers, layers and edit tools, plot and profile data, properties, one file per dialog).
 - Actions shown as links (object names, "change", "remove"…) can be reached with Tab and
   triggered with Enter or Space.
-- The Project menu is disabled while a model or results are loading.
+- The Project menu and Ctrl+S are disabled while a model or results are loading.
 - Deleting a saved time series view or profile asks for a second click ("Delete?"): it
   cannot be undone.
-- A new, empty model with a coordinate system opens on the area of its projection instead of
-  0°, 0°.
+- A new, empty model with a projected coordinate system opens on the origin of its projection
+  (the centre of a national grid, the central meridian of a UTM zone) instead of 0°, 0°.
 - Section names are read like the engine does, with or without their final S (`[JUNCTION]`).
 - A value containing a semicolon is refused (SWMM reads it as the start of a comment, even
   inside quotes); a subcatchment line needs its curb length and a subarea line its routing
@@ -68,11 +70,13 @@ All notable changes to SWMM Studio are recorded here. The format follows
 - Results cache: two builds of the same cache no longer write over each other; an older cache
   is replaced even while it is still open elsewhere; a cache built from a file that is still
   being written is no longer reported out of date.
-- Pollutant results are named correctly in files written with fewer fixed variables.
+- Pollutant results are named, and given their unit, correctly in files written with fewer
+  fixed variables.
 - A run that completes at the moment it is cancelled keeps its results and its status.
 - Renaming a curve also updates the underdrain curve of `[LID_CONTROLS]` and the curve of a
   custom `[INLETS]` entry.
-- A file with a byte order mark and characters that are not UTF-8 is saved back as it was.
+- A file with a byte order mark and characters that are not UTF-8 is read with all its
+  sections and saved back as it was.
 - Tables of the input summary of a report (`INPUT YES`) are shown as tables.
 - Pasting numbers with a decimal comma into the section table; the scroll buttons of the tab
   strip appear when a renamed tab no longer fits.
@@ -88,8 +92,9 @@ All notable changes to SWMM Studio are recorded here. The format follows
 - Deleting a transect no longer gives the next one a redundant roughness (`NC`) line.
 - Report tables: a row with blank cells (no velocity for a pump in the Link Flow Summary…)
   keeps its values under their headings instead of shifting them left.
-- Report messages are linked to the object they name, not to the first type word of the
-  sentence ("invalid pump curve assigned to Pump P1" is about P1).
+- Report messages are linked to the object they name: the capitalised type when there is one
+  ("invalid pump curve assigned to Pump P1" is about P1), else the type in lower case
+  ("… at node N1").
 - Renaming or deleting an object also updates `[LID_USAGE]` drains, `[AQUIFERS]` patterns and
   the per-subcatchment lines of `[ADJUSTMENTS]`.
 - Lines are split like the engine does: a `;` starts the comment even inside quotes, and a

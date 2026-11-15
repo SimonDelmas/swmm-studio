@@ -2,12 +2,12 @@
 
 use super::*;
 
-pub(super) fn is_banner(t: &str) -> bool {
+fn is_banner(t: &str) -> bool {
     t.len() >= 3 && t.bytes().all(|b| b == b'*')
 }
 
 /// A banner line, possibly followed by value headers (`*****    Volume   Depth`).
-pub(super) fn is_banner_start(t: &str) -> bool {
+fn is_banner_start(t: &str) -> bool {
     t.split_whitespace().next().is_some_and(is_banner)
 }
 
@@ -21,7 +21,7 @@ pub(super) fn is_block_start(lines: &[&str], i: usize) -> bool {
 }
 
 /// Splits on runs of 2+ spaces.
-pub(super) fn phrases(s: &str) -> Vec<(usize, &str)> {
+fn phrases(s: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let b = s.as_bytes();
     let mut i = 0;
@@ -74,11 +74,11 @@ pub(super) fn parse_block(lines: &[&str], at: usize) -> (Block, usize) {
     (Block { title, value_headers, body }, end)
 }
 
-pub(super) fn is_dashes(t: &str) -> bool {
+fn is_dashes(t: &str) -> bool {
     t.len() >= 3 && t.bytes().all(|b| b == b'-')
 }
 
-pub(super) fn parse_body(lines: &[&str]) -> Body {
+fn parse_body(lines: &[&str]) -> Body {
     let content: Vec<&str> = lines.iter().copied().filter(|l| !l.trim().is_empty()).collect();
     // Summary tables have their headings between two dashed lines; the tables of the
     // input summary (`INPUT YES`) have them above a single one.
@@ -95,7 +95,7 @@ pub(super) fn parse_body(lines: &[&str]) -> Body {
 }
 
 /// `Total Precipitation ......   0.188   2.650` or `Minimum Time Step   :   37.57 sec`.
-pub(super) fn parse_key_value(line: &str) -> Option<KeyValue> {
+fn parse_key_value(line: &str) -> Option<KeyValue> {
     let t = line.trim();
     let (key, rest) = if let Some(p) = t.find(" ..") {
         let rest = t[p..].trim_start_matches([' ', '.']);
@@ -110,7 +110,7 @@ pub(super) fn parse_key_value(line: &str) -> Option<KeyValue> {
     Some(KeyValue { key: key.trim().to_string(), values: rest.split_whitespace().map(str::to_string).collect() })
 }
 
-pub(super) fn parse_table(lines: &[&str]) -> Table {
+fn parse_table(lines: &[&str]) -> Table {
     let mut t = Table::default();
     let dashes: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| is_dashes(l.trim())).map(|(i, _)| i).collect();
     // Headings between two dashed lines (text before them is a note), or above a single one.
@@ -146,7 +146,7 @@ pub(super) fn parse_table(lines: &[&str]) -> Table {
 }
 
 /// Character span `[start, end)` of each whitespace-separated token of a line.
-pub(super) fn token_spans(line: &str) -> Vec<(usize, usize)> {
+fn token_spans(line: &str) -> Vec<(usize, usize)> {
     let mut spans = Vec::new();
     let b = line.as_bytes();
     let mut i = 0;
@@ -169,7 +169,7 @@ pub(super) fn token_spans(line: &str) -> Vec<(usize, usize)> {
 /// cells: each token goes to the column it is printed under (the one it overlaps most,
 /// else the one whose right edge is nearest, as numbers are right-aligned) and the other
 /// cells are left empty. Rows that do not fit the columns are returned as their tokens.
-pub(super) fn align_row(line: &str, columns: &[(usize, usize)]) -> Vec<String> {
+fn align_row(line: &str, columns: &[(usize, usize)]) -> Vec<String> {
     let tokens = token_spans(line);
     let plain = || tokens.iter().map(|&(a, z)| line[a..z].to_string()).collect::<Vec<_>>();
     if tokens.len() >= columns.len() {
@@ -190,7 +190,7 @@ pub(super) fn align_row(line: &str, columns: &[(usize, usize)]) -> Vec<String> {
 }
 
 /// Names each data column after the header phrases printed above it.
-pub(super) fn column_names(header: &[String], sample: &str) -> Vec<String> {
+fn column_names(header: &[String], sample: &str) -> Vec<String> {
     let spans = token_spans(sample);
     let overlap = |a: usize, z: usize, (s, e): (usize, usize)| z.min(e) as i64 - a.max(s) as i64;
     // Best overlap, else the column whose end is nearest.

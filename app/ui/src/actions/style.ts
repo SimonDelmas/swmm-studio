@@ -43,6 +43,11 @@ async function recompute(kind: StyledKind, s: LayerStyle): Promise<number[]> {
 /** Latest `applyStyle` call per layer: class limits computed for an earlier one are dropped. */
 const styleSeq: Record<StyledKind, number> = { node: 0, link: 0, subcatchment: 0 };
 
+/** Drops the class limits being computed for a layer (the user set them by hand meanwhile). */
+export function cancelPendingLimits(kind: StyledKind) {
+  styleSeq[kind]++;
+}
+
 export async function applyStyle(kind: StyledKind, patch: Partial<LayerStyle>) {
   const next = { ...getState().styles[kind], ...patch };
   const seq = ++styleSeq[kind];

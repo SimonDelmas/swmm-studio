@@ -16,9 +16,7 @@ pub fn set_options(tx: &mut Tx, values: &[(String, String)]) -> EditResult<()> {
         if key.is_empty() || key.contains(char::is_whitespace) {
             return Err(format!("invalid option name {key:?}"));
         }
-        if value.contains('"') {
-            return Err(format!("{key}: double quotes are not allowed"));
-        }
+        crate::schema::check_text(value).map_err(|e| format!("{key}: {e}"))?;
         // The last line wins, as in InpFile::option.
         let at = tx.inp().sections().iter().enumerate().filter(|(_, s)| *s.kind() == SectionKind::Options).fold(
             None,

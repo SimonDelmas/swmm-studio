@@ -1,7 +1,5 @@
 // One form per kind of table: curve, time series, time pattern, unit hydrograph, transect.
 
-// Editors of curves, time series, time patterns, unit hydrographs and transects.
-
 import { useMemo, useState } from "react";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import type { Curve, Hydrograph, Pattern, Timeseries, Transect, UhRow } from "../../types";

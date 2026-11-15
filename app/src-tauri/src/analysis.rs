@@ -30,7 +30,7 @@ fn step(lr: &LoadedResults) -> f64 {
 /// Unit of a statistic of a variable.
 fn stat_unit(lr: &LoadedResults, kind: ElementKind, var: usize, stat: Stat) -> String {
     let m = lr.results.meta();
-    let unit = swmm_out::format::unit(kind, var, m.flow_units);
+    let unit = m.unit(kind, var);
     match stat {
         Stat::Total => an::integral(unit).map_or(format!("{unit}·s"), |f| f.1.to_string()),
         Stat::PeriodsAbove { .. } => "h".into(),
@@ -252,7 +252,7 @@ impl Session {
         Ok(EventTable {
             rows,
             years,
-            unit: swmm_out::format::unit(ek, q.var, m.flow_units).to_string(),
+            unit: m.unit(ek, q.var).to_string(),
             total_unit: stat_unit(lr, ek, q.var, Stat::Total),
             seconds: t0.elapsed().as_secs_f64(),
         })

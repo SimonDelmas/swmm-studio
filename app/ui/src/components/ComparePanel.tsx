@@ -5,12 +5,12 @@ import { setResultsInfo } from "../actions/model";
 import { api, errorText } from "../api";
 import { formatNumber } from "../classify";
 import { exportTable } from "../exporting";
-import { formatDateTime, periodMs } from "../format";
+import { formatDateTime, parseNumber, periodMs } from "../format";
 import { ObjLink } from "../objects";
 import { getState, makeStat, notify, setState, useStore, type StatName } from "../store";
 import { addToPlot } from "../plot/series";
 import { applyStyle } from "../actions/style";
-import { STATS } from "./StylePanel";
+import { STATS } from "../store";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 
 type Kind = "node" | "link" | "subcatchment";
@@ -50,7 +50,7 @@ export function ComparePanel() {
   useEffect(() => {
     setValues(null);
     if (!a || !b || shared.length === 0) return;
-    const th = Number(threshold);
+    const th = parseNumber(threshold);
     if (!Number.isFinite(th)) return;
     let live = true;
     const st = makeStat(stat, th);
@@ -91,7 +91,11 @@ export function ComparePanel() {
   const statLabel = STATS.find(([s]) => s === stat)?.[1] ?? stat;
   const headers = ["Object", `A ${statLabel}`, `B ${statLabel}`, "A − B", "A − B (%)"];
   const offset = (b.start_ms - a.start_ms) / 1000;
-  const differenceMap = () => applyStyle(kind, { source: "compare", field: String(vi), stat, threshold: Number(threshold), scope: "run", ramp: "diverging" });
+  const differenceMap = () => {
+    const th = parseNumber(threshold);
+    if (!Number.isFinite(th)) return notify("The threshold is not a number.", true);
+    return applyStyle(kind, { source: "compare", field: String(vi), stat, threshold: th, scope: "run", ramp: "diverging" });
+  };
   const animatedMap = () => applyStyle(kind, { source: "compare", field: String(vi), stat: "value", ramp: "diverging" });
   const pick = (i: number) => {
     const index = rows[i][5] as number;

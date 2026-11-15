@@ -17,7 +17,15 @@ export function BulkEditor({ selection }: { selection: ObjRef[] }) {
   useEffect(() => {
     const first = selection.find((o) => o.kind === k);
     if (!first) return setSample(null);
-    api.objectInfo(first, null).then(setSample, () => setSample(null));
+    // The fields of a selection made earlier, answered late, are dropped.
+    let current = true;
+    api.objectInfo(first, null).then(
+      (info) => current && setSample(info),
+      () => current && setSample(null),
+    );
+    return () => {
+      current = false;
+    };
   }, [k, selection]);
   if (!k || !sample) return null;
   const groups = sample.groups.filter((g) => g.editable);

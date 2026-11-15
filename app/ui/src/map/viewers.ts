@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import maplibreWorker from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Deck, OrthographicView, type Layer } from "@deck.gl/core";
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import type { Basemap, Geometry, ObjRef } from "../types";
+import type { Basemap, Geometry, ObjRef, Pt } from "../types";
 
 /** Circumference of the Earth at the equator, in Web Mercator metres. */
 const EARTH = 40075016.686;
@@ -14,7 +14,7 @@ const EARTH = 40075016.686;
 // MapLibre looks for its worker next to its own module, which is not where Vite serves or bundles it.
 maplibregl.setWorkerUrl(maplibreWorker);
 
-export type Pt = [number, number];
+export type { Pt };
 export type Extent = [number, number, number, number];
 
 /** What the map needs from either back-end (MapLibre + overlay, or a plain Deck). */

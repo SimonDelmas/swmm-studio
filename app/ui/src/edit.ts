@@ -2,6 +2,7 @@
 // model and its undo history. Requests are queued so that they apply in order.
 
 import { ask, save } from "@tauri-apps/plugin-dialog";
+import { indexOfId } from "./actions/ids";
 import { api, errorText } from "./api";
 import { seriesKey } from "./plot/series";
 import { getState, mapPlotSeries, notify, resetForModel, sameRef, setState, type PlotView, type State } from "./store";
@@ -76,12 +77,6 @@ export function applyPatch(g: Geometry, p: GeometryPatch): Geometry {
     out.subPts = r.pts;
   }
   return out;
-}
-
-/** Index of an object name in a list of names (-1: not there). */
-function indexOfId(list: string[] | undefined, id: string): number {
-  const up = id.toUpperCase();
-  return list ? list.findIndex((x) => x.toUpperCase() === up) : -1;
 }
 
 /** Plotted series found again by name after the indices changed (dropped when gone). */

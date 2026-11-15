@@ -31,7 +31,7 @@ pub(super) fn line_index(inp: &InpFile, kind: &SectionKind) -> HashMap<String, (
     m
 }
 
-pub(super) fn tokens_of(inp: &InpFile, at: (usize, usize)) -> Vec<String> {
+fn tokens_of(inp: &InpFile, at: (usize, usize)) -> Vec<String> {
     inp.sections()[at.0].lines()[at.1].to_vec()
 }
 

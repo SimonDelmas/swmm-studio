@@ -1,8 +1,9 @@
 import type { InputHTMLAttributes } from "react";
+import { parseNumber } from "../format";
 
 /**
  * A text field whose value is applied when it is left or Enter is pressed, not on every
- * key. It shows `value` again whenever that changes (also when what was typed is refused).
+ * key. It shows `value` again whenever that changes.
  */
 export function CommitInput({
   value,
@@ -29,8 +30,8 @@ export function NumberInput({ onCommit, ...rest }: { value: number; onCommit: (v
     <CommitInput
       {...rest}
       onCommit={(text) => {
-        const v = Number(text.trim().replace(",", "."));
-        if (text.trim() !== "" && Number.isFinite(v)) onCommit(v);
+        const v = parseNumber(text);
+        if (Number.isFinite(v)) onCommit(v);
       }}
     />
   );

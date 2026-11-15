@@ -176,6 +176,10 @@ pub fn run_inp(
         // A folder made for this run would stay behind without a record: remove it.
         if opts.run_dir.is_none() {
             let _ = std::fs::remove_dir_all(&run_dir);
+            // And the runs folder itself, if this was its first run (it is then empty).
+            if let Some(runs) = run_dir.parent() {
+                let _ = std::fs::remove_dir(runs);
+            }
         }
         EngineError::Launch { path: engine.path.display().to_string(), source }
     })?;
