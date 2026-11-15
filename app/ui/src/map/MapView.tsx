@@ -129,7 +129,10 @@ function createMapViewer(container: HTMLDivElement, onView: () => void): Viewer 
       const b = map.getBounds();
       return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     },
-    setDoubleClickZoom: (on) => (on ? map.doubleClickZoom.enable() : map.doubleClickZoom.disable()),
+    setDoubleClickZoom: (on) => {
+      if (on) map.doubleClickZoom.enable();
+      else map.doubleClickZoom.disable();
+    },
     destroy: () => {
       ro.disconnect();
       map.remove();
@@ -333,7 +336,10 @@ export function MapView() {
   const tools = useEditTools(viewer, container, g, tool, selection);
   mapTools.current = tools;
   const drawingTool = tool.startsWith("add-");
-  useEffect(() => viewer.current?.setDoubleClickZoom(!drawingTool), [drawingTool, modelKey]);
+  // Block body: an effect must return nothing or a cleanup function.
+  useEffect(() => {
+    viewer.current?.setDoubleClickZoom(!drawingTool);
+  }, [drawingTool, modelKey]);
   // Leaving the profile tool forgets a half-picked profile.
   useEffect(() => {
     if (tool !== "profile" && getState().profileStart !== null) setState({ profileStart: null });

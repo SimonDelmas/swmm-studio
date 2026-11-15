@@ -163,7 +163,9 @@ export function useEditTools(
   dragRef.current = drag;
 
   // A new tool or new geometry ends any sketch.
-  useEffect(() => setSketch(null), [tool, g]);
+  useEffect(() => {
+    setSketch(null);
+  }, [tool, g]);
 
   const tol = () => TOL * (viewer.current?.unitsPerPixel() ?? 1);
   const relOf = (e: PointerEvent | React.PointerEvent): Pt => {
