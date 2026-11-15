@@ -1,14 +1,17 @@
+import { selectObject } from "../actions/selection";
+import { ObjLink } from "./ObjLink";
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { setResultsInfo } from "../actions/model";
 import { api, errorText } from "../api";
-import { formatNumber } from "../classify";
+import { formatDateTime, formatNumber, parseNumber, periodMs } from "../format";
 import { exportTable } from "../exporting";
-import { formatDateTime, periodMs } from "../format";
-import { getState, makeStat, notify, setState, useStore, type StatName } from "../store";
-import { addToPlot } from "./PlotPanel";
-import { setResultsInfo } from "./RunsPanel";
-import { applyStyle, STATS } from "./StylePanel";
+import { getState, notify, setState, useStore } from "../store";
+import { makeStat, STATS, type StatName } from "../uiTypes";
+import { addToPlot } from "../plot/series";
+import { applyStyle } from "../actions/style";
 import { VirtualTable, type CellValue } from "./VirtualTable";
+import { latest } from "../latest";
 
 type Kind = "node" | "link" | "subcatchment";
 
@@ -47,21 +50,18 @@ export function ComparePanel() {
   useEffect(() => {
     setValues(null);
     if (!a || !b || shared.length === 0) return;
-    const th = Number(threshold);
+    const th = parseNumber(threshold);
     if (!Number.isFinite(th)) return;
-    let live = true;
     const st = makeStat(stat, th);
-    Promise.all([api.statValues(kind, vi, st, 0, a.n_periods), api.statValues(kind, vi, st, 0, b.n_periods, true), api.ids(kind)])
-      .then(([x, y, names]) => {
-        if (!live) return;
+    return latest(
+      () => Promise.all([api.statValues(kind, vi, st, 0, a.n_periods), api.statValues(kind, vi, st, 0, b.n_periods, true), api.ids(kind)]),
+      ([x, y, names]) => {
         setValues([x, y]);
         setIds(names);
         setError(null);
-      })
-      .catch((e) => live && setError(errorText(e)));
-    return () => {
-      live = false;
-    };
+      },
+      (e) => setError(errorText(e)),
+    );
   }, [a?.path, a?.cache.state, b?.path, b?.cache.state, kind, vi, stat, threshold, revision]);
 
   const rows: CellValue[][] = useMemo(() => {
@@ -88,11 +88,15 @@ export function ComparePanel() {
   const statLabel = STATS.find(([s]) => s === stat)?.[1] ?? stat;
   const headers = ["Object", `A ${statLabel}`, `B ${statLabel}`, "A − B", "A − B (%)"];
   const offset = (b.start_ms - a.start_ms) / 1000;
-  const differenceMap = () => applyStyle(kind, { source: "compare", field: String(vi), stat, threshold: Number(threshold), scope: "run", ramp: "diverging" });
+  const differenceMap = () => {
+    const th = parseNumber(threshold);
+    if (!Number.isFinite(th)) return notify("The threshold is not a number.", true);
+    return applyStyle(kind, { source: "compare", field: String(vi), stat, threshold: th, scope: "run", ramp: "diverging" });
+  };
   const animatedMap = () => applyStyle(kind, { source: "compare", field: String(vi), stat: "value", ramp: "diverging" });
   const pick = (i: number) => {
     const index = rows[i][5] as number;
-    setState({ selection: [{ kind, index }], fitSelection: getState().fitSelection + 1 });
+    selectObject({ kind, index });
   };
   // One graph per object, runs A and B on it.
   const overlay = async () => {
@@ -117,7 +121,16 @@ export function ComparePanel() {
           {offset !== 0 ? ` (${offset > 0 ? "+" : ""}${formatNumber(offset / 3600)} h)` : ""}, step {b.step_secs} s
         </span>
         <button onClick={chooseComparison}>Other B…</button>
-        <button onClick={() => api.closeComparison().then((m) => setResultsInfo(m, false))}>Close B</button>
+        <button
+          onClick={() =>
+            api
+              .closeComparison()
+              .then((m) => setResultsInfo(m, false))
+              .catch((e) => notify(errorText(e), true))
+          }
+        >
+          Close B
+        </button>
       </div>
       <div className="panel-toolbar">
         <select value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
@@ -160,7 +173,7 @@ export function ComparePanel() {
       </div>
       {error && <div className="panel-error">{error}</div>}
       <VirtualTable
-        columns={[{ title: headers[0] }, ...headers.slice(1).map((t) => ({ title: t, numeric: true, format: num }))]}
+        columns={[{ title: headers[0], format: (v, i) => <ObjLink obj={{ kind, index: rows[i][5] as number }}>{v}</ObjLink> }, ...headers.slice(1).map((t) => ({ title: t, numeric: true, format: num }))]}
         rows={rows}
         onRow={pick}
         resetKey={values}

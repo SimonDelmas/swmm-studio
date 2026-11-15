@@ -1,5 +1,89 @@
 use super::*;
 
+#[test]
+fn message_object() {
+    let object = |text: &str| {
+        Message { code: String::new(), text: text.into(), line: None, section: None, context: None }
+            .object()
+            .map(str::to_string)
+    };
+    assert_eq!(object("invalid pump curve assigned to Pump P1").as_deref(), Some("P1"));
+    assert_eq!(object("Weir Divider D1 has invalid parameters").as_deref(), Some("D1"));
+    assert_eq!(object("ambiguous outlet ID name for Subcatchment S1").as_deref(), Some("S1"));
+    assert_eq!(object("undefined object J9 at line 12").as_deref(), Some("J9"));
+    assert_eq!(object("invalid sewer area for RDII at node N1.").as_deref(), Some("N1"));
+    assert_eq!(object("Storage node N1 has negative volume").as_deref(), Some("N1"));
+    // A type word that is part of the sentence names nothing.
+    assert_eq!(object("regulator is the outlet of a non-storage node.").as_deref(), None);
+    assert_eq!(object("no acceptable outlet nodes").as_deref(), None);
+}
+
+#[test]
+fn input_summary_tables_have_a_single_dashed_line() {
+    let text = "
+  ************
+  Node Summary
+  ************
+                                           Invert      Max.    Ponded    External
+  Name                 Type                 Elev.     Depth      Area    Inflow
+  -------------------------------------------------------------------------------
+  J1                   JUNCTION            100.00      2.50       0.0
+  J2                   JUNCTION             99.20      2.50       0.0    Yes
+";
+    let r = Report::parse(text);
+    let t = r.table("Node Summary").expect("a table");
+    assert_eq!(t.rows.len(), 2);
+    let inflow = t.column("inflow").unwrap();
+    assert_eq!((t.row("J1").unwrap()[inflow].as_str(), t.row("J2").unwrap()[inflow].as_str()), ("", "Yes"));
+    assert_eq!(t.row("J2").unwrap()[t.column("invert").unwrap()], "99.20");
+}
+
+#[test]
+fn blank_cells_keep_their_columns() {
+    let text = "
+  *****************
+  Link Flow Summary
+  *****************
+
+  -----------------------------------------------------------------------------
+                                 Maximum  Time of Max   Maximum    Max/    Max/
+                                  |Flow|   Occurrence   |Veloc|    Full    Full
+  Link                 Type          LPS  days hr:min     m/sec    Flow   Depth
+  -----------------------------------------------------------------------------
+  P1                   PUMP        12.00     0  01:10                      1.00
+  C1                   CONDUIT     94.02     0  04:01      1.39    0.25    0.35
+";
+    let r = Report::parse(text);
+    let t = r.table("Link Flow Summary").unwrap();
+    let (veloc, depth) = (t.column("veloc").unwrap(), t.column("depth").unwrap());
+    let pump = t.row("P1").unwrap();
+    assert_eq!(pump.len(), t.columns.len());
+    assert_eq!((pump[veloc].as_str(), pump[depth].as_str()), ("", "1.00"));
+    assert_eq!(t.row("C1").unwrap()[veloc], "1.39");
+}
+
+#[test]
+fn messages_after_a_block_are_not_swallowed() {
+    let text = "
+  ****************
+  Analysis Options
+  ****************
+  Flow Units ............... LPS
+
+  ERROR 317: cannot open rainfall data file storm.dat.
+  ERROR 200: one or more errors in input file at line 12 of ] odd [ text
+
+  WARNING 02: maximum depth increased for Node J1
+";
+    let r = Report::parse(text);
+    assert_eq!(r.errors.len(), 2, "{:?}", r.errors);
+    assert_eq!(r.errors[0].code, "317");
+    assert_eq!((r.errors[1].line, r.errors[1].section.as_deref()), (Some(12), None));
+    assert_eq!(r.warnings.len(), 1);
+    assert_eq!(r.blocks.len(), 1);
+    assert!(!r.is_success());
+}
+
 const OK: &str = r"
   EPA STORM WATER MANAGEMENT MODEL - VERSION 5.2 (Build 5.2.4)
   ------------------------------------------------------------

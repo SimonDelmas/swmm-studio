@@ -97,10 +97,18 @@ fn ref_word(k: RefKind) -> &'static str {
 /// Checks the model.
 pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
     let mut out = Out { net, issues: Vec::new() };
-    let ctx = Context::of(inp);
-    use Severity::*;
+    check_duplicates(inp, &mut out);
+    check_references(inp, &mut out);
+    check_links(inp, net, &mut out);
+    check_subcatchments(inp, net, &mut out);
+    check_connectivity(net, &mut out);
+    out.issues.sort_by_key(|a| a.severity);
+    out.issues
+}
 
-    // Duplicate names within each category.
+/// Duplicate names within each category.
+fn check_duplicates(inp: &InpFile, out: &mut Out) {
+    use Severity::*;
     for (sections, what, kind) in [
         (&NODE_SECTIONS[..], "node", ObjKind::Node),
         (&LINK_SECTIONS[..], "link", ObjKind::Link),
@@ -125,8 +133,12 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
             }
         }
     }
+}
 
-    // References to objects that do not exist, from every field of every line.
+/// References to objects that do not exist, from every field of every line.
+fn check_references(inp: &InpFile, out: &mut Out) {
+    use Severity::*;
+    let ctx = Context::of(inp);
     let mut names: HashMap<RefKind, HashSet<String>> = HashMap::new();
     let mut known = |k: RefKind, v: &str| -> bool {
         let set = names.entry(k).or_insert_with(|| match k {
@@ -180,8 +192,11 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
             }
         }
     }
+}
 
-    // Links: end nodes, cross-sections, length, roughness, offsets, slope.
+/// Links: end nodes, cross-sections, length, roughness, offsets, slope.
+fn check_links(inp: &InpFile, net: &Network, out: &mut Out) {
+    use Severity::*;
     let xsections: HashSet<String> =
         inp.rows(&SectionKind::Xsections).filter_map(|l| l.token(0)).map(|s| s.to_ascii_uppercase()).collect();
     let invert = attribute(inp, net, ObjKind::Node, "invert_elevation").unwrap_or_default();
@@ -283,8 +298,11 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
             );
         }
     }
+}
 
-    // Subcatchments without subareas or infiltration.
+/// Subcatchments without subareas or infiltration.
+fn check_subcatchments(inp: &InpFile, net: &Network, out: &mut Out) {
+    use Severity::*;
     for (section, what) in [(SectionKind::Subareas, "[SUBAREAS]"), (SectionKind::Infiltration, "[INFILTRATION]")] {
         let have: HashSet<String> =
             inp.rows(&section).filter_map(|l| l.token(0)).map(|s| s.to_ascii_uppercase()).collect();
@@ -301,8 +319,11 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
             }
         }
     }
+}
 
-    // Nodes: not connected, no coordinates; sub-networks without an outfall.
+/// Nodes: not connected, no coordinates; sub-networks that drain to no outfall.
+fn check_connectivity(net: &Network, out: &mut Out) {
+    use Severity::*;
     let mut degree = vec![0u32; net.nodes.len()];
     for l in &net.links {
         for n in [l.from, l.to].into_iter().flatten() {
@@ -377,9 +398,6 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
             Some(ObjKind::Node),
         );
     }
-
-    out.issues.sort_by_key(|a| a.severity);
-    out.issues
 }
 
 /// Fields that must name an object (a `*` there is an error).

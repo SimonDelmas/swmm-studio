@@ -92,6 +92,20 @@ fn rule_tokens(l: &Line, keywords: &[&str]) -> Vec<usize> {
     (1..l.len()).filter(|&i| keywords.iter().any(|k| up(l, i - 1) == *k)).collect()
 }
 
+/// `[LID_USAGE]`: the node or subcatchment the underdrain flows to (10th token).
+fn lid_drain(l: &Line) -> Vec<usize> {
+    if l.len() > 9 {
+        vec![9]
+    } else {
+        vec![]
+    }
+}
+
+/// `[ADJUSTMENTS]` lines of a subcatchment: `N-PERV | DSTORE | INFIL  subcatchment  pattern`.
+fn is_subcatchment_adjustment(l: &Line) -> bool {
+    matches!(up(l, 0).as_str(), "N-PERV" | "DSTORE" | "INFIL")
+}
+
 fn sites(kind: RefKind) -> Vec<Site> {
     use Role::*;
     use SectionKind as S;
@@ -114,6 +128,7 @@ fn sites(kind: RefKind) -> Vec<Site> {
             site(S::Treatment, Owned, t0),
             site(S::InletUsage, Ref, t2),
             site(S::Groundwater, Ref, |l| if l.len() > 2 { vec![2] } else { vec![] }),
+            site(S::LidUsage, Ref, lid_drain),
             site(S::Labels, Ref, |l| if l.len() > 3 { vec![3] } else { vec![] }),
             site(S::Tags, Owned, |l| if up(l, 0) == "NODE" { vec![1] } else { vec![] }),
             site(S::Report, List, report_list("NODES")),
@@ -146,6 +161,8 @@ fn sites(kind: RefKind) -> Vec<Site> {
             site(S::Gwf, Owned, t0),
             site(S::Coverages, Owned, t0),
             site(S::Loadings, Owned, t0),
+            site(S::LidUsage, Ref, lid_drain),
+            site(S::Adjustments, Owned, |l| if is_subcatchment_adjustment(l) { vec![1] } else { vec![] }),
             site(S::Outfalls, Ref, |l| {
                 let at = if matches!(up(l, 2).as_str(), "FIXED" | "TIDAL" | "TIMESERIES") { 5 } else { 4 };
                 if l.len() > at {
@@ -173,6 +190,9 @@ fn sites(kind: RefKind) -> Vec<Site> {
             site(S::Outlets, Ref, |l| if up(l, 4).starts_with("TABULAR") { vec![5] } else { vec![] }),
             site(S::Xsections, Ref, |l| if up(l, 1) == "CUSTOM" { vec![3] } else { vec![] }),
             site(S::Weirs, Ref, t12th),
+            // The control curve of an underdrain, and the capture curve of a custom inlet.
+            site(S::LidControls, Ref, |l| if up(l, 1) == "DRAIN" && l.len() > 8 { vec![8] } else { vec![] }),
+            site(S::Inlets, Ref, |l| if up(l, 1) == "CUSTOM" && l.len() > 2 { vec![2] } else { vec![] }),
             site(S::Controls, Rule, |l| rule_tokens(l, &["CURVE"])),
         ],
         RefKind::Timeseries => vec![
@@ -189,6 +209,8 @@ fn sites(kind: RefKind) -> Vec<Site> {
             site(S::Inflows, Ref, t7),
             site(S::Dwf, Ref, dwf_patterns),
             site(S::Evaporation, Ref, |l| if up(l, 0) == "RECOVERY" { vec![1] } else { vec![] }),
+            site(S::Aquifers, Ref, |l| if l.len() > 13 { vec![13] } else { vec![] }),
+            site(S::Adjustments, Ref, |l| if is_subcatchment_adjustment(l) && l.len() > 2 { vec![2] } else { vec![] }),
         ],
         RefKind::Hydrograph => vec![site(S::Hydrographs, Def, t0), site(S::Rdii, Ref, t1)],
         RefKind::Transect => vec![

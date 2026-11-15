@@ -1,19 +1,10 @@
 import { useEffect, useState } from "react";
+import { applyCrs } from "../actions/model";
 import { api, errorText } from "../api";
-import { getState, setState, useStore } from "../store";
+import { setState, useStore } from "../store";
 import type { CrsEntry } from "../types";
-
-export async function applyCrs(id: string | null) {
-  setState({ busy: "Reprojecting…" });
-  try {
-    const model = await api.setCrs(id);
-    const geometry = await api.geometry();
-    // The saved view belongs to the previous coordinate space.
-    setState({ model, geometry, crsDialog: false, fitExtent: getState().fitExtent + 1 });
-  } finally {
-    setState({ busy: null });
-  }
-}
+import { Modal } from "./Modal";
+import { latest } from "../latest";
 
 export function CrsDialog() {
   const model = useStore((s) => s.model);
@@ -24,17 +15,14 @@ export function CrsDialog() {
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2 || q.startsWith("+")) return setList([]);
-    const t = setTimeout(() => api.searchCrs(q).then(setList), 150);
-    return () => clearTimeout(t);
+    return latest(() => api.searchCrs(q), setList, (e) => setError(errorText(e)), 150);
   }, [query]);
 
   if (!model) return null;
   const use = (id: string | null) => applyCrs(id).catch((e) => setError(errorText(e)));
   const close = () => setState({ crsDialog: false });
   return (
-    <div className="modal-back" onClick={close}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Coordinate system of the model</h3>
+    <Modal title="Coordinate system of the model" onClose={close}>
         <p className="muted">
           The coordinates in the .inp file stay unchanged; they are converted for display over the basemap. Current:{" "}
           <b>{model.crs ? `${model.crs.id} – ${model.crs.name}` : "none (local coordinates)"}</b>
@@ -78,7 +66,6 @@ export function CrsDialog() {
           <button onClick={() => use(null)}>None (local coordinates)</button>
           <button onClick={close}>Cancel</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

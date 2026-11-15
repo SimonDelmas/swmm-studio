@@ -1,6 +1,6 @@
 // Class breaks and colour ramps for thematic maps.
 
-import type { ClassMethod } from "./store";
+import type { ClassMethod } from "./uiTypes";
 
 export type RGB = [number, number, number];
 
@@ -102,12 +102,4 @@ export function classOf(v: number, breaks: number[]): number {
   let k = 0;
   while (k < breaks.length && v > breaks[k]) k++;
   return k;
-}
-
-export function formatNumber(v: number): string {
-  if (!Number.isFinite(v)) return "–";
-  const a = Math.abs(v);
-  if (a !== 0 && (a >= 1e6 || a < 1e-3)) return v.toExponential(2);
-  if (a >= 100) return v.toFixed(1).replace(/\.0$/, "");
-  return Number(v.toPrecision(4)).toString();
 }

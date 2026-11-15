@@ -1,3 +1,5 @@
+import { Linkified } from "./ObjLink";
+import { LinkButton } from "./LinkButton";
 import { useEffect } from "react";
 import { api, errorText } from "../api";
 import { notify, setState, useStore } from "../store";
@@ -33,7 +35,7 @@ export function StatusBar() {
         <span className="warn" title={c.message}>
           No results cache: {c.message}{" "}
           {c.state === "failed" && (
-            <a
+            <LinkButton
               onClick={() =>
                 api
                   .rebuildCache()
@@ -42,7 +44,7 @@ export function StatusBar() {
               }
             >
               retry
-            </a>
+            </LinkButton>
           )}
         </span>
       );
@@ -72,7 +74,7 @@ export function StatusBar() {
       {cache}
       {selection.length > 0 && <span>{selection.length} selected</span>}
       <span className="grow" />
-      {message && <span className={message.error ? "bad" : ""}>{message.text}</span>}
+      {message && <span className={message.error ? "bad" : ""}><Linkified text={message.text} /></span>}
     </div>
   );
 }

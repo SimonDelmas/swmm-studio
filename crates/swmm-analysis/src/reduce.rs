@@ -10,7 +10,8 @@ use std::ops::Range;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use swmm_out::{ElementKind, FlowUnits, OutError, Results};
+use swmm_out::cache::Piece;
+use swmm_out::{ElementKind, OutError, OutMeta, Results};
 
 /// Statistic of a series.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -86,7 +87,7 @@ fn threshold(stat: Stat) -> f32 {
 /// Factor and unit of the integral over time of a variable with unit `unit`: flows
 /// give a volume (m³ or ft³), intensities a depth (mm or in). `None` when the integral
 /// has no meaning (depths, velocities…).
-pub fn integral(unit: &str, flow: FlowUnits) -> Option<(f64, &'static str)> {
+pub fn integral(unit: &str) -> Option<(f64, &'static str)> {
     const FT3_PER_GAL: f64 = 0.133_680_556;
     Some(match unit {
         "CMS" => (1.0, "m3"),
@@ -99,16 +100,17 @@ pub fn integral(unit: &str, flow: FlowUnits) -> Option<(f64, &'static str)> {
         "in/hr" => (1.0 / 3600.0, "in"),
         "mm/day" => (1.0 / 86_400.0, "mm"),
         "in/day" => (1.0 / 86_400.0, "in"),
-        _ => {
-            let _ = flow;
-            return None;
-        }
+        _ => return None,
     })
 }
 
+/// Factor and unit of the integral over time of a result variable (see [`integral`]).
+pub fn integral_of(meta: &OutMeta, kind: ElementKind, var: usize) -> Option<(f64, &'static str)> {
+    integral(meta.unit(kind, var))
+}
+
 fn total_factor(r: &Results, kind: ElementKind, var: usize) -> f64 {
-    let m = r.meta();
-    integral(swmm_out::format::unit(kind, var, m.flow_units), m.flow_units).map_or(1.0, |f| f.0)
+    integral_of(r.meta(), kind, var).map_or(1.0, |f| f.0)
 }
 
 /// Statistics of one series over `range`.
@@ -132,41 +134,37 @@ fn accumulate(
         }
         return Ok(acc);
     };
-    if obj >= r.meta().count(kind) || var >= r.meta().nvars(kind) {
-        return Err(OutError::OutOfRange { kind, obj, var, period: range.start });
-    }
-    let series = r.out().layout().series(kind, obj, var);
-    let cl = c.chunk_len();
-    for chunk in range.start / cl..=(range.end - 1) / cl {
-        let cp = c.chunk_periods(chunk);
-        let whole = cp.start >= range.start && cp.end <= range.end;
-        if whole {
-            let e = c.entry(series, chunk);
+    let series = r.series_index(kind, obj, var)?;
+    c.walk(series, range, |piece| match piece {
+        Piece::Chunk { periods, summary: e } => {
             // Summaries hold for chunks without NaN (sum is finite) that are wholly on
             // one side of the threshold.
             let side_known = e.max <= thr || e.min > thr;
-            if e.sum.is_finite() && e.min.is_finite() && side_known {
-                let n = cp.len() as u64;
-                if e.min < acc.min {
-                    acc.min = e.min;
-                }
-                if e.max > acc.max {
-                    acc.max = e.max;
-                    acc.argmax = cp.start + e.argmax as usize;
-                }
-                acc.sum += e.sum;
-                acc.n += n;
-                if e.min > thr {
-                    acc.above += n;
-                }
-                continue;
+            if !(e.sum.is_finite() && e.min.is_finite() && side_known) {
+                return false;
             }
+            let n = periods.len() as u64;
+            if e.min < acc.min {
+                acc.min = e.min;
+            }
+            if e.max > acc.max {
+                acc.max = e.max;
+                acc.argmax = periods.start + e.argmax as usize;
+            }
+            acc.sum += e.sum;
+            acc.n += n;
+            if e.min > thr {
+                acc.above += n;
+            }
+            true
         }
-        let part = cp.start.max(range.start)..cp.end.min(range.end);
-        for (i, v) in c.series(series, part.clone())?.into_iter().enumerate() {
-            acc.push(part.start + i, v, thr);
+        Piece::Values { start, values } => {
+            for (i, &v) in values.iter().enumerate() {
+                acc.push(start + i, v, thr);
+            }
+            true
         }
-    }
+    })?;
     Ok(acc)
 }
 
@@ -194,9 +192,7 @@ pub fn reduce_all(
     stat: Stat,
 ) -> Result<Vec<f64>, OutError> {
     let m = r.meta();
-    if var >= m.nvars(kind) {
-        return Err(OutError::OutOfRange { kind, obj: 0, var, period: range.start });
-    }
+    r.check_var(kind, var)?;
     let step = m.report_step_secs as f64;
     let factor = total_factor(r, kind, var);
     let n = m.count(kind);
@@ -276,8 +272,8 @@ mod tests {
 
     #[test]
     fn integral_units() {
-        assert_eq!(integral("LPS", FlowUnits::Lps), Some((1e-3, "m3")));
-        assert_eq!(integral("mm/hr", FlowUnits::Lps).unwrap().1, "mm");
-        assert_eq!(integral("m", FlowUnits::Lps), None);
+        assert_eq!(integral("LPS"), Some((1e-3, "m3")));
+        assert_eq!(integral("mm/hr").unwrap().1, "mm");
+        assert_eq!(integral("m"), None);
     }
 }

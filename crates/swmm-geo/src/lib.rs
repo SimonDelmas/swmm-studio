@@ -3,11 +3,13 @@
 //! - [`crs`]: EPSG registry (search by code or name), parsing of `EPSG:xxxx` codes and
 //!   PROJ strings, conversion of model coordinates to WGS 84 longitude/latitude and back.
 //! - [`mercator`]: spherical Web Mercator (EPSG:3857), the projection of web basemaps.
+//! - [`measure`]: lengths and areas, in the plane or on the globe.
 //! - [`index`]: R-tree over points, polylines and polygons for exact box / lasso selection
 //!   and nearest-object picking.
 
 pub mod crs;
 pub mod index;
+pub mod measure;
 pub mod mercator;
 
 pub use crs::{Crs, CrsInfo};

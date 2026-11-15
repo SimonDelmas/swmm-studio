@@ -134,6 +134,22 @@ Basemap tiles come from OpenStreetMap (© OpenStreetMap contributors); the app i
 with its own User-Agent, as the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
 requires. The tile URL is stored in the project file.
 
+### Front-end layout
+
+The modules of `app/ui/src` are in layers; a module imports only from its own layer or from a
+lower one. `npm run build` checks it (`scripts/check-layers.mjs`).
+
+| Layer | Modules | Holds |
+|---|---|---|
+| types | `types`, `analysisTypes`, `uiTypes` | What the back-end sends and what the state of the interface is made of. |
+| libraries | `api`, `format`, `classify`, `chartSvg`, `geometryPatch`, `latest` | Calls to the back-end and functions that know nothing of the state. |
+| store | `store` | The state and how to read, change and follow it. |
+| actions | `actions/`, `exporting`, `dragSeries` | What the user can do: open, edit, run, style, open and close tabs, save files. |
+| features | `hooks/`, `plot/`, `profile/` | Hooks shared by components; time series and profiles. |
+| map | `map/` | The map: viewers, layers, drawing tools. |
+| components | `components/` | Panels and dialogs. |
+| application | `App`, `main` | The window. |
+
 ## CLI
 
 ```bash
@@ -165,7 +181,9 @@ cargo test --workspace
 
 Optional, with external resources:
 
-- `SWMM_ENGINE=<path to runswmm.exe>`: run the engine integration tests.
+- `SWMM_ENGINE=<path to runswmm.exe>`: run the engine integration tests. They also check, against
+  that engine, what the editors assume about the input format (required fields, where a custom
+  shape keeps its barrels, section names, comments and quotes, curves named by LID drains and inlets).
 - `SWMM_INP_CORPUS=<folder>`: byte-exact round-trip of every `.inp` under the folder.
 - `SWMM_OUT_SAMPLE=<file.out>`: read a file produced by a real engine.
 
@@ -194,6 +212,9 @@ node app/ui/e2e/edit.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)
 ```
 
 Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`.
+
+Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
+Dialog keyboard and name link test (Escape, Tab, object names loaded once): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
 
 Analysis test (runs the model twice, then run history, comparison, envelope maps, profile, events,
 aggregated plots, tabular editor, validation, climatology, section text, exports):

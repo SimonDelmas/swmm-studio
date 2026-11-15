@@ -60,9 +60,13 @@ pub fn attribute(inp: &InpFile, net: &Network, kind: ObjKind, name: &str) -> Opt
                 }
                 let num = |k: usize| l.token(k).and_then(|x| x.parse::<f32>().ok());
                 let (Some(from), Some(to), Some(len)) = (link.from, link.to, num(3)) else { continue };
-                let (o1, o2) = (num(5).unwrap_or(0.0), num(6).unwrap_or(0.0));
-                let (z1, z2) =
-                    if elevation_offsets { (o1, o2) } else { (inv[from as usize] + o1, inv[to as usize] + o2) };
+                let (i1, i2) = (inv[from as usize], inv[to as usize]);
+                // Offsets default to the node inverts (`*`, or no offset given).
+                let (z1, z2) = if elevation_offsets {
+                    (num(5).unwrap_or(i1), num(6).unwrap_or(i2))
+                } else {
+                    (i1 + num(5).unwrap_or(0.0), i2 + num(6).unwrap_or(0.0))
+                };
                 if len > 0.0 {
                     v[i as usize] = (z1 - z2) / len;
                 }

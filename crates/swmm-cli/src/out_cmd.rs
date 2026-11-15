@@ -10,7 +10,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use clap::Subcommand;
 use swmm_out::cache::{CacheOptions, SeriesStats};
 use swmm_out::synth::{self, SynthSpec};
-use swmm_out::{format, ElementKind, Results};
+use swmm_out::{ElementKind, Results};
 
 use crate::bar;
 
@@ -146,7 +146,8 @@ pub fn run(cmd: &OutCmd) -> Result<ExitCode> {
     match cmd {
         OutCmd::Info { out } => info(out),
         OutCmd::Cache { out, chunk, level, budget_mb } => {
-            build_cache(out, &CacheOptions { chunk_len: *chunk, level: *level, memory_budget: budget_mb << 20 })?;
+            let opts = CacheOptions { chunk_len: *chunk, level: *level, memory_budget: budget_mb << 20 };
+            build_cache(out, &opts, &AtomicBool::new(false))?;
             Ok(ExitCode::SUCCESS)
         }
         OutCmd::Stats { out, kind: k, var, top } => stats(out, kind(k)?, var, *top),
@@ -155,6 +156,9 @@ pub fn run(cmd: &OutCmd) -> Result<ExitCode> {
             export(out, kind(k)?, ids, vars, from.as_deref(), to.as_deref(), output.as_deref())
         }
         OutCmd::Synth { out, subcatchments, nodes, links, periods, years, step, seed, inp, origin, spacing } => {
+            if *step <= 0 {
+                bail!("--step must be a positive number of seconds");
+            }
             let periods = match (periods, years) {
                 (Some(p), _) => *p,
                 (None, Some(y)) => (y * 365.25 * 86_400.0 / *step as f64).round() as usize,
@@ -215,8 +219,7 @@ fn info(path: &Path) -> Result<ExitCode> {
     }
     for k in ElementKind::ALL {
         let names = m.var_names(k);
-        let vars: Vec<String> =
-            names.iter().enumerate().map(|(i, n)| format!("{n} [{}]", format::unit(k, i, m.flow_units))).collect();
+        let vars: Vec<String> = names.iter().enumerate().map(|(i, n)| format!("{n} [{}]", m.unit(k, i))).collect();
         let count = if k == ElementKind::System { String::new() } else { format!("{} ", m.count(k)) };
         println!("{count}{}s: {}", k.name(), vars.join(", "));
     }
@@ -238,11 +241,12 @@ fn info(path: &Path) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-pub fn build_cache(out: &Path, opts: &CacheOptions) -> Result<()> {
+/// Builds the results cache of `out`; `cancel` stops the build (Ctrl+C of a run).
+pub fn build_cache(out: &Path, opts: &CacheOptions, cancel: &AtomicBool) -> Result<()> {
     let mut r = Results::open(out)?;
     let total = r.out().bytes().len() as u64;
     let pb = bar(total, "{spinner} caching [{bar:40}] {percent:>3}% {binary_bytes_per_sec} eta {eta}");
-    let report = r.build_cache(opts, |p| pb.set_position(p.bytes_done), &AtomicBool::new(false))?;
+    let report = r.build_cache(opts, |p| pb.set_position(p.bytes_done), cancel)?;
     pb.finish_and_clear();
     println!(
         "cache built in {:.1}s: {} -> {} (x{:.1}), {} series, {} chunks, {:.0}% constant chunks, {}/s",
@@ -273,7 +277,7 @@ fn stats(path: &Path, kind: ElementKind, var: &str, top: usize) -> Result<ExitCo
     let ids = m.ids(kind);
     let mut order: Vec<(usize, &SeriesStats)> = env.iter().enumerate().collect();
     order.sort_by(|a, b| b.1.max.total_cmp(&a.1.max));
-    let unit = format::unit(kind, v, m.flow_units);
+    let unit = m.unit(kind, v);
     println!("{} {var} [{unit}] over {} periods ({:.1} ms):", kind.name(), m.n_periods, elapsed.as_secs_f64() * 1000.0);
     println!("{:<20} {:>12} {:>20} {:>12} {:>10}", "id", "max", "time of max", "mean", "% nonzero");
     for (i, s) in order.into_iter().take(top) {
@@ -311,13 +315,12 @@ fn events(
             .collect::<Result<_>>()?
     };
     let step = m.report_step_secs.max(1) as f64;
-    let params =
-        swmm_analysis::EventParams { threshold, min_gap: ((gap_hours * 3600.0) / step).ceil().max(1.0) as usize };
+    let params = swmm_analysis::EventParams::with_gap_hours(threshold, gap_hours, step);
     let t0 = std::time::Instant::now();
     let sums = swmm_analysis::summarize(&r, kind, &objs, v, 0..m.n_periods, params)?;
     let years = m.n_periods as f64 * step / (365.25 * 86_400.0);
-    let unit = format::unit(kind, v, m.flow_units);
-    let total_unit = swmm_analysis::integral(unit, m.flow_units).map_or("value·s", |f| f.1);
+    let unit = m.unit(kind, v);
+    let total_unit = swmm_analysis::integral(unit).map_or("value·s", |f| f.1);
     println!(
         "{} {var} > {threshold} {unit}, {gap_hours} h apart, over {years:.2} years ({:.0} ms):",
         kind.name(),
@@ -382,8 +385,11 @@ fn export(
                 .with_context(|| format!("unknown variable {v:?}: {:?}", m.var_names(kind)))
         })
         .collect::<Result<_>>()?;
+    if m.n_periods == 0 {
+        bail!("the results file has no period");
+    }
     let p0 = from.map(parse_date).transpose()?.map_or(0, |d| m.period_at(d));
-    let p1 = to.map(parse_date).transpose()?.map_or(m.n_periods, |d| m.period_at(d) + 1);
+    let p1 = to.map(parse_date).transpose()?.map_or(m.n_periods, |d| m.period_at(d) + 1).min(m.n_periods);
     if p0 >= p1 {
         bail!("empty period range");
     }

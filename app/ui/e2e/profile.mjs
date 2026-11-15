@@ -184,7 +184,11 @@ await step("Escape drops a half-picked start, then leaves the tool", async () =>
 
 await step("delete the saved profile", async () => {
   await page.locator(".bottom .tab-add").click();
-  await page.locator(".bottom .menu-row", { hasText: "Main line" }).locator(".menu-del").click();
+  // The first click asks, the second deletes.
+  const del = page.locator(".bottom .menu-row", { hasText: "Main line" }).locator(".menu-del");
+  await del.click();
+  if ((await del.textContent()) !== "Delete?") fail("no confirmation before deleting a saved profile");
+  await del.click();
   await page.keyboard.press("Escape");
   return S(() => window.swmmStudio.getState().model.project.ui.profiles);
 });

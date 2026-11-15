@@ -1,17 +1,19 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { applyCrs, openModel } from "./actions/model";
+import { startRun } from "./actions/run";
+import { validateModel } from "./actions/validate";
 import { api } from "./api";
-import { applyCrs } from "./components/CrsDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { startRun } from "./components/RunPanel";
-import { edit, redo, saveModel, tryEdit, undo } from "./edit";
-import { addToPlot, loadPlotView, savePlotView } from "./components/PlotPanel";
-import { validateModel } from "./components/IssuesPanel";
-import { profileFromSelection } from "./components/ProfilePanel";
-import { applyStyle } from "./components/StylePanel";
-import { openModel } from "./components/Toolbar";
-import { mapPerf, mapProject } from "./map/MapView";
-import { currentPlotView, getState, setState } from "./store";
+import { edit, redo, saveModel, tryEdit, undo } from "./actions/edit";
+import { loadPlotView, savePlotView } from "./plot/savedViews";
+import { addToPlot } from "./plot/series";
+import { profileFromSelection } from "./profile/profiles";
+import { applyStyle } from "./actions/style";
+import { mapPerf } from "./map/useMapLayers";
+import { mapProject } from "./map/useViewer";
+import { currentPlotView } from "./actions/views";
+import { getState, setState } from "./store";
 import "./styles.css";
 
 // Entry points for automated UI tests (e2e/smoke.mjs drives the app over CDP).

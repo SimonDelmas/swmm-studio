@@ -1,36 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { bucketRange, periodAt, periodMs } from "../format";
-import { getState, makeStat, notify, type LayerStyle, type StyledKind } from "../store";
-import type { ResultsInfo } from "../types";
-
-/** Periods `[p0, p1)` of a style's statistic in a results set, at the time of period `p` of the loaded results. */
-export function statRange(style: LayerStyle, r: ResultsInfo, loaded: ResultsInfo, p: number): [number, number] {
-  if (style.scope === "run") return [0, r.n_periods];
-  const q = r === loaded ? p : periodAt(r, periodMs(loaded, p));
-  const [a, b] = bucketRange(r, style.scope, q);
-  return [a, b];
-}
-
-/** Values of a style: a statistic over its period range, or loaded minus compared. */
-export async function statValues(kind: StyledKind, style: LayerStyle, period: number): Promise<Float32Array> {
-  const m = getState().model;
-  const a = m?.results;
-  if (!a) throw new Error("no results loaded");
-  const v = Number(style.field);
-  if (style.stat === "value") {
-    return style.source === "compare" ? api.compareFrame(kind, v, period) : api.frame(kind, v, period);
-  }
-  const stat = makeStat(style.stat, style.threshold);
-  const [p0, p1] = statRange(style, a, a, period);
-  const va = await api.statValues(kind, v, stat, p0, p1);
-  if (style.source !== "compare") return va;
-  const b = m.compare;
-  if (!b) throw new Error("no results to compare with");
-  const [q0, q1] = statRange(style, b, a, period);
-  const vb = await api.statValues(kind, v, stat, q0, q1, true);
-  return va.map((x, i) => x - vb[i]);
-}
+import { statRange, statValues } from "../actions/style";
+import { getState, notify } from "../store";
+import type { LayerStyle, StyledKind } from "../uiTypes";
 
 /** Key of the values of a statistic style: they change only when it changes. */
 function statKey(style: LayerStyle, period: number): string {

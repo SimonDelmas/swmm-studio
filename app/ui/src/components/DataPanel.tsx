@@ -1,8 +1,9 @@
+import { LinkButton } from "./LinkButton";
 import { useState } from "react";
-import { edit } from "../edit";
+import { edit } from "../actions/edit";
 import { setState, useStore } from "../store";
 import type { TableKind } from "../types";
-import { useNames } from "./PropertiesPanel";
+import { useNames } from "../hooks/useNames";
 
 const KINDS: [TableKind, string][] = [
   ["hydrograph", "Unit hydrographs (RDII)"],
@@ -23,9 +24,9 @@ function Category({ kind, title }: { kind: TableKind; title: string }) {
   return (
     <div className="data-cat">
       <div className="data-head">
-        <a onClick={() => setOpen(!open)}>
+        <LinkButton onClick={() => setOpen(!open)}>
           {open ? "▾" : "▸"} {title}
-        </a>
+        </LinkButton>
         <span className="muted">{names.length}</span>
         <span className="grow" />
         <button title={`New ${title.toLowerCase()}`} onClick={add}>
@@ -36,15 +37,15 @@ function Category({ kind, title }: { kind: TableKind; title: string }) {
         <div className="data-list">
           {names.map((n) => (
             <div key={n} className="data-item" onDoubleClick={() => openEditor(n)}>
-              <a onClick={() => openEditor(n)}>{n}</a>
+              <LinkButton onClick={() => openEditor(n)}>{n}</LinkButton>
               <span className="grow" />
-              <a
+              <LinkButton
                 className="muted"
                 title="Delete"
                 onClick={() => edit({ op: "delete_table", kind, name: n })}
               >
                 ✕
-              </a>
+              </LinkButton>
             </div>
           ))}
           {names.length === 0 && <div className="muted data-item">None</div>}

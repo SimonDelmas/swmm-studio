@@ -1,24 +1,15 @@
 //! Analysis on a [`Session`]: statistics over periods (envelope maps, time
-//! aggregation), comparison with a second run, event statistics, profiles, validation,
-//! run history and the tabular views of the model.
-
-use std::path::{Path, PathBuf};
+//! aggregation), comparison with a second run, event statistics and profiles.
 
 use serde::{Deserialize, Serialize};
 use swmm_analysis::{self as an, Calendar, EventParams, Profile, Stat, YearStats};
-use swmm_engine::history::{self, RunRecord};
-use swmm_inp::SectionKind;
-use swmm_model::{climate::Climate, grid::Grid, validate::Issue, ObjKind};
+use swmm_model::ObjKind;
 use swmm_out::ElementKind;
 
-use crate::session::{LoadedResults, Res, Session};
+use crate::session::{element_by_name, err, object_kind, LoadedResults, Res, Session};
 
 /// Head is node variable 1 in every `.out` file.
 const HEAD: usize = 1;
-
-fn err(e: impl std::fmt::Display) -> String {
-    e.to_string()
-}
 
 /// Statistics are returned per object; durations above a threshold in hours.
 fn finish(stat: Stat, v: f64, step_secs: f64) -> f32 {
@@ -35,9 +26,9 @@ fn step(lr: &LoadedResults) -> f64 {
 /// Unit of a statistic of a variable.
 fn stat_unit(lr: &LoadedResults, kind: ElementKind, var: usize, stat: Stat) -> String {
     let m = lr.results.meta();
-    let unit = swmm_out::format::unit(kind, var, m.flow_units);
+    let unit = m.unit(kind, var);
     match stat {
-        Stat::Total => an::integral(unit, m.flow_units).map_or(format!("{unit}·s"), |f| f.1.to_string()),
+        Stat::Total => an::integral(unit).map_or(format!("{unit}·s"), |f| f.1.to_string()),
         Stat::PeriodsAbove { .. } => "h".into(),
         Stat::TimeOfMax => "period".into(),
         _ => unit.to_string(),
@@ -121,24 +112,6 @@ pub struct ProfileDto {
     pub max_head: Vec<f32>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct RunDto {
-    pub dir: PathBuf,
-    pub record: RunRecord,
-    pub out: Option<PathBuf>,
-    pub rpt: Option<PathBuf>,
-    /// Its results are the loaded ones / the compared ones.
-    pub loaded: bool,
-    pub compared: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SectionInfo {
-    pub name: String,
-    pub lines: usize,
-    pub present: bool,
-}
-
 impl Session {
     /// A statistic of a variable over `[p0, p1)` for every network object (`system`: one
     /// value), from the loaded results or the compared ones.
@@ -217,17 +190,11 @@ impl Session {
         Ok(stat_unit(self.source(b)?, kind, var, stat))
     }
 
+    /// Kinds of the objects events are computed for (not the system).
     fn element(kind: &str) -> Res<(ElementKind, ObjKind)> {
-        match kind {
-            "node" => Ok((ElementKind::Node, ObjKind::Node)),
-            "link" => Ok((ElementKind::Link, ObjKind::Link)),
-            "subcatchment" => Ok((ElementKind::Subcatchment, ObjKind::Subcatchment)),
-            k => Err(format!("no events for {k}")),
-        }
-    }
-
-    fn gap_periods(lr: &LoadedResults, hours: f64) -> usize {
-        ((hours.max(0.0) * 3600.0) / step(lr)).ceil().max(1.0) as usize
+        let ek = element_by_name(kind)?;
+        let ok = object_kind(ek).ok_or_else(|| format!("no events for {kind}"))?;
+        Ok((ek, ok))
     }
 
     /// Event statistics of many objects.
@@ -247,11 +214,15 @@ impl Session {
         let net_objs: Vec<(u32, usize)> = candidates
             .into_iter()
             .filter(|&i| (i as usize) < self.net.len(ok))
-            .filter(|&i| !q.outfalls_only || self.net.nodes[i as usize].kind == swmm_model::NodeType::Outfall)
+            // Only nodes can be outfalls: the flag is ignored for the other kinds.
+            .filter(|&i| {
+                !(q.outfalls_only && ok == ObjKind::Node)
+                    || self.net.nodes[i as usize].kind == swmm_model::NodeType::Outfall
+            })
             .filter_map(|i| lr.out_index(ek, i as usize).ok().map(|o| (i, o)))
             .collect();
         let objs: Vec<usize> = net_objs.iter().map(|x| x.1).collect();
-        let params = EventParams { threshold: q.threshold, min_gap: Self::gap_periods(lr, q.min_gap_hours) };
+        let params = EventParams::with_gap_hours(q.threshold, q.min_gap_hours, step(lr));
         let sums = an::summarize(&lr.results, ek, &objs, q.var, 0..m.n_periods, params).map_err(err)?;
         let years = m.n_periods as f64 * step(lr) / (365.25 * 86_400.0);
         let rows = net_objs
@@ -271,7 +242,7 @@ impl Session {
         Ok(EventTable {
             rows,
             years,
-            unit: swmm_out::format::unit(ek, q.var, m.flow_units).to_string(),
+            unit: m.unit(ek, q.var).to_string(),
             total_unit: stat_unit(lr, ek, q.var, Stat::Total),
             seconds: t0.elapsed().as_secs_f64(),
         })
@@ -293,7 +264,7 @@ impl Session {
         let m = lr.results.meta();
         lr.check_long_read(m.n_periods)?;
         let o = lr.out_index(ek, index as usize)?;
-        let params = EventParams { threshold, min_gap: Self::gap_periods(lr, min_gap_hours) };
+        let params = EventParams::with_gap_hours(threshold, min_gap_hours, step(lr));
         let events = an::detect(&lr.results, ek, o, var, 0..m.n_periods, params).map_err(err)?;
         let h = step(lr) / 3600.0;
         Ok(events
@@ -348,114 +319,13 @@ impl Session {
             })
             .collect())
     }
-
-    pub fn validate(&self) -> Vec<Issue> {
-        swmm_model::validate::validate(&self.inp, &self.net)
-    }
-
-    pub fn grid(&self, section: &str) -> Res<Grid> {
-        let kind = SectionKind::from_name(section);
-        swmm_model::grid::grid(&self.inp, &self.net, &kind).ok_or_else(|| format!("[{section}] has no table view"))
-    }
-
-    pub fn climate(&self) -> Climate {
-        Climate::read(&self.inp)
-    }
-
-    /// Sections of the file, then the known ones it does not have.
-    pub fn sections(&self) -> Vec<SectionInfo> {
-        let mut out: Vec<SectionInfo> = Vec::new();
-        for s in self.inp.sections() {
-            if !out.iter().any(|x| x.name == s.name()) {
-                out.push(SectionInfo { name: s.name().to_string(), lines: s.data_len(), present: true });
-            }
-        }
-        for k in SectionKind::KNOWN {
-            if !out.iter().any(|x| x.name == k.name()) {
-                out.push(SectionInfo { name: k.name().to_string(), lines: 0, present: false });
-            }
-        }
-        out
-    }
-
-    pub fn section_text(&self, section: &str) -> String {
-        swmm_model::grid::section_text(&self.inp, &SectionKind::from_name(section)).unwrap_or_default()
-    }
-
-    // ---- run history -----------------------------------------------------------
-
-    pub fn runs(&self) -> Vec<RunDto> {
-        let is = |lr: &Option<LoadedResults>, d: &Path| lr.as_ref().is_some_and(|lr| lr.path.starts_with(d));
-        history::list_runs(&self.inp_path)
-            .into_iter()
-            .map(|(dir, record)| {
-                let (out, rpt) = (dir.join(&record.out), dir.join(&record.rpt));
-                RunDto {
-                    loaded: is(&self.results, &dir),
-                    compared: is(&self.compare, &dir),
-                    out: out.is_file().then_some(out),
-                    rpt: rpt.is_file().then_some(rpt),
-                    dir,
-                    record,
-                }
-            })
-            .collect()
-    }
-
-    fn run_files(&self, dir: &Path) -> Res<(PathBuf, PathBuf)> {
-        let r = RunRecord::load(dir).map_err(err)?;
-        Ok((dir.join(r.out), dir.join(r.rpt)))
-    }
-
-    /// Loads the results and report of a run.
-    pub fn open_run(&mut self, dir: &Path) -> Res<()> {
-        let (out, rpt) = self.run_files(dir)?;
-        if !out.is_file() {
-            return Err("this run has no results file".into());
-        }
-        self.open_results(&out)?;
-        self.report = None;
-        self.project.results.rpt = None;
-        if rpt.is_file() {
-            self.open_report(&rpt)?;
-        }
-        self.save_project()
-    }
-
-    /// Compares the loaded results with those of a run.
-    pub fn compare_run(&mut self, dir: &Path) -> Res<()> {
-        let (out, _) = self.run_files(dir)?;
-        if !out.is_file() {
-            return Err("this run has no results file".into());
-        }
-        self.open_comparison(&out)
-    }
-
-    pub fn set_run_label(&self, dir: &Path, label: Option<&str>) -> Res<()> {
-        history::set_label(dir, label).map(|_| ()).map_err(err)
-    }
-
-    /// Deletes a run, unloading its results first (open files cannot be deleted).
-    pub fn delete_run(&mut self, dir: &Path) -> Res<()> {
-        if self.results.as_ref().is_some_and(|lr| lr.path.starts_with(dir)) {
-            self.results = None;
-            self.project.results.out = None;
-        }
-        if self.report.as_ref().is_some_and(|(p, _)| p.starts_with(dir)) {
-            self.report = None;
-            self.project.results.rpt = None;
-        }
-        if self.compare.as_ref().is_some_and(|lr| lr.path.starts_with(dir)) {
-            self.compare = None;
-        }
-        history::delete_run(&self.inp_path, dir).map_err(err)?;
-        self.save_project()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
+
     use swmm_out::{OutSpec, OutWriter};
 
     const TINY: &str = include_str!("../../../testdata/tiny.inp");
@@ -522,6 +392,9 @@ mod tests {
         assert!(t.rows.iter().all(|r| r.count == 1), "{:?}", t.rows);
         let only = s.event_stats(&EventQuery { outfalls_only: true, ..q.clone() }).unwrap();
         assert_eq!(only.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["Out1"]);
+        // The outfall filter only applies to nodes.
+        let links = s.event_stats(&EventQuery { kind: "link".into(), outfalls_only: true, ..q.clone() }).unwrap();
+        assert_eq!(links.rows.len(), 3);
         let ev = s.object_events("node", 0, 0, 1.0, 1.0, false).unwrap();
         assert_eq!((ev[0].start, ev[0].end), (100, 110));
         let j1 = s.net.find(ObjKind::Node, "J1").unwrap();

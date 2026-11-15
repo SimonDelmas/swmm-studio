@@ -75,7 +75,9 @@ fn partial_file_is_readable() {
     drop(out);
     // The periods written can be cached.
     let mut results = Results::open(&path).unwrap();
-    results.build_cache(&CacheOptions { chunk_len: 16, ..Default::default() }, |_| {}, &AtomicBool::new(false)).unwrap();
+    results
+        .build_cache(&CacheOptions { chunk_len: 16, ..Default::default() }, |_| {}, &AtomicBool::new(false))
+        .unwrap();
     let out = results.out();
     let cache = results.cache().unwrap();
     for s in 0..out.layout().values_per_period() {
@@ -165,7 +167,11 @@ fn cancel_leaves_no_file() {
     let r = cache::build(&out, &cp, &CacheOptions::default(), |_| {}, &AtomicBool::new(true));
     assert!(matches!(r, Err(OutError::Cancelled)));
     assert!(!cp.exists());
-    assert!(!cp.with_extension("swcache.tmp").exists());
+    let leftovers = std::fs::read_dir(cp.parent().unwrap())
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "tmp"));
+    assert_eq!(leftovers.count(), 0);
 }
 
 /// Cross-check on a file written by the real engine: set `SWMM_OUT_SAMPLE` to a `.out` path.

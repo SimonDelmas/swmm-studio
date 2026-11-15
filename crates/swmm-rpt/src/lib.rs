@@ -5,7 +5,11 @@
 //! plain text, so every block of every SWMM version is available. Typed helpers give
 //! direct access to errors, warnings and continuity errors.
 
+mod parse;
+
 use std::path::Path;
+
+use parse::{is_block_start, parse_block, parse_message};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RptError {
@@ -27,39 +31,52 @@ pub struct Message {
 }
 
 impl Message {
-    /// First token that looks like an object ID quoted by SWMM messages, e.g. the `J9` in
-    /// `undefined object J9 at line…` or the `C1` in `... used for Conduit C1`.
+    /// The object ID quoted by a SWMM message, e.g. the `J9` in `undefined object J9 at
+    /// line…` or the `C1` in `... used for Conduit C1`. A capitalised type is the one of
+    /// the object the message is about (`invalid pump curve assigned to Pump P1` is about
+    /// `P1`); it may be followed by a more precise one (`Weir Divider D1`, `Storage node
+    /// N1`). Without one, a type in lower case counts when a preposition introduces it
+    /// (`… for RDII at node N1`), not as a word of the sentence (`the outlet of a …`).
     pub fn object(&self) -> Option<&str> {
         let words: Vec<&str> = self.text.split_whitespace().collect();
-        for (i, w) in words.iter().enumerate() {
-            let lw = w.to_ascii_lowercase();
-            if matches!(
-                lw.as_str(),
-                "object"
-                    | "conduit"
-                    | "node"
-                    | "link"
-                    | "subcatchment"
-                    | "junction"
-                    | "outfall"
-                    | "storage"
-                    | "pump"
-                    | "orifice"
-                    | "weir"
-                    | "outlet"
-                    | "divider"
-                    | "gage"
-                    | "curve"
-                    | "timeseries"
-                    | "pattern"
-            ) {
-                if let Some(id) = words.get(i + 1) {
-                    return Some(id.trim_end_matches([',', '.', ':']));
-                }
-            }
+        let id_after = |i: usize| {
+            // The name follows the type words (one, or several: `Storage node N1`).
+            let rest = words[i + 1..].iter().find(|w| !is_type_word(w))?;
+            Some(rest.trim_end_matches([',', '.', ':']))
+        };
+        let capitalised = |w: &str| w.eq_ignore_ascii_case("object") || w.starts_with(|c: char| c.is_ascii_uppercase());
+        if let Some(i) = (0..words.len()).find(|&i| is_type_word(words[i]) && capitalised(words[i])) {
+            return id_after(i);
         }
-        None
+        let introduced = |i: usize| {
+            i > 0 && matches!(words[i - 1].to_ascii_lowercase().as_str(), "at" | "for" | "to" | "from" | "in")
+        };
+        (0..words.len()).find(|&i| is_type_word(words[i]) && introduced(i)).and_then(id_after)
     }
+}
+
+/// A word naming a kind of object in SWMM messages, in any case.
+fn is_type_word(w: &str) -> bool {
+    matches!(
+        w.to_ascii_lowercase().as_str(),
+        "object"
+            | "conduit"
+            | "node"
+            | "link"
+            | "subcatchment"
+            | "junction"
+            | "outfall"
+            | "storage"
+            | "pump"
+            | "orifice"
+            | "weir"
+            | "outlet"
+            | "divider"
+            | "gage"
+            | "curve"
+            | "timeseries"
+            | "pattern"
+    )
 }
 
 /// A `label ...... value value` line.
@@ -254,210 +271,6 @@ impl Report {
     pub fn is_success(&self) -> bool {
         self.errors.is_empty()
     }
-}
-
-fn is_banner(t: &str) -> bool {
-    t.len() >= 3 && t.bytes().all(|b| b == b'*')
-}
-
-/// A banner line, possibly followed by value headers (`*****    Volume   Depth`).
-fn is_banner_start(t: &str) -> bool {
-    t.split_whitespace().next().is_some_and(is_banner)
-}
-
-/// Banner, title, banner.
-fn is_block_start(lines: &[&str], i: usize) -> bool {
-    i + 2 < lines.len()
-        && is_banner_start(lines[i].trim())
-        && !is_banner_start(lines[i + 1].trim())
-        && !lines[i + 1].trim().is_empty()
-        && is_banner_start(lines[i + 2].trim())
-}
-
-/// Splits on runs of 2+ spaces.
-fn phrases(s: &str) -> Vec<(usize, &str)> {
-    let mut out = Vec::new();
-    let b = s.as_bytes();
-    let mut i = 0;
-    while i < b.len() {
-        while i < b.len() && b[i] == b' ' {
-            i += 1;
-        }
-        if i >= b.len() {
-            break;
-        }
-        let start = i;
-        while i < b.len() && !(b[i] == b' ' && b.get(i + 1).is_none_or(|&c| c == b' ')) {
-            i += 1;
-        }
-        out.push((start, &s[start..i]));
-    }
-    out
-}
-
-fn parse_block(lines: &[&str], at: usize) -> (Block, usize) {
-    // Banner, title line, banner: value headers can trail the three lines (continuity tables).
-    let top = lines[at];
-    let title_line = lines[at + 1];
-    let title_phrases = phrases(title_line);
-    let title = title_phrases.first().map_or("", |p| p.1).to_string();
-    let trailing = |s: &str| phrases(s).into_iter().skip(1).map(|p| p.1.to_string()).collect::<Vec<_>>();
-    let headers_top = trailing(top);
-    let units = trailing(title_line);
-    let value_headers = if units.is_empty() {
-        headers_top
-    } else if headers_top.len() == units.len() {
-        headers_top.iter().zip(&units).map(|(h, u)| format!("{h} ({u})")).collect()
-    } else {
-        units
-    };
-
-    // Body: until the next banner or the end-of-run lines.
-    let mut end = at + 3;
-    while end < lines.len() {
-        let t = lines[end].trim();
-        if is_block_start(lines, end) || t.starts_with("Analysis begun on:") {
-            break;
-        }
-        end += 1;
-    }
-    let body_lines = &lines[at + 3..end];
-    let body = parse_body(body_lines);
-    (Block { title, value_headers, body }, end)
-}
-
-fn is_dashes(t: &str) -> bool {
-    t.len() >= 3 && t.bytes().all(|b| b == b'-')
-}
-
-fn parse_body(lines: &[&str]) -> Body {
-    let content: Vec<&str> = lines.iter().copied().filter(|l| !l.trim().is_empty()).collect();
-    if content.iter().filter(|l| is_dashes(l.trim())).count() >= 2 {
-        return Body::Table(parse_table(lines));
-    }
-    let kv: Vec<Option<KeyValue>> = content.iter().map(|l| parse_key_value(l)).collect();
-    if !kv.is_empty() && kv.iter().filter(|k| k.is_some()).count() * 2 >= kv.len() {
-        return Body::KeyValues(kv.into_iter().flatten().collect());
-    }
-    Body::Text(content.iter().map(|l| l.trim().to_string()).collect())
-}
-
-/// `Total Precipitation ......   0.188   2.650` or `Minimum Time Step   :   37.57 sec`.
-fn parse_key_value(line: &str) -> Option<KeyValue> {
-    let t = line.trim();
-    let (key, rest) = if let Some(p) = t.find(" ..") {
-        let rest = t[p..].trim_start_matches([' ', '.']);
-        (&t[..p], rest)
-    } else {
-        let (k, v) = t.split_at(t.find(':')?);
-        if !k.ends_with(' ') {
-            return None;
-        }
-        (k, &v[1..])
-    };
-    Some(KeyValue { key: key.trim().to_string(), values: rest.split_whitespace().map(str::to_string).collect() })
-}
-
-fn parse_table(lines: &[&str]) -> Table {
-    let mut t = Table::default();
-    let dashes: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| is_dashes(l.trim())).map(|(i, _)| i).collect();
-    let (Some(&h0), Some(&h1)) = (dashes.first(), dashes.get(1)) else {
-        return t;
-    };
-    t.header = lines[h0 + 1..h1].iter().map(|l| l.trim_end().to_string()).collect();
-    t.notes = lines[..h0].iter().map(|l| l.trim()).filter(|l| !l.is_empty()).map(str::to_string).collect();
-    let mut footer = false;
-    for line in &lines[h1 + 1..] {
-        let s = line.trim();
-        if is_dashes(s) {
-            footer = true;
-        } else if !s.is_empty() {
-            let row: Vec<String> = s.split_whitespace().map(str::to_string).collect();
-            if footer {
-                t.footer.push(row);
-            } else {
-                t.rows.push(row);
-            }
-        }
-    }
-    if let Some(first) = lines[h1 + 1..].iter().find(|l| !l.trim().is_empty() && !is_dashes(l.trim())) {
-        t.columns = column_names(&t.header, first);
-    }
-    t
-}
-
-/// Names each data column after the header phrases printed above it.
-fn column_names(header: &[String], sample: &str) -> Vec<String> {
-    let mut spans = Vec::new();
-    let b = sample.as_bytes();
-    let mut i = 0;
-    while i < b.len() {
-        while i < b.len() && b[i] == b' ' {
-            i += 1;
-        }
-        let start = i;
-        while i < b.len() && b[i] != b' ' {
-            i += 1;
-        }
-        if i > start {
-            spans.push((start, i));
-        }
-    }
-    let overlap = |a: usize, z: usize, (s, e): (usize, usize)| z.min(e) as i64 - a.max(s) as i64;
-    // Best overlap, else the column whose end is nearest.
-    let best = |a: usize, z: usize| {
-        spans
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, &span)| (overlap(a, z, span), -(z as i64 - span.1 as i64).abs()))
-            .map(|(i, _)| i)
-    };
-    let mut names: Vec<Vec<&str>> = vec![Vec::new(); spans.len()];
-    for h in header {
-        for (pos, phrase) in phrases(h) {
-            let (a, z) = (pos, pos + phrase.len());
-            let words: Vec<(usize, &str)> = phrase
-                .split(' ')
-                .scan(pos, |at, w| {
-                    let start = *at;
-                    *at += w.len() + 1;
-                    Some((start, w))
-                })
-                .collect();
-            let covered = spans.iter().filter(|&&s| overlap(a, z, s) > 0).count();
-            // `days hr:min` sits over two data tokens: one word per column.
-            if covered > 1 && covered == words.len() {
-                for (wa, w) in words {
-                    if let Some(c) = best(wa, wa + w.len()) {
-                        names[c].push(w);
-                    }
-                }
-            } else if let Some(c) = best(a, z) {
-                names[c].push(phrase);
-            }
-        }
-    }
-    names.into_iter().map(|w| w.join(" ")).collect()
-}
-
-fn parse_message(t: &str, keyword: &str) -> Option<Message> {
-    let rest = t.strip_prefix(keyword)?.strip_prefix(' ')?;
-    let (code, text) = rest.split_once(':')?;
-    let code = code.trim();
-    if code.contains(' ') {
-        return None;
-    }
-    let text = text.trim().to_string();
-    let mut line = None;
-    let mut section = None;
-    if let Some(p) = text.find(" at line ") {
-        let after = &text[p + 9..];
-        line = after.split_whitespace().next().and_then(|n| n.parse().ok());
-        if let (Some(a), Some(z)) = (after.find('['), after.find(']')) {
-            section = Some(after[a + 1..z].to_string());
-        }
-    }
-    Some(Message { code: code.to_string(), text, line, section, context: None })
 }
 
 #[cfg(test)]

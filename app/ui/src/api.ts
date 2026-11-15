@@ -2,40 +2,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type {
-  BlockDto,
-  CrsEntry,
-  ElementKind,
-  Geometry,
-  MinMaxSeries,
-  ModelInfo,
-  ObjectInfo,
-  ObjKind,
-  ObjRef,
-  ResultsInfo,
-  Basemap,
-  DeletePlan,
-  EditOutcome,
-  EditRequest,
-  EnginesDto,
-  OptionsDto,
-  RefKind,
-  RunFinished,
-  RunProgress,
-  Table,
-  TableKind,
-  Aggregated,
-  Calendar,
-  Climate,
-  EventDto,
-  EventTable,
-  Grid,
-  Issue,
-  ProfileDto,
-  RunDto,
-  SectionInfo,
-  Stat,
-} from "./types";
+import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RunDto, SectionInfo, Stat } from "./analysisTypes";
+import type { Basemap, BlockDto, Climate, CrsEntry, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, OptionsDto, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
   const r = await invoke<ArrayBuffer | number[]>(cmd, args);

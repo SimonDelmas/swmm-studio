@@ -102,6 +102,17 @@ a {
 a:hover {
   text-decoration: underline;
 }
+/* An action shown as a link (reachable with the keyboard, unlike a bare <a>). */
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+}
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
 
 label {
   display: inline-flex;

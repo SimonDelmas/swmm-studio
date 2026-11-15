@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { selectObject } from "../actions/selection";
+import { ObjLink } from "./ObjLink";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { formatNumber } from "../classify";
+import { formatDateTime, formatNumber, parseNumber, periodAt, periodMs } from "../format";
 import { exportTable } from "../exporting";
-import { formatDateTime, periodMs } from "../format";
 import { getState, setState, useStore } from "../store";
-import type { ElementKind, EventDto, EventTable } from "../types";
-import { addToPlot } from "./PlotPanel";
+import type { EventDto, EventTable } from "../analysisTypes";
+import type { ElementKind, ObjKind } from "../types";
+import { addToPlot } from "../plot/series";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 
 type Kind = "node" | "link" | "subcatchment";
@@ -26,13 +28,14 @@ export function EventsPanel() {
   const [scope, setScope] = useState<Scope>("outfalls");
   const [b, setB] = useState(false);
   const [table, setTable] = useState<EventTable | null>(null);
+  // What the table was computed with: the selectors above may have changed since.
+  const [query, setQuery] = useState<{ kind: Kind; v: number; b: boolean; threshold: number; gap: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [row, setRow] = useState<number | null>(null);
   const [events, setEvents] = useState<EventDto[] | null>(null);
   const vars = results?.variables[kind] ?? [];
   const varIndex = v >= 0 && v < vars.length ? v : Math.max(0, vars.findIndex((x) => x.name === DEFAULT_VAR[kind]));
-  const src = b ? compare : results;
 
   useEffect(() => {
     setTable(null);
@@ -40,7 +43,7 @@ export function EventsPanel() {
     setEvents(null);
   }, [results?.path, compare?.path]);
 
-  const params = { threshold: Number(threshold), gap: Number(gap) };
+  const params = { threshold: parseNumber(threshold), gap: parseNumber(gap) };
   const valid = Number.isFinite(params.threshold) && Number.isFinite(params.gap) && params.gap >= 0;
 
   const compute = async () => {
@@ -62,6 +65,7 @@ export function EventsPanel() {
         b,
       });
       setTable(t);
+      setQuery({ kind, v: varIndex, b, threshold: params.threshold, gap: params.gap });
       setRow(null);
       setEvents(null);
     } catch (e) {
@@ -75,15 +79,19 @@ export function EventsPanel() {
     () => table?.rows.map((r) => [r.id, r.count, r.per_year, r.total, r.hours, r.peak]) ?? [],
     [table],
   );
+  const picked = useRef(0);
   const pick = async (i: number) => {
-    if (!table) return;
+    if (!table || !query) return;
+    const id = ++picked.current;
     setRow(i);
+    setEvents(null);
     const r = table.rows[i];
-    setState({ selection: [{ kind, index: r.index }], fitSelection: getState().fitSelection + 1 });
+    selectObject({ kind: query.kind, index: r.index });
     try {
-      setEvents(await api.objectEvents(kind, r.index, varIndex, params.threshold, params.gap, b));
+      const list = await api.objectEvents(query.kind, r.index, query.v, query.threshold, query.gap, query.b);
+      if (id === picked.current) setEvents(list);
     } catch (e) {
-      setError(errorText(e));
+      if (id === picked.current) setError(errorText(e));
     }
   };
 
@@ -96,13 +104,14 @@ export function EventsPanel() {
   if (!results) return <div className="panel-empty">Load results to compute event statistics.</div>;
   const unit = vars[varIndex]?.unit ?? "";
   const r = row !== null ? table?.rows[row] : null;
-  const time = (p: number) => (src ? formatDateTime(periodMs(src, p)) : String(p));
+  // The run the table shown was computed from.
+  const tableSrc = query?.b ? compare : results;
+  const time = (p: number) => (tableSrc ? formatDateTime(periodMs(tableSrc, p)) : String(p));
   const jump = (p: number) => {
     // Times of run B are shown on the timeline of the loaded run.
-    if (!b || !src) return setState({ period: p });
-    const ms = periodMs(src, p);
+    if (!query?.b || !tableSrc) return setState({ period: p });
     const a = getState().model?.results;
-    if (a) setState({ period: Math.max(0, Math.min(a.n_periods - 1, Math.round((ms - a.start_ms) / (a.step_secs * 1000)))) });
+    if (a) setState({ period: periodAt(a, periodMs(tableSrc, p)) });
   };
   const headers = ["Object", "Events", "Events / year", `Total (${table?.total_unit ?? ""})`, "Duration (h)", `Max peak (${table?.unit ?? unit})`];
   const evHeaders = ["Start", "End", "Duration (h)", `Peak (${unit})`, "Time of peak", `Total (${table?.total_unit ?? ""})`];
@@ -140,7 +149,7 @@ export function EventsPanel() {
             <input type="checkbox" checked={b} onChange={(e) => setB(e.target.checked)} /> run B
           </label>
         )}
-        <button className="primary" disabled={busy || !valid} onClick={compute}>
+        <button className="primary" disabled={busy} onClick={compute}>
           {busy ? "Computing…" : "Compute"}
         </button>
         {table && (
@@ -175,10 +184,12 @@ export function EventsPanel() {
             {r ? (
               <>
                 <div className="panel-toolbar">
-                  <b>{r.id}</b>
+                  <b>
+                    <ObjLink obj={{ kind: (query?.kind ?? kind) as ObjKind, index: r.index }}>{r.id}</ObjLink>
+                  </b>
                   <span className="muted">{r.count} events</span>
                   <span className="grow" />
-                  <button onClick={() => addToPlot(kind as ElementKind, r.index, varIndex, b)}>Plot</button>
+                  <button onClick={() => query && addToPlot(query.kind as ElementKind, r.index, query.v, query.b)}>Plot</button>
                   <button onClick={() => exportTable(`events_${r.id}`, r.id, evHeaders, evRows)}>Export</button>
                 </div>
                 <table className="kv years">

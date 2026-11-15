@@ -1,49 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { selectObject } from "../actions/selection";
+import { useState } from "react";
+import { askNewModel, chooseModel, chooseResults } from "../actions/model";
 import { api, errorText } from "../api";
-import { confirmDiscard, redo, saveModel, undo } from "../edit";
-import { getState, notify, resetForModel, setState, useStore, type Tool } from "../store";
+import { redo, saveModel, undo } from "../actions/edit";
+import { getState, notify, setState, useStore } from "../store";
+import type { Tool } from "../uiTypes";
+import { useDropdown } from "../hooks/useDropdown";
 import { RunControls } from "./RunPanel";
-
-export async function openModel(path: string) {
-  setState({ busy: "Opening model…", playing: false });
-  try {
-    const model = await api.openModel(path);
-    const geometry = await api.geometry();
-    resetForModel(model, geometry);
-    for (const n of model.notes) notify(n, true);
-    if (model.project_error) notify(`Project file ignored: ${model.project_error}`, true);
-    if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
-}
-
-async function chooseModel() {
-  if (!(await confirmDiscard())) return;
-  const path = await open({ filters: [{ name: "SWMM model", extensions: ["inp"] }] });
-  if (typeof path === "string") await openModel(path);
-}
-
-async function newModel() {
-  if (await confirmDiscard()) setState({ dialog: "new" });
-}
-
-async function chooseResults() {
-  const path = await open({ filters: [{ name: "SWMM results", extensions: ["out"] }] });
-  if (typeof path !== "string") return;
-  setState({ busy: "Opening results…", playing: false });
-  try {
-    const model = await api.openResults(path);
-    setState({ model, period: 0 });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
-}
 
 const EDIT_TOOLS: [Tool, string, string][] = [
   ["move", "✥ Move", "Move: drag nodes and gages, or the selected objects"],
@@ -59,29 +22,11 @@ const SELECT_TOOLS: [Tool, string, string][] = [
 /** The "Project" drop-down: closes on an item click, an outside click or Escape. */
 function ProjectMenu() {
   const model = useStore((s) => s.model);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: MouseEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", down);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", down);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
+  const busy = useStore((s) => s.busy !== null);
+  const { open, setOpen, ref, run } = useDropdown();
+  // Nothing is opened or saved while a model or results are loading.
   const item = (label: string, action: () => unknown, opts: { title?: string; disabled?: boolean; className?: string } = {}) => (
-    <button
-      className={opts.className}
-      title={opts.title}
-      disabled={opts.disabled}
-      onClick={() => {
-        setOpen(false);
-        action();
-      }}
-    >
+    <button className={opts.className} title={opts.title} disabled={opts.disabled || busy} onClick={run(action)}>
       {label}
     </button>
   );
@@ -92,7 +37,7 @@ function ProjectMenu() {
       </button>
       {open && (
         <div className="menu-items">
-          {item("New", newModel, { title: "New model" })}
+          {item("New", askNewModel, { title: "New model (Ctrl+N)" })}
           {item("Open…", chooseModel, { title: "Open a model (Ctrl+O)" })}
           {item("Save", () => saveModel(), { title: "Save (Ctrl+S)", disabled: !model, className: model?.dirty ? "dirty" : "" })}
           {item("Save as…", () => saveModel(true), { title: "Save as (Ctrl+Shift+S)", disabled: !model })}
@@ -130,10 +75,13 @@ export function Toolbar() {
   const find = () => {
     const id = search.trim();
     if (!id) return;
-    api.findObject(id).then((o) => {
-      if (!o) return notify(`No object named ${id}`);
-      setState({ selection: [o], fitSelection: getState().fitSelection + 1 });
-    });
+    api
+      .findObject(id)
+      .then((o) => {
+        if (!o) return notify(`No object named ${id}`);
+        selectObject(o);
+      })
+      .catch((e) => notify(errorText(e), true));
   };
   const adding = tool.startsWith("add-");
   return (

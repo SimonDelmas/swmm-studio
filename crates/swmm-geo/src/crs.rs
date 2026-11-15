@@ -52,6 +52,21 @@ fn registry() -> &'static [CrsInfo] {
     ALL.get_or_init(|| (0..=u16::MAX).filter_map(crs_definitions::from_code).map(|d| info_of(&d)).collect())
 }
 
+/// Coordinate system suggested by the extent of a model's coordinates
+/// (`[min_x, min_y, max_x, max_y]`): degrees, or French Lambert 93. A guess, to be
+/// confirmed by the user.
+pub fn guess(b: [f64; 4]) -> Option<CrsInfo> {
+    let degrees = b[0] >= -180.0 && b[2] <= 180.0 && b[1] >= -90.0 && b[3] <= 90.0 && b[2] - b[0] < 20.0;
+    let lambert_93 = b[0] > 50_000.0 && b[2] < 1_300_000.0 && b[1] > 6_000_000.0 && b[3] < 7_200_000.0;
+    if degrees {
+        lookup(4326)
+    } else if lambert_93 {
+        lookup(2154)
+    } else {
+        None
+    }
+}
+
 /// Registry entry for an EPSG code.
 pub fn lookup(code: u16) -> Option<CrsInfo> {
     crs_definitions::from_code(code).map(|d| info_of(&d))
@@ -88,11 +103,30 @@ fn normalize(s: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
 
+/// Prime meridians PROJ knows by name, in degrees east of Greenwich.
+const PRIME_MERIDIANS: [(&str, f64); 13] = [
+    ("greenwich", 0.0),
+    ("lisbon", -9.131_906_111_111),
+    ("paris", 2.337_229_166_667),
+    ("bogota", -74.080_916_666_667),
+    ("madrid", -3.687_938_888_889),
+    ("rome", 12.452_333_333_333),
+    ("bern", 7.439_583_333_333),
+    ("jakarta", 106.807_719_444_444),
+    ("ferro", -17.666_666_666_667),
+    ("brussels", 4.367_975),
+    ("stockholm", 18.058_277_777_778),
+    ("athens", 23.716_337_5),
+    ("oslo", 10.722_916_666_667),
+];
+
 /// A coordinate system the model coordinates can be converted from.
 pub struct Crs {
     /// As given by the user: `EPSG:2154` or a PROJ string.
     pub id: String,
     pub name: String,
+    /// PROJ definition the projection was built from.
+    definition: String,
     proj: Proj,
     wgs84: Proj,
 }
@@ -110,13 +144,47 @@ impl Crs {
         let wgs84 = Proj::from_proj_string(WGS84).expect("WGS 84 definition");
         if t.starts_with('+') {
             let proj = Proj::from_proj_string(t).map_err(|e| GeoError::InvalidCrs(t.into(), e.to_string()))?;
-            return Ok(Crs { id: t.to_string(), name: "Custom (PROJ string)".into(), proj, wgs84 });
+            let name = "Custom (PROJ string)".into();
+            return Ok(Crs { id: t.to_string(), name, definition: t.to_string(), proj, wgs84 });
         }
         let code_str = t.strip_prefix("EPSG:").or_else(|| t.strip_prefix("epsg:")).unwrap_or(t).trim();
         let code: u16 = code_str.parse().map_err(|_| GeoError::UnknownCrs(t.into()))?;
         let def = crs_definitions::from_code(code).ok_or_else(|| GeoError::UnknownCrs(t.into()))?;
         let proj = Proj::from_proj_string(def.proj4).map_err(|e| GeoError::InvalidCrs(t.into(), e.to_string()))?;
-        Ok(Crs { id: format!("EPSG:{code}"), name: info_of(&def).name, proj, wgs84 })
+        let definition = def.proj4.to_string();
+        Ok(Crs { id: format!("EPSG:{code}"), name: info_of(&def).name, definition, proj, wgs84 })
+    }
+
+    /// Longitude / latitude (from Greenwich) of the natural origin of a projected
+    /// system, to show an empty model near where it will be drawn: the centre of a
+    /// national grid (`+lon_0`, `+lat_0`, counted from the prime meridian `+pm`), the
+    /// central meridian of a UTM zone at the equator. `None` for geographic systems and
+    /// for projections that name no origin.
+    pub fn origin(&self) -> Option<[f64; 2]> {
+        if self.is_geographic() {
+            return None;
+        }
+        let text = |key: &str| self.definition.split_whitespace().find_map(|p| p.strip_prefix(key));
+        let number = |key: &str| text(key).and_then(|v| v.parse::<f64>().ok());
+        if text("+proj=") == Some("utm") {
+            // Zones are 6° wide, zone 1 starting at 180°W.
+            return number("+zone=").map(|zone| [6.0 * zone - 183.0, 0.0]);
+        }
+        // `+lonc`: the centre of an oblique Mercator projection.
+        let (lon, lat) = (number("+lon_0=").or_else(|| number("+lonc=")), number("+lat_0="));
+        if lon.is_none() && lat.is_none() {
+            return None;
+        }
+        // Longitudes of older national grids are counted from their own meridian: a
+        // name PROJ knows, or degrees. An unknown name gives no origin rather than a wrong one.
+        let prime_meridian = match text("+pm=") {
+            None => 0.0,
+            Some(value) => match PRIME_MERIDIANS.iter().find(|(name, _)| *name == value) {
+                Some((_, degrees)) => *degrees,
+                None => value.parse().ok()?,
+            },
+        };
+        Some([lon.unwrap_or(0.0) + prime_meridian, lat.unwrap_or(0.0)])
     }
 
     pub fn is_geographic(&self) -> bool {
@@ -191,6 +259,24 @@ mod tests {
         let mut m = [[848_500.0, 112_000.0]];
         crs.to_lonlat(&mut m);
         assert!((m[0][0] - 5.38).abs() < 0.05 && (m[0][1] - 43.3).abs() < 0.05, "{m:?}");
+    }
+
+    #[test]
+    fn natural_origin() {
+        let origin = |id: &str| Crs::parse(id).unwrap().origin();
+        // Lambert-93: 3°E, 46.5°N.
+        let o = origin("EPSG:2154").unwrap();
+        assert!((o[0] - 3.0).abs() < 1e-6 && (o[1] - 46.5).abs() < 1e-6, "{o:?}");
+        // UTM zone 31 north: central meridian 3°E.
+        assert_eq!(origin("EPSG:32631"), Some([3.0, 0.0]));
+        // NTF Lambert zone II: longitudes from Paris.
+        let o = origin("EPSG:27572").unwrap();
+        assert!((o[0] - 2.337).abs() < 1e-3 && o[1] > 46.0 && o[1] < 47.5, "{o:?}");
+        assert_eq!(origin("EPSG:4326"), None);
+        // A named meridian other than Paris (the projection library refuses unknown names).
+        let custom = |def: &str| Crs::parse(def).unwrap().origin();
+        let o = custom("+proj=tmerc +lat_0=0 +lon_0=20 +pm=ferro +k=1 +x_0=0 +y_0=0 +ellps=bessel +units=m").unwrap();
+        assert!((o[0] - 2.333).abs() < 1e-3, "{o:?}");
     }
 
     #[test]

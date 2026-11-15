@@ -20,6 +20,16 @@ macro_rules! section_kinds {
             pub fn from_name(name: &str) -> SectionKind {
                 let n = name.trim().trim_start_matches('[').trim_end_matches(']').trim().to_ascii_uppercase();
                 match n.as_str() {
+                    $($name => return SectionKind::$variant,)*
+                    _ => {}
+                }
+                // The engine reads section names by their first letters: `[JUNCTION]` is
+                // `[JUNCTIONS]`, `[OPTION]` is `[OPTIONS]`.
+                let plural = match n.strip_suffix('S') {
+                    Some(singular) => singular.to_string(),
+                    None => format!("{n}S"),
+                };
+                match plural.as_str() {
                     $($name => SectionKind::$variant,)*
                     _ => SectionKind::Unknown(n),
                 }
@@ -226,6 +236,14 @@ fn header_name(text: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_with_or_without_the_final_s() {
+        assert_eq!(SectionKind::from_name("[JUNCTION]"), SectionKind::Junctions);
+        assert_eq!(SectionKind::from_name("option"), SectionKind::Options);
+        assert_eq!(SectionKind::from_name("[RDII]"), SectionKind::Rdii);
+        assert_eq!(SectionKind::from_name("[MY_EXTENSION]"), SectionKind::Unknown("MY_EXTENSION".into()));
+    }
 
     #[test]
     fn kinds_round_trip() {

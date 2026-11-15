@@ -17,7 +17,7 @@ pub mod reduce;
 pub use calendar::{bucket_of, buckets, interval_start, Bucket, Calendar};
 pub use events::{detect, event_total, summarize, yearly, Event, EventParams, Summary, YearStats};
 pub use profile::{path_through, shortest_path, Profile, ProfileLink, ProfileNode};
-pub use reduce::{integral, reduce_all, reduce_series, Stat};
+pub use reduce::{integral, integral_of, reduce_all, reduce_series, Stat};
 
 #[cfg(test)]
 pub(crate) mod testutil {

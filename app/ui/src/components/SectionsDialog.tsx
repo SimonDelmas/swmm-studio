@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
-import { tryEdit } from "../edit";
+import { tryEdit } from "../actions/edit";
 import { setState } from "../store";
-import type { SectionInfo } from "../types";
+import type { SectionInfo } from "../analysisTypes";
+import { Modal } from "./Modal";
+import { latest } from "../latest";
 
 /** Sections whose lines define the network: editing them as text rebuilds it. */
 const NETWORK = new Set(["JUNCTIONS", "OUTFALLS", "DIVIDERS", "STORAGE", "CONDUITS", "PUMPS", "ORIFICES", "WEIRS", "OUTLETS", "SUBCATCHMENTS", "RAINGAGES", "COORDINATES", "VERTICES", "POLYGONS", "SYMBOLS"]);
@@ -17,15 +19,23 @@ export function SectionsDialog() {
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState(false);
   useEffect(() => {
-    api.sections().then((s) => {
-      setSections(s);
-      const firstQuality = s.find((x) => x.present && ["POLLUTANTS", "LANDUSES", "LID_CONTROLS", "AQUIFERS"].includes(x.name));
-      setName(firstQuality?.name ?? s.find((x) => x.present)?.name ?? "TITLE");
-    });
+    api.sections().then(
+      (s) => {
+        setSections(s);
+        const firstQuality = s.find((x) => x.present && ["POLLUTANTS", "LANDUSES", "LID_CONTROLS", "AQUIFERS"].includes(x.name));
+        setName(firstQuality?.name ?? s.find((x) => x.present)?.name ?? "TITLE");
+      },
+      (e) => setError(errorText(e)),
+    );
   }, []);
   useEffect(() => {
     setText(null);
-    api.sectionText(name).then((t) => (setText(t), setOrig(t), setError(null)), (e) => setError(errorText(e)));
+    // The text of another section, answered late, must not be shown (and saved) under this name.
+    return latest(
+      () => api.sectionText(name),
+      (t) => (setText(t), setOrig(t), setError(null)),
+      (e) => setError(errorText(e)),
+    );
   }, [name]);
   const close = () => setState({ dialog: null });
   const changed = text !== null && text !== orig;
@@ -44,11 +54,13 @@ export function SectionsDialog() {
       setError(errorText(e));
     }
   };
+  // Closing asks before unapplied changes are lost.
+  const leave = async () => {
+    if (await discard()) close();
+  };
   const list = sections.filter((s) => all || s.present);
   return (
-    <div className="modal-back">
-      <div className="modal wide-modal sections-modal">
-        <h3>Sections as text</h3>
+    <Modal title="Sections as text" className="wide-modal sections-modal">
         <div className="sections-body">
           <div className="sections-list">
             <label className="muted">
@@ -71,9 +83,8 @@ export function SectionsDialog() {
           <button className="primary" disabled={!changed} onClick={apply}>
             Apply
           </button>
-          <button onClick={async () => (await discard()) && close()}>Close</button>
+          <button onClick={leave}>Close</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

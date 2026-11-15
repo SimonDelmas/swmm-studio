@@ -1,52 +1,53 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ROW_HEIGHT, useVirtualRows } from "../hooks/useVirtualRows";
 import { api, errorText } from "../api";
-import { edit } from "../edit";
+import { edit } from "../actions/edit";
 import { exportTable } from "../exporting";
 import { notify, setState, useStore } from "../store";
-import type { Grid, GridCell } from "../types";
+import type { Grid } from "../analysisTypes";
+import type { GridCell } from "../types";
+import { latest } from "../latest";
+import { GRID_SECTIONS, pastedCells, rangeLines, rowsShown, withCells, type Cell, type Sort } from "./tables/gridData";
 
-const ROW_H = 22;
+/** The grid of a section of the open model, reloaded after every edit, and how to edit its cells. */
+function useGrid(section: string) {
+  const path = useStore((s) => s.model?.path);
+  const revision = useStore((s) => s.model?.revision ?? 0);
+  const [grid, setGrid] = useState<Grid | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-export const GRID_SECTIONS: [string, string][] = [
-  ["JUNCTIONS", "Junctions"],
-  ["OUTFALLS", "Outfalls"],
-  ["DIVIDERS", "Dividers"],
-  ["STORAGE", "Storage units"],
-  ["CONDUITS", "Conduits"],
-  ["PUMPS", "Pumps"],
-  ["ORIFICES", "Orifices"],
-  ["WEIRS", "Weirs"],
-  ["OUTLETS", "Outlets"],
-  ["XSECTIONS", "Cross-sections"],
-  ["LOSSES", "Losses"],
-  ["SUBCATCHMENTS", "Subcatchments"],
-  ["SUBAREAS", "Subareas"],
-  ["INFILTRATION", "Infiltration"],
-  ["RAINGAGES", "Rain gages"],
-  ["INFLOWS", "Direct inflows"],
-  ["DWF", "Dry weather flows"],
-  ["RDII", "RDII"],
-  ["COORDINATES", "Node coordinates"],
-];
+  useEffect(() => {
+    if (!path) return;
+    // A short wait: one reload for a burst of edits.
+    return latest(
+      () => api.grid(section),
+      (g) => (setGrid(g), setError(null)),
+      (e) => setError(errorText(e)),
+      120,
+    );
+  }, [section, revision, path]);
 
-type Cell = { r: number; c: number };
+  /** Edits cells; the table shows the new values at once (the reload that follows confirms them). */
+  const setCells = async (cells: GridCell[]) => {
+    if (!grid) return;
+    const o = await edit({ op: "set_cells", section: grid.section, cells });
+    if (o) setGrid((g) => (g && g.section === grid.section ? withCells(g, cells) : g));
+  };
+  return { grid, error, setCells };
+}
 
 /** Spreadsheet-like editor of one section: one row per line, one column per field. */
 export function TablePanel() {
-  const model = useStore((s) => s.model);
+  const hasModel = useStore((s) => !!s.model);
   const selection = useStore((s) => s.selection);
   const [section, setSection] = useState("CONDUITS");
-  const [grid, setGrid] = useState<Grid | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { grid, error, setCells } = useGrid(section);
   const [filter, setFilter] = useState("");
   const [selOnly, setSelOnly] = useState(false);
-  const [sort, setSort] = useState<{ col: number; asc: boolean } | null>(null);
+  const [sort, setSort] = useState<Sort | null>(null);
   const [active, setActive] = useState<Cell | null>(null);
   const [anchor, setAnchor] = useState<Cell | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [scroll, setScroll] = useState(0);
-  const [height, setHeight] = useState(300);
-  const box = useRef<HTMLDivElement>(null);
   // Keyboard focus lives in a hidden text area: clipboard events always reach an
   // editable element (a focused div gets none when nothing is selected).
   const keys = useRef<HTMLTextAreaElement>(null);
@@ -56,26 +57,7 @@ export function TablePanel() {
     k.focus({ preventScroll: true });
     k.select();
   };
-  const revision = model?.revision ?? 0;
-
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [grid !== null]);
-
-  useEffect(() => {
-    if (!model) return;
-    const t = setTimeout(() => {
-      api
-        .grid(section)
-        .then((g) => (setGrid(g), setError(null)))
-        .catch((e) => setError(errorText(e)));
-    }, 120);
-    return () => clearTimeout(t);
-  }, [section, revision, model?.path]);
+  const { box, onScroll, rowsInView, height } = useVirtualRows(grid !== null);
 
   useEffect(() => {
     setActive(null);
@@ -84,34 +66,16 @@ export function TablePanel() {
     setSort(null);
   }, [section]);
 
-  // Rows shown: filtered (text, selection) and sorted.
-  const view = useMemo(() => {
-    if (!grid) return [];
-    const f = filter.trim().toLowerCase();
-    const sel = selOnly ? new Set(selection.filter((o) => o.kind === grid.object_kind).map((o) => o.index)) : null;
-    let idx = grid.rows.map((_, i) => i);
-    if (sel) idx = idx.filter((i) => grid.rows[i].object !== null && sel.has(grid.rows[i].object!));
-    if (f) idx = idx.filter((i) => grid.rows[i].cells.some((c) => c !== null && c.toLowerCase().includes(f)));
-    if (sort) {
-      const c = sort.col;
-      const key = (i: number) => grid.rows[i].cells[c] ?? "";
-      const allNum = idx.every((i) => key(i) === "" || Number.isFinite(Number(key(i))));
-      idx.sort((a, b) => {
-        const x = key(a);
-        const y = key(b);
-        const d = allNum ? (x === "" ? Infinity : Number(x)) - (y === "" ? Infinity : Number(y)) || 0 : x.localeCompare(y, undefined, { numeric: true });
-        return sort.asc ? d : -d;
-      });
-    }
-    return idx;
-  }, [grid, filter, selOnly, selection, sort]);
-
+  /** Rows of the objects selected on the map. */
   const selected = useMemo(() => {
     if (!grid) return new Set<number>();
     return new Set(selection.filter((o) => o.kind === grid.object_kind).map((o) => o.index));
   }, [grid, selection]);
 
-  if (!model) return <div className="panel-empty">Open a model first.</div>;
+  // Rows shown: filtered (text, selection) and sorted.
+  const view = useMemo(() => (grid ? rowsShown(grid, filter, selOnly ? selected : null, sort) : []), [grid, filter, selOnly, selected, sort]);
+
+  if (!hasModel) return <div className="panel-empty">Open a model first.</div>;
 
   const ncol = grid?.columns.length ?? 0;
   const inRange = (r: number, c: number) => {
@@ -123,9 +87,9 @@ export function TablePanel() {
   const scrollTo = (r: number) => {
     const el = box.current;
     if (!el) return;
-    const top = (r + 1) * ROW_H;
-    if (top < el.scrollTop + ROW_H) el.scrollTop = top - ROW_H;
-    else if (top + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_H - el.clientHeight;
+    const top = (r + 1) * ROW_HEIGHT;
+    if (top < el.scrollTop + ROW_HEIGHT) el.scrollTop = top - ROW_HEIGHT;
+    else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_HEIGHT - el.clientHeight;
   };
   const move = (dr: number, dc: number, extend: boolean) => {
     if (!active) return;
@@ -134,32 +98,6 @@ export function TablePanel() {
     else if (!anchor) setAnchor(active);
     setActive(next);
     scrollTo(next.r);
-  };
-  /** Edits cells; the table shows the new values at once (the reload that follows confirms them). */
-  const setCells = async (cells: GridCell[]) => {
-    if (!grid) return;
-    const o = await edit({ op: "set_cells", section: grid.section, cells });
-    if (!o) return;
-    const col = new Map(grid.columns.map((c, i) => [c.key, i]));
-    const byKey = new Map<string, GridCell[]>();
-    for (const c of cells) {
-      const k = c.key.join(" ").toUpperCase();
-      byKey.set(k, [...(byKey.get(k) ?? []), c]);
-    }
-    setGrid((g) => {
-      if (!g || g.section !== grid.section) return g;
-      const rows = g.rows.map((r) => {
-        const mine = byKey.get(r.key.join(" ").toUpperCase());
-        if (!mine) return r;
-        const out = [...r.cells];
-        for (const c of mine) {
-          const i = col.get(c.field);
-          if (i !== undefined && out[i] !== null) out[i] = c.value;
-        }
-        return { ...r, cells: out };
-      });
-      return { ...g, rows };
-    });
   };
   const commit = async (value: string, then?: () => void) => {
     setEditing(null);
@@ -176,13 +114,7 @@ export function TablePanel() {
   const onCopy = (e: React.ClipboardEvent) => {
     if (!grid || !active || editing !== null) return;
     e.preventDefault();
-    const a = anchor ?? active;
-    const lines: string[] = [];
-    for (let r = Math.min(a.r, active.r); r <= Math.max(a.r, active.r); r++) {
-      const cells: string[] = [];
-      for (let c = Math.min(a.c, active.c); c <= Math.max(a.c, active.c); c++) cells.push(rowOf(r).cells[c] ?? "");
-      lines.push(cells.join("\t"));
-    }
+    const lines = rangeLines(grid, view, anchor ?? active, active);
     e.clipboardData.setData("text/plain", lines.join("\r\n"));
     notify(`Copied ${lines.length} row(s)`);
   };
@@ -193,19 +125,7 @@ export function TablePanel() {
   };
   const paste = async (text: string) => {
     if (!grid || !active || !text) return;
-    const data = text.replace(/\r?\n$/, "").split(/\r?\n/).map((l) => l.split("\t"));
-    const cells: GridCell[] = [];
-    let skipped = 0;
-    data.forEach((line, i) =>
-      line.forEach((v, j) => {
-        const r = active.r + i;
-        const c = active.c + j;
-        if (r >= view.length || c >= ncol) return void skipped++;
-        const row = rowOf(r);
-        if (c === 0 || row.cells[c] === null) return void skipped++;
-        if (row.cells[c] !== v.trim()) cells.push({ key: row.key, field: grid.columns[c].key, value: v.trim() });
-      }),
-    );
+    const { cells, skipped } = pastedCells(grid, view, active, text);
     if (cells.length === 0) return notify(skipped ? `Nothing pasted: ${skipped} cell(s) cannot be edited here` : "Nothing changed");
     await setCells(cells);
     if (skipped) notify(`${skipped} cell(s) skipped (names, fields that do not apply, outside the table)`);
@@ -214,8 +134,8 @@ export function TablePanel() {
     const ctrl = e.ctrlKey || e.metaKey;
     const k = e.key;
     // Keys stay in the table (arrows would move the timeline, Delete delete objects),
-    // except undo, redo and save.
-    if (!(ctrl && ["z", "y", "s"].includes(k.toLowerCase()))) e.stopPropagation();
+    // except undo, redo, save, open and new.
+    if (!(ctrl && ["z", "y", "s", "o", "n"].includes(k.toLowerCase()))) e.stopPropagation();
     if (editing !== null || !active) return;
     const moves: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], Tab: [0, e.shiftKey ? -1 : 1] };
     if (moves[k]) {
@@ -224,7 +144,7 @@ export function TablePanel() {
     }
     if (k === "PageDown" || k === "PageUp") {
       e.preventDefault();
-      return move((k === "PageDown" ? 1 : -1) * Math.floor(height / ROW_H), 0, e.shiftKey);
+      return move((k === "PageDown" ? 1 : -1) * Math.floor(height / ROW_HEIGHT), 0, e.shiftKey);
     }
     const editable = active.c > 0 && rowOf(active.r)?.cells[active.c] !== null;
     if ((k === "Enter" || k === "F2") && editable) {
@@ -253,8 +173,7 @@ export function TablePanel() {
     const obj = rowOf(r).object;
     if (c === 0 && obj !== null && grid) setState({ selection: [{ kind: grid.object_kind, index: obj }] });
   };
-  const first = Math.max(0, Math.floor(scroll / ROW_H) - 10);
-  const last = Math.min(view.length, first + Math.ceil(height / ROW_H) + 20);
+  const { first, last, before, after } = rowsInView(view.length);
   const doExport = () =>
     grid &&
     exportTable(
@@ -297,7 +216,7 @@ export function TablePanel() {
           onKeyDown={onKey}
           onCopy={onCopy}
           onPaste={onPaste}
-          onScroll={(e) => setScroll((e.target as HTMLDivElement).scrollTop)}
+          onScroll={onScroll}
         >
           <textarea ref={keys} className="grid-keys" value=" " onChange={() => {}} aria-label="Table keyboard" />
           <table className="grid">
@@ -313,7 +232,7 @@ export function TablePanel() {
               </tr>
             </thead>
             <tbody>
-              <tr style={{ height: first * ROW_H }} />
+              <tr style={{ height: before }} />
               {view.slice(first, last).map((ri, k) => {
                 const r = first + k;
                 const row = grid.rows[ri];
@@ -348,7 +267,7 @@ export function TablePanel() {
                   </tr>
                 );
               })}
-              <tr style={{ height: (view.length - last) * ROW_H }} />
+              <tr style={{ height: after }} />
             </tbody>
           </table>
           {choices && (

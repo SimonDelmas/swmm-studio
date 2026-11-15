@@ -26,20 +26,26 @@ pub fn parse_time(s: &str) -> Option<TimeDelta> {
     let s = s.trim();
     if !s.contains(':') {
         let hours: f64 = s.parse().ok()?;
-        return (hours >= 0.0).then(|| TimeDelta::milliseconds((hours * 3_600_000.0).round() as i64));
+        let ms = (hours * 3_600_000.0).round();
+        // Beyond this (about 30 000 years) it is not a time, and date arithmetic would overflow.
+        return (0.0..1e15).contains(&ms).then(|| TimeDelta::milliseconds(ms as i64));
     }
     let mut it = s.split(':');
     let h: i64 = it.next()?.trim().parse().ok()?;
     let m: i64 = it.next().map_or(Some(0), |x| x.trim().parse().ok())?;
     let sec: i64 = it.next().map_or(Some(0), |x| x.trim().parse().ok())?;
-    (h >= 0 && m >= 0 && sec >= 0).then(|| TimeDelta::seconds(h * 3600 + m * 60 + sec))
+    if h < 0 || m < 0 || sec < 0 {
+        return None;
+    }
+    let total = h.checked_mul(3600)?.checked_add(m.checked_mul(60)?)?.checked_add(sec)?;
+    TimeDelta::try_seconds(total)
 }
 
 /// Combines a date string and an optional time string.
 pub fn parse_datetime(date: &str, time: Option<&str>) -> Option<NaiveDateTime> {
     let d = parse_date(date)?.and_time(NaiveTime::MIN);
     match time {
-        Some(t) => Some(d + parse_time(t)?),
+        Some(t) => d.checked_add_signed(parse_time(t)?),
         None => Some(d),
     }
 }
@@ -47,6 +53,14 @@ pub fn parse_datetime(date: &str, time: Option<&str>) -> Option<NaiveDateTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn absurd_times_are_rejected() {
+        assert_eq!(parse_time("10000000000000000:00"), None);
+        assert_eq!(parse_time("1e30"), None);
+        assert_eq!(parse_datetime("01/01/2020", Some("9000000000000:00")), None);
+        assert!(parse_datetime("01/01/2020", Some("36:00:00")).is_some());
+    }
 
     #[test]
     fn dates() {
