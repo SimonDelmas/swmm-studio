@@ -11,7 +11,7 @@ mod project;
 mod runs;
 mod session;
 
-use tauri::{Emitter, Manager, State};
+use tauri::State;
 
 struct LaunchFile(Option<String>);
 
@@ -27,25 +27,9 @@ fn inp_arg(args: impl IntoIterator<Item = String>) -> Option<String> {
 }
 
 fn main() {
+    // No single-instance lock: each launch (double-click on an .inp, "Open with") is its own
+    // process with its own model, so several models can be open side by side.
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-            // A second launch (double-click on another .inp) hands its file to this window.
-            let file = inp_arg(args).map(|a| {
-                let p = std::path::PathBuf::from(&a);
-                if p.is_absolute() {
-                    a
-                } else {
-                    std::path::Path::new(&cwd).join(p).to_string_lossy().into_owned()
-                }
-            });
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-            }
-            if let Some(f) = file {
-                let _ = app.emit("open-file", f);
-            }
-        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::default())
         .manage(LaunchFile(inp_arg(std::env::args())))

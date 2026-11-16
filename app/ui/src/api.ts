@@ -169,6 +169,3 @@ export function errorText(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
 }
 
-export function onOpenFile(f: (path: string) => void): Promise<UnlistenFn> {
-  return listen<string>("open-file", (e) => f(e.payload));
-}
