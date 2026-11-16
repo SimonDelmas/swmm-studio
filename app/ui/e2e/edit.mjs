@@ -182,13 +182,17 @@ await shot("2-added");
 await step("drag the new node; its conduit follows", async () => {
   await page.click('button[title^="Move: drag"]');
   const [x, y] = await nodeXY("J4");
+  // Measured from J1, which does not move: the view itself may still be settling.
+  const [rx, ry] = await nodeXY("J1");
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + 40, y + 25, { steps: 6 });
   await page.mouse.up();
   await until(() => window.swmmStudio.getState().model.undo?.startsWith("Move J4"));
   const [x2, y2] = await nodeXY("J4");
-  if (Math.abs(x2 - x - 40) > 2 || Math.abs(y2 - y - 25) > 2) fail(`node at ${x2 - x}, ${y2 - y}`);
+  const [rx2, ry2] = await nodeXY("J1");
+  const [dx, dy] = [x2 - rx2 - (x - rx), y2 - ry2 - (y - ry)];
+  if (Math.abs(dx - 40) > 2 || Math.abs(dy - 25) > 2) fail(`node moved by ${dx}, ${dy} (view moved by ${rx2 - rx}, ${ry2 - ry})`);
   // The conduit ends at the node.
   const ok = await S(() => {
     const st = window.swmmStudio.getState();

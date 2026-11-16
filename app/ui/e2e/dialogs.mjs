@@ -74,10 +74,8 @@ await step("object names are asked once for all the links of a panel; a link sel
   // loaded), so that a load started as it opens counts too. Nothing else on screen shows names.
   await S(() => {
     const api = window.swmmStudio.api;
-    if (!window.idsCalls) {
-      const ids = api.ids;
-      api.ids = (kind) => (window.idsCalls.push(kind), ids(kind));
-    }
+    window.idsOriginal ??= api.ids;
+    api.ids = (kind) => (window.idsCalls.push(kind), window.idsOriginal(kind));
     window.idsCalls = [];
     window.swmmStudio.setState({ selection: [], message: null, labels: false, sideTab: "props" });
   });
@@ -110,6 +108,7 @@ await step("object names are asked once for all the links of a panel; a link sel
   await link2.click();
   await page.waitForFunction((i) => { const s = window.swmmStudio.getState().selection; return s[0]?.kind === "node" && s[0].index === i; }, j2now.index, { timeout: 5000 });
   await S(() => window.swmmStudio.undo());
+  await S(() => (window.swmmStudio.api.ids = window.idsOriginal));
   return calls;
 });
 
@@ -269,17 +268,20 @@ await step("a delete waiting for its plan is dropped when another model opens me
     const plan = api.deletePlan;
     const edit = api.edit;
     let edits = 0;
+    let plans = 0;
     api.edit = async (...a) => (edits++, edit(...a));
     const run = async (answer) => {
       let release;
       const gate = new Promise((res) => (release = res));
       api.deletePlan = async (objects) => {
+        plans++;
         await gate;
         if (answer === "fail") throw new Error("test: plan failed");
         return plan(objects);
       };
       st.setState({ message: null });
       const j1 = await api.findObject("J1");
+      if (!j1) throw new Error("J1 is missing before the test");
       // J1 has links: its delete asks for confirmation once the plan is known.
       const deleting = st.deleteObjects([j1]);
       await st.openModel(p);
@@ -291,13 +293,14 @@ await step("a delete waiting for its plan is dropped when another model opens me
     try {
       const ok = await run("ok");
       const failed = await run("fail");
-      return { ok, failed, edits };
+      return { ok, failed, edits, plans };
     } finally {
       api.deletePlan = plan;
       api.edit = edit;
       st.setState({ crsDialog: false });
     }
   }, model);
+  if (r.plans !== 2) fail(`the delete plan was asked ${r.plans} times instead of twice`);
   if (r.ok.pending) fail("the confirmation of a delete in the previous model was shown");
   if (r.edits !== 0 || r.ok.dirty) fail(`the delete reached the model opened since: ${r.edits} edits, dirty=${r.ok.dirty}`);
   if (/plan failed/.test(r.failed.message)) fail(`the failure of the previous model's delete was shown: "${r.failed.message}"`);

@@ -340,7 +340,13 @@ await step("Sections as text: edit [REPORT] and apply", async () => {
   await page.waitForSelector(".sections-text textarea");
   await page.locator(".sections-list label input").check();
   await page.locator(".sections-list .summary-item", { hasText: "[REPORT]" }).click();
-  await until(() => !document.querySelector(".sections-text textarea").disabled);
+  // The section changes once the click is handled (it may first ask about unapplied
+  // changes): wait for [REPORT] to be the one shown, with its text loaded.
+  await until(
+    () =>
+      document.querySelector(".sections-list .summary-item.active")?.textContent?.startsWith("[REPORT]") &&
+      !document.querySelector(".sections-text textarea").disabled,
+  );
   const ta = page.locator(".sections-text textarea");
   await ta.fill((await ta.inputValue()) + "NODES J1 J2\n");
   await page.locator(".modal button.primary", { hasText: "Apply" }).click();
