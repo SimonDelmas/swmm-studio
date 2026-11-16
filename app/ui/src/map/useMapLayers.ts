@@ -40,10 +40,10 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
   const linkValues = useLayerValues("link", styles.link, period, resultsKey, valuesKey, compareKey);
   const subValues = useLayerValues("subcatchment", styles.subcatchment, period, resultsKey, valuesKey, compareKey);
 
-  // Labels need the IDs.
+  // Labels need the IDs, also when an edit dropped them (they are then asked again).
   useEffect(() => {
-    if (labels && model) void ensureIds(["node", "link"]);
-  }, [labels, modelKey]);
+    if (labels && model) ensureIds(["node", "link"]).catch(() => {});
+  }, [labels, modelKey, ids]);
 
   const coordSystem = g?.space === "lonlat" ? COORDINATE_SYSTEM.LNGLAT : COORDINATE_SYSTEM.CARTESIAN;
 

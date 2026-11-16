@@ -8,11 +8,12 @@ import type { Issue } from "../analysisTypes";
 
 /** Runs the model checks; the result is kept in the store. Errors are thrown. */
 export async function validateModel(): Promise<Issue[]> {
-  const checked = getState().model;
-  // An answer for another model, or an earlier state of this one, is dropped: a newer check follows.
+  const checked = getState();
+  // An answer for another opening (another model, or the same file opened again) or an
+  // earlier state of this one is dropped: a newer check follows.
   const current = () => {
-    const m = getState().model;
-    return m?.path === checked?.path && m?.revision === checked?.revision;
+    const now = getState();
+    return now.modelSeq === checked.modelSeq && now.model?.revision === checked.model?.revision;
   };
   try {
     const issues = await api.validate();
@@ -28,9 +29,11 @@ export async function validateModel(): Promise<Issue[]> {
 export function useModelChecks() {
   const path = useStore((s) => s.model?.path);
   const revision = useStore((s) => s.model?.revision ?? 0);
+  // Also when the same file is opened again (same path, revision 0 again).
+  const opening = useStore((s) => s.modelSeq);
   useEffect(() => {
     if (!path) return;
     const t = setTimeout(() => void validateModel().catch(() => {}), 300);
     return () => clearTimeout(t);
-  }, [path, revision]);
+  }, [path, revision, opening]);
 }

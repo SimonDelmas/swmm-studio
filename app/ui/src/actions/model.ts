@@ -2,43 +2,51 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
-import { confirmDiscard } from "./edit";
-import { getState, notify, resetForModel, setState } from "../store";
+import { afterEdits, confirmDiscard, readGeometry } from "./edit";
+import { getState, notify, resetForModel, setState, startBusy } from "../store";
 import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
 import { mapPlotSeries } from "./views";
 import type { ModelInfo } from "../types";
 
-export async function openModel(path: string) {
-  setState({ busy: "Opening model…", playing: false });
-  try {
-    const model = await api.openModel(path);
-    const geometry = await api.geometry();
-    resetForModel(model, geometry);
-    const notes = [...model.notes];
-    if (model.project_error) notes.push(`Project file ignored: ${model.project_error}`);
-    // One message: the status bar shows the last one only.
-    if (notes.length > 0) notify(notes.join(" — "), true);
-    if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
+/** Opens a model file (after the edits already asked for: they belong to the current model). */
+export function openModel(path: string): Promise<void> {
+  const done = startBusy("Opening model…");
+  setState({ playing: false });
+  return afterEdits(async () => {
+    try {
+      const model = await api.openModel(path);
+      const { geometry, error } = await readGeometry();
+      resetForModel(model, geometry);
+      const notes = [...model.notes];
+      if (model.project_error) notes.push(`Project file ignored: ${model.project_error}`);
+      if (error) notes.push(error);
+      // One message: the status bar shows the last one only.
+      if (notes.length > 0) notify(notes.join(" — "), true);
+      if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
+    } catch (e) {
+      notify(errorText(e), true);
+    } finally {
+      done();
+    }
+  });
 }
 
 /** Creates an empty model in a new file and opens it. */
-export async function newModel(path: string, flowUnits: string) {
-  setState({ busy: "Creating model…" });
-  try {
-    const model = await api.newModel(path, flowUnits);
-    const geometry = await api.geometry();
-    resetForModel(model, geometry);
-    setState({ dialog: null, crsDialog: true });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
+export function newModel(path: string, flowUnits: string): Promise<void> {
+  const done = startBusy("Creating model…");
+  return afterEdits(async () => {
+    try {
+      const model = await api.newModel(path, flowUnits);
+      const { geometry, error } = await readGeometry();
+      resetForModel(model, geometry);
+      setState({ dialog: null, crsDialog: true });
+      if (error) notify(error, true);
+    } catch (e) {
+      notify(errorText(e), true);
+    } finally {
+      done();
+    }
+  });
 }
 
 /** Asks for a model file and opens it (unsaved changes are offered to be saved first). */
@@ -69,25 +77,30 @@ export function setResultsInfo(model: ModelInfo, resetTime: boolean) {
 export async function chooseResults() {
   const path = await open({ filters: [{ name: "SWMM results", extensions: ["out"] }] });
   if (typeof path !== "string") return;
-  setState({ busy: "Opening results…", playing: false });
+  const done = startBusy("Opening results…");
+  setState({ playing: false });
   try {
     setResultsInfo(await api.openResults(path), true);
   } catch (e) {
     notify(errorText(e), true);
   } finally {
-    setState({ busy: null });
+    done();
   }
 }
 
-/** Sets the coordinate system of the model (null: local coordinates); errors are thrown. */
+/**
+ * Sets the coordinate system of the model (null: local coordinates); errors are thrown. Once
+ * the back-end has changed it, the new one is shown, with or without a map.
+ */
 export async function applyCrs(id: string | null) {
-  setState({ busy: "Reprojecting…" });
+  const done = startBusy("Reprojecting…");
   try {
     const model = await api.setCrs(id);
-    const geometry = await api.geometry();
+    const { geometry, error } = await readGeometry();
     // The saved view belongs to the previous coordinate space.
     setState({ model, geometry, crsDialog: false, fitExtent: getState().fitExtent + 1 });
+    if (error) notify(error, true);
   } finally {
-    setState({ busy: null });
+    done();
   }
 }

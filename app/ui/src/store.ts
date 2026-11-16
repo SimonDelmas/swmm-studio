@@ -120,7 +120,8 @@ export function setState(patch: Partial<State> | ((s: State) => Partial<State>))
   listeners.forEach((l) => l());
 }
 
-export function resetForModel(model: ModelInfo, geometry: Geometry) {
+/** Shows a model just opened or created; `geometry` is null when its map could not be read. */
+export function resetForModel(model: ModelInfo, geometry: Geometry | null) {
   const ui = (model.project.ui ?? {}) as { styles?: Partial<Record<StyledKind, LayerStyle>>; labels?: boolean };
   const styles = { ...initial.styles };
   for (const k of ["node", "link", "subcatchment"] as StyledKind[]) {
@@ -153,6 +154,8 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     // The console of the previous model does not belong to this one.
     run: state.run.running ? state.run : initial.run,
     modelSeq: state.modelSeq + 1,
+    // Dialogs show and edit the previous model: their values must not reach this one.
+    dialog: null,
     tableEditor: null,
     pendingDelete: null,
   });
@@ -165,6 +168,26 @@ export function subscribe(l: () => void) {
 
 export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(subscribe, () => sel(state));
+}
+
+/** Long tasks running, in the order they started: `busy` shows the last one. */
+const busyTasks: { text: string }[] = [];
+
+/**
+ * Marks the app busy with `text` until the returned function is called. Tasks can overlap
+ * (results loaded while a model waits to open): the app stays busy until all have ended.
+ */
+export function startBusy(text: string): () => void {
+  const task = { text };
+  busyTasks.push(task);
+  setState({ busy: text });
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    busyTasks.splice(busyTasks.indexOf(task), 1);
+    setState({ busy: busyTasks.at(-1)?.text ?? null });
+  };
 }
 
 export function notify(text: string, error = false) {

@@ -68,6 +68,13 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Fixed
 
+- A model opened while an edit, undo or delete was on its way (for example from the file
+  explorer while a dialog was open) can no longer receive that change with the object
+  numbering of the previous model. The dialogs that edit the previous model (options,
+  climatology, sections, tables, delete confirmation) close when another one opens, and the
+  Issues tab is filled again when the same file is reopened.
+- A model whose map cannot be read is shown without a map and with the reason, instead
+  of the previous model staying on screen while the new one was the one being edited.
 - Empty model view: the origin of a coordinate system counted from a named prime meridian
   other than Paris (Ferro, Lisbon, Madrid, Rome, Bern, Oslo…) or given as the centre of an
   oblique projection is found too.

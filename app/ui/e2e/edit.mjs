@@ -51,6 +51,32 @@ const nodeXY = (id) =>
     const g = st.geometry;
     return window.swmmStudio.mapProject([g.nodes[2 * i], g.nodes[2 * i + 1]]);
   }, id);
+/** Screen positions of nodes, read together once two reads 100 ms apart agree (the view is still). */
+async function stillXY(...ids) {
+  // All the nodes in one call, so that they come from the same view.
+  const read = () =>
+    S((ids) => {
+      const st = window.swmmStudio.getState();
+      const g = st.geometry;
+      return ids.flatMap((id) => {
+        const i = st.ids.node ? st.ids.node.indexOf(id) : -1;
+        if (i < 0) throw new Error(`node ${id} not in the id list`);
+        return window.swmmStudio.mapProject([g.nodes[2 * i], g.nodes[2 * i + 1]]);
+      });
+    }, ids);
+  let prev = await read();
+  for (let i = 0; i < 50; i++) {
+    await page.waitForTimeout(100);
+    const now = await read();
+    if (now.every((v, k) => Math.abs(v - prev[k]) < 0.5)) {
+      const out = [];
+      for (let k = 0; k < now.length; k += 2) out.push([now[k], now[k + 1]]);
+      return out;
+    }
+    prev = now;
+  }
+  fail(`the map view did not settle (${ids.join(", ")})`);
+}
 const loadIds = () =>
   S(async () => {
     const st = window.swmmStudio;
@@ -181,14 +207,18 @@ await shot("2-added");
 
 await step("drag the new node; its conduit follows", async () => {
   await page.click('button[title^="Move: drag"]');
-  const [x, y] = await nodeXY("J4");
+  // The drag puts the node under the pointer: the view must be still while it happens
+  // (it may still be settling from the zoom to the model at the start).
+  const [[x, y], [rx, ry]] = await stillXY("J4", "J1");
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + 40, y + 25, { steps: 6 });
   await page.mouse.up();
   await until(() => window.swmmStudio.getState().model.undo?.startsWith("Move J4"));
-  const [x2, y2] = await nodeXY("J4");
-  if (Math.abs(x2 - x - 40) > 2 || Math.abs(y2 - y - 25) > 2) fail(`node at ${x2 - x}, ${y2 - y}`);
+  // Measured from J1, which does not move, in one read: a view moving after the drag cancels out.
+  const [[x2, y2], [rx2, ry2]] = await stillXY("J4", "J1");
+  const [dx, dy] = [x2 - rx2 - (x - rx), y2 - ry2 - (y - ry)];
+  if (Math.abs(dx - 40) > 2 || Math.abs(dy - 25) > 2) fail(`node moved by ${dx}, ${dy} (view moved by ${rx2 - rx}, ${ry2 - ry})`);
   // The conduit ends at the node.
   const ok = await S(() => {
     const st = window.swmmStudio.getState();
@@ -200,7 +230,7 @@ await step("drag the new node; its conduit follows", async () => {
   if (!ok) fail("conduit does not follow the node");
   const diff = await geometryMatches();
   if (diff.length) fail(`patched geometry differs: ${diff}`);
-  return { dx: x2 - x, dy: y2 - y };
+  return { dx, dy };
 });
 
 await step("vertex editing: insert by dragging a midpoint, delete with Alt+click", async () => {

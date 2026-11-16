@@ -1,11 +1,12 @@
 // Model editing from the UI: every change goes through the backend, which owns the
-// model and its undo history. Requests are queued so that they apply in order.
+// model and its undo history. Requests are queued so that they apply in order, and
+// opening a model waits its turn in the same queue (see `afterEdits`).
 
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { applyPatch } from "../geometryPatch";
 import { getState, notify, setState, type State } from "../store";
-import { sameRef, type EditOutcome, type EditRequest, type ObjKind, type ObjRef } from "../types";
+import { sameRef, type EditOutcome, type EditRequest, type Geometry, type ObjKind, type ObjRef } from "../types";
 import { seriesKey, type PlotView } from "../uiTypes";
 import { indexOfId } from "./ids";
 import { mapPlotSeries } from "./views";
@@ -18,6 +19,28 @@ function enqueue<T>(f: () => Promise<T>): Promise<T> {
   queue = next.catch(() => {});
   return next;
 }
+
+/**
+ * Runs `f` once the edits asked for before it are done, and before those asked for after
+ * it: opening a model goes through here, so that no edit meant for one model reaches the
+ * next one. `f` must not wait for an edit itself.
+ */
+export const afterEdits = enqueue;
+
+/**
+ * The map of the model as the back-end holds it, or null with the reason when it cannot be
+ * read. The back-end has already changed the model: the change is shown anyway, without a map.
+ */
+export async function readGeometry(): Promise<{ geometry: Geometry | null; error: string | null }> {
+  try {
+    return { geometry: await api.geometry(), error: null };
+  } catch (e) {
+    return { geometry: null, error: `the map cannot be drawn: ${errorText(e)}` };
+  }
+}
+
+/** Thrown for an edit asked for in a model that has been replaced (opened again, or another one) since. */
+const STALE = "another model was opened: the change was not applied";
 
 /** Plotted series found again by name after the indices changed (dropped when gone). */
 function remapPlotViews(views: PlotView[], ids: State["ids"]): PlotView[] {
@@ -48,9 +71,15 @@ function remapProfiles(s: State, nodeIds: string[]): Pick<State, "profileViews" 
   return { profileViews, profileNodes: shown ? shown.nodes : [], profileStart: null };
 }
 
-/** Updates the UI after the backend changed the model. */
-export async function applyOutcome(o: EditOutcome) {
+/**
+ * Updates the UI after the backend changed the model. `seq`: the opening of the model the
+ * edit was made in; when another model (or the same file again) was opened since, the
+ * outcome no longer applies and is dropped. `label` is said before the edit's own message
+ * (undo and redo say what they undid).
+ */
+export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq, label?: string) {
   const s = getState();
+  if (s.modelSeq !== seq) return;
   const info = { ...o.info };
   // Results and report only change when the network is rebuilt (objects matched again):
   // keeping them unchanged spares the panels that depend on them a reload.
@@ -60,7 +89,8 @@ export async function applyOutcome(o: EditOutcome) {
   }
   const same = o.selection.length === s.selection.length && o.selection.every((r, i) => sameRef(r, s.selection[i]));
   const patch: Partial<State> = { model: info, selection: same ? s.selection : o.selection };
-  if (o.geometry) patch.geometry = await api.geometry();
+  let mapError: string | null = null;
+  if (o.geometry) ({ geometry: patch.geometry, error: mapError } = await readGeometry());
   else if (o.patch && s.geometry) patch.geometry = applyPatch(s.geometry, o.patch);
   if (o.rebuilt) {
     // Indices changed: reload the cached IDs (the node names too when profiles need them).
@@ -75,15 +105,24 @@ export async function applyOutcome(o: EditOutcome) {
     patch.plotViews = remapPlotViews(now.plotViews, ids);
     Object.assign(patch, remapProfiles(now, ids.node ?? []));
   }
+  if (getState().modelSeq !== seq) return;
   setState(patch);
-  if (o.message) notify(o.message);
+  // One message (the status bar shows the last one): what was done, then why the map is empty.
+  const text = [label, o.message, mapError].filter(Boolean).join(" — ");
+  if (text) notify(text, mapError !== null);
 }
 
-/** Applies an edit; errors are thrown (for inline display). */
-export function tryEdit(req: EditRequest): Promise<EditOutcome> {
+/**
+ * Applies an edit; errors are thrown (for inline display). `seq`: the opening of the model
+ * the request was made for, by default the one open now; a dialog that applies several
+ * edits passes the same one to all, so that none reaches a model opened in between.
+ */
+export function tryEdit(req: EditRequest, seq = getState().modelSeq): Promise<EditOutcome> {
   return enqueue(async () => {
+    // The request names objects by index in the model it was made in.
+    if (getState().modelSeq !== seq) throw new Error(STALE);
     const o = await api.edit(req, getState().selection);
-    await applyOutcome(o);
+    await applyOutcome(o, seq);
     return o;
   });
 }
@@ -93,18 +132,22 @@ export async function edit(req: EditRequest): Promise<EditOutcome | null> {
   try {
     return await tryEdit(req);
   } catch (e) {
-    notify(errorText(e), true);
+    // An edit of the previous model says nothing about the one now open: the status bar
+    // keeps what the opening said.
+    if (!(e instanceof Error && e.message === STALE)) notify(errorText(e), true);
     return null;
   }
 }
 
 /** Undoes or redoes one edit, and says which. */
 function step(apply: (selection: ObjRef[]) => Promise<EditOutcome>) {
+  const seq = getState().modelSeq;
   return enqueue(async () => {
+    // Undo of the model the user was looking at, not of the one opened since.
+    if (getState().modelSeq !== seq) return;
     try {
       const o = await apply(getState().selection);
-      await applyOutcome(o);
-      notify(o.label);
+      await applyOutcome(o, seq, o.label);
     } catch (e) {
       notify(errorText(e), true);
     }
@@ -157,8 +200,11 @@ export async function confirmDiscard(): Promise<boolean> {
 /** Asks for confirmation (with what else goes away), then deletes. */
 export async function deleteObjects(objects: ObjRef[]) {
   if (objects.length === 0) return;
+  const seq = getState().modelSeq;
   try {
     const plan = await api.deletePlan(objects);
+    // The objects are those of the model shown when they were chosen.
+    if (getState().modelSeq !== seq) return;
     const simple = plan.cascade_links.length === 0 && plan.cleared.length === 0 && plan.rules === 0;
     if (simple && objects.length === 1) {
       await edit({ op: "delete", objects });
@@ -166,7 +212,7 @@ export async function deleteObjects(objects: ObjRef[]) {
       setState({ pendingDelete: { objects, plan } });
     }
   } catch (e) {
-    notify(errorText(e), true);
+    if (getState().modelSeq === seq) notify(errorText(e), true);
   }
 }
 

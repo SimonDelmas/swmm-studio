@@ -3,7 +3,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
 import { setResultsInfo } from "../actions/model";
-import { notify, setState, useStore } from "../store";
+import { notify, startBusy, useStore } from "../store";
 import type { RunDto } from "../analysisTypes";
 import type { ModelInfo } from "../types";
 import { CommitInput } from "./CommitInput";
@@ -37,7 +37,7 @@ export function RunsPanel() {
 
   if (!model) return <div className="panel-empty">Open a model first.</div>;
   const act = async (f: () => Promise<ModelInfo>, resetTime: boolean, done: string) => {
-    setState({ busy: "Loading results…" });
+    const finish = startBusy("Loading results…");
     try {
       setResultsInfo(await f(), resetTime);
       notify(done);
@@ -45,7 +45,7 @@ export function RunsPanel() {
     } catch (e) {
       notify(errorText(e), true);
     } finally {
-      setState({ busy: null });
+      finish();
     }
   };
   const remove = async (r: RunDto) => {

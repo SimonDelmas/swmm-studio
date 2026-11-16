@@ -6,7 +6,7 @@ import { setResultsInfo } from "../actions/model";
 import { api, errorText } from "../api";
 import { formatDateTime, formatNumber, parseNumber, periodMs } from "../format";
 import { exportTable } from "../exporting";
-import { getState, notify, setState, useStore } from "../store";
+import { getState, notify, startBusy, useStore } from "../store";
 import { makeStat, STATS, type StatName } from "../uiTypes";
 import { addToPlot } from "../plot/series";
 import { applyStyle } from "../actions/style";
@@ -20,13 +20,13 @@ const num = (v: CellValue) => (typeof v === "number" ? formatNumber(v) : (v ?? "
 export async function chooseComparison() {
   const path = await open({ filters: [{ name: "SWMM results", extensions: ["out"] }] });
   if (typeof path !== "string") return;
-  setState({ busy: "Opening results…" });
+  const done = startBusy("Opening results…");
   try {
     setResultsInfo(await api.openComparison(path), false);
   } catch (e) {
     notify(errorText(e), true);
   } finally {
-    setState({ busy: null });
+    done();
   }
 }
 

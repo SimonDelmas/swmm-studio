@@ -70,7 +70,8 @@ export function MapView() {
           {select.shape}
         </svg>
       )}
-      {space !== "lonlat" && <div className="map-note">Local coordinates (no coordinate system)</div>}
+      {hasModel && !g && <div className="map-note">The map of this model cannot be drawn (see the status bar); open it again to retry.</div>}
+      {g && space !== "lonlat" && <div className="map-note">Local coordinates (no coordinate system)</div>}
       {cursor && <div className="map-cursor">{cursor}</div>}
       {hasModel && <ToolHint tool={tool} sketching={tools.busy || (tool === "profile" && profileStart !== null)} />}
       {!hasModel && <div className="map-empty">Open a SWMM model (.inp) to start.</div>}
