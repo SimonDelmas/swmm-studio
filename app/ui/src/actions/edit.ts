@@ -194,7 +194,7 @@ export async function deleteObjects(objects: ObjRef[]) {
       setState({ pendingDelete: { objects, plan } });
     }
   } catch (e) {
-    notify(errorText(e), true);
+    if (getState().modelSeq === seq) notify(errorText(e), true);
   }
 }
 

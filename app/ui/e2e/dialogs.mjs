@@ -143,10 +143,21 @@ await step("opening a model waits for the edit asked before it; an edit asked wh
       // Asked before the open: it belongs to the model shown, and must finish first.
       const before = st.tryEdit({ op: "delete", objects: [j1] }).then(() => "applied", (e) => String(e?.message ?? e));
       const opening = st.openModel(p);
-      // Asked while the model opens, with the indices of the old one: it must not be sent.
+      // Asked while the model opens, with the indices of the old one: it must not be sent,
+      // whether it reports errors inline (tryEdit) or in the status bar (edit).
       const during = st.tryEdit({ op: "delete", objects: [j1] }).then(() => "applied", (e) => String(e?.message ?? e));
-      const [b, , d] = await Promise.all([before, opening, during]);
-      return { log, before: b, during: d, dirty: st.getState().model?.dirty, dialog: st.getState().dialog, j1After: await api.findObject("J1") };
+      const duringBar = st.edit({ op: "delete", objects: [j1] });
+      const [b, , d, bar] = await Promise.all([before, opening, during, duringBar]);
+      return {
+        log,
+        before: b,
+        during: d,
+        duringBar: bar === null ? "dropped" : "applied",
+        message: st.getState().message?.text ?? "",
+        dirty: st.getState().model?.dirty,
+        dialog: st.getState().dialog,
+        j1After: await api.findObject("J1"),
+      };
     } finally {
       api.openModel = orig.open;
       api.edit = orig.edit;
@@ -156,6 +167,8 @@ await step("opening a model waits for the edit asked before it; an edit asked wh
   if (r.log.join(",") !== "edit start,edit end,open start,open end") fail(`back-end calls in the wrong order: ${r.log.join(", ")}`);
   if (r.before !== "applied") fail(`the edit asked before the open failed: ${r.before}`);
   if (!/another model was opened/.test(r.during)) fail(`the edit asked during the open was ${r.during}`);
+  if (r.duringBar !== "dropped") fail("the edit asked during the open through edit() was applied");
+  if (/another model was opened/.test(r.message)) fail(`the status bar shows the dropped edit: "${r.message}"`);
   if (r.dialog !== null) fail(`the options dialog of the previous model stayed open: ${r.dialog}`);
   if (r.dirty || !r.j1After) fail(`the model opened again was changed: dirty=${r.dirty}, J1=${JSON.stringify(r.j1After)}`);
   return r.log;
