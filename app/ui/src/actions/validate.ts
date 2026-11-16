@@ -29,9 +29,11 @@ export async function validateModel(): Promise<Issue[]> {
 export function useModelChecks() {
   const path = useStore((s) => s.model?.path);
   const revision = useStore((s) => s.model?.revision ?? 0);
+  // Also when the same file is opened again (same path, revision 0 again).
+  const opening = useStore((s) => s.modelSeq);
   useEffect(() => {
     if (!path) return;
     const t = setTimeout(() => void validateModel().catch(() => {}), 300);
     return () => clearTimeout(t);
-  }, [path, revision]);
+  }, [path, revision, opening]);
 }

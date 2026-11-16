@@ -2,43 +2,48 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
-import { confirmDiscard } from "./edit";
+import { afterEdits, confirmDiscard } from "./edit";
 import { getState, notify, resetForModel, setState } from "../store";
 import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
 import { mapPlotSeries } from "./views";
 import type { ModelInfo } from "../types";
 
-export async function openModel(path: string) {
+/** Opens a model file (after the edits already asked for: they belong to the current model). */
+export function openModel(path: string): Promise<void> {
   setState({ busy: "Opening model…", playing: false });
-  try {
-    const model = await api.openModel(path);
-    const geometry = await api.geometry();
-    resetForModel(model, geometry);
-    const notes = [...model.notes];
-    if (model.project_error) notes.push(`Project file ignored: ${model.project_error}`);
-    // One message: the status bar shows the last one only.
-    if (notes.length > 0) notify(notes.join(" — "), true);
-    if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
+  return afterEdits(async () => {
+    try {
+      const model = await api.openModel(path);
+      const geometry = await api.geometry();
+      resetForModel(model, geometry);
+      const notes = [...model.notes];
+      if (model.project_error) notes.push(`Project file ignored: ${model.project_error}`);
+      // One message: the status bar shows the last one only.
+      if (notes.length > 0) notify(notes.join(" — "), true);
+      if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
+    } catch (e) {
+      notify(errorText(e), true);
+    } finally {
+      setState({ busy: null });
+    }
+  });
 }
 
 /** Creates an empty model in a new file and opens it. */
-export async function newModel(path: string, flowUnits: string) {
+export function newModel(path: string, flowUnits: string): Promise<void> {
   setState({ busy: "Creating model…" });
-  try {
-    const model = await api.newModel(path, flowUnits);
-    const geometry = await api.geometry();
-    resetForModel(model, geometry);
-    setState({ dialog: null, crsDialog: true });
-  } catch (e) {
-    notify(errorText(e), true);
-  } finally {
-    setState({ busy: null });
-  }
+  return afterEdits(async () => {
+    try {
+      const model = await api.newModel(path, flowUnits);
+      const geometry = await api.geometry();
+      resetForModel(model, geometry);
+      setState({ dialog: null, crsDialog: true });
+    } catch (e) {
+      notify(errorText(e), true);
+    } finally {
+      setState({ busy: null });
+    }
+  });
 }
 
 /** Asks for a model file and opens it (unsaved changes are offered to be saved first). */

@@ -1,5 +1,6 @@
 // Model editing from the UI: every change goes through the backend, which owns the
-// model and its undo history. Requests are queued so that they apply in order.
+// model and its undo history. Requests are queued so that they apply in order, and
+// opening a model waits its turn in the same queue (see `afterEdits`).
 
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
@@ -18,6 +19,16 @@ function enqueue<T>(f: () => Promise<T>): Promise<T> {
   queue = next.catch(() => {});
   return next;
 }
+
+/**
+ * Runs `f` once the edits asked for before it are done, and before those asked for after
+ * it: opening a model goes through here, so that no edit meant for one model reaches the
+ * next one. `f` must not wait for an edit itself.
+ */
+export const afterEdits = enqueue;
+
+/** Thrown for an edit asked for in a model that has been replaced (opened again, or another one) since. */
+const STALE = "another model was opened: the change was not applied";
 
 /** Plotted series found again by name after the indices changed (dropped when gone). */
 function remapPlotViews(views: PlotView[], ids: State["ids"]): PlotView[] {
@@ -87,8 +98,10 @@ export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
 
 /** Applies an edit; errors are thrown (for inline display). */
 export function tryEdit(req: EditRequest): Promise<EditOutcome> {
+  // The request names objects by index in the model it was made in.
+  const seq = getState().modelSeq;
   return enqueue(async () => {
-    const seq = getState().modelSeq;
+    if (getState().modelSeq !== seq) throw new Error(STALE);
     const o = await api.edit(req, getState().selection);
     await applyOutcome(o, seq);
     return o;
@@ -107,9 +120,11 @@ export async function edit(req: EditRequest): Promise<EditOutcome | null> {
 
 /** Undoes or redoes one edit, and says which. */
 function step(apply: (selection: ObjRef[]) => Promise<EditOutcome>) {
+  const seq = getState().modelSeq;
   return enqueue(async () => {
+    // Undo of the model the user was looking at, not of the one opened since.
+    if (getState().modelSeq !== seq) return;
     try {
-      const seq = getState().modelSeq;
       const o = await apply(getState().selection);
       await applyOutcome(o, seq);
       notify(o.label);
