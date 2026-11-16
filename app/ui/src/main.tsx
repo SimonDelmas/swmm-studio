@@ -5,7 +5,7 @@ import { startRun } from "./actions/run";
 import { validateModel } from "./actions/validate";
 import { api } from "./api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { edit, redo, saveModel, tryEdit, undo } from "./actions/edit";
+import { deleteObjects, edit, redo, saveModel, tryEdit, undo } from "./actions/edit";
 import { loadPlotView, savePlotView } from "./plot/savedViews";
 import { addToPlot } from "./plot/series";
 import { profileFromSelection } from "./profile/profiles";
@@ -32,6 +32,7 @@ import "./styles.css";
   mapProject: (p: [number, number]) => mapProject.current?.(p) ?? null,
   edit,
   tryEdit,
+  deleteObjects,
   undo,
   redo,
   saveModel,

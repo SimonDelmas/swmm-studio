@@ -197,23 +197,30 @@ await step("a model whose map cannot be read is shown anyway, with the reason", 
       throw new Error("test: no geometry");
     };
     let edited;
+    let undone;
     try {
       await st.tryEdit({ op: "delete", objects: [j1] });
       const e = st.getState();
       edited = { revision: e.model.revision > revision, dirty: e.model.dirty, message: e.message?.text ?? "" };
+      // Undo says what it undid and why the map is still empty.
+      await st.undo();
+      undone = { message: st.getState().message?.text ?? "", j1: await api.findObject("J1") };
     } finally {
       api.geometry = geometry;
+      // Back to a model with its map, for what follows, whatever happened above.
+      await st.openModel(p);
+      st.setState({ crsDialog: false });
     }
-    // Back to a model with its map, for what follows.
-    await st.openModel(p);
-    st.setState({ crsDialog: false });
-    return { ...out, edited, mapAfter: st.getState().geometry !== null };
+    return { ...out, edited, undone, mapAfter: st.getState().geometry !== null };
   }, model);
   if (!r.opened) fail("the model was not shown when its map could not be read");
   if (r.geometry !== null) fail("the map of the previous model was kept");
   if (!/map cannot be drawn: .*test: no geometry/.test(r.message)) fail(`no reason given: "${r.message}"`);
   if (!r.edited.revision || !r.edited.dirty) fail(`an edit without a map was not shown: ${JSON.stringify(r.edited)}`);
   if (!/map cannot be drawn/.test(r.edited.message)) fail(`no reason given after the edit: "${r.edited.message}"`);
+  if (!/deleted/.test(r.edited.message)) fail(`the edit's own message was lost: "${r.edited.message}"`);
+  if (!r.undone.j1 || !/map cannot be drawn/.test(r.undone.message) || !/^Undo/i.test(r.undone.message))
+    fail(`undo without a map: ${JSON.stringify(r.undone)}`);
   if (!r.mapAfter) fail("opening again did not bring the map back");
   return r.message;
 });
@@ -252,6 +259,48 @@ await step("the app stays busy while a model opens, even when another task ends 
   }, model);
   if (r.during !== "Opening model…") fail(`busy while the model was still opening: ${JSON.stringify(r.during)}`);
   if (r.after !== null) fail(`still busy once everything ended: ${JSON.stringify(r.after)}`);
+  return r;
+});
+
+await step("a delete waiting for its plan is dropped when another model opens meanwhile", async () => {
+  const r = await S(async (p) => {
+    const st = window.swmmStudio;
+    const api = st.api;
+    const plan = api.deletePlan;
+    const edit = api.edit;
+    let edits = 0;
+    api.edit = async (...a) => (edits++, edit(...a));
+    const run = async (answer) => {
+      let release;
+      const gate = new Promise((res) => (release = res));
+      api.deletePlan = async (objects) => {
+        await gate;
+        if (answer === "fail") throw new Error("test: plan failed");
+        return plan(objects);
+      };
+      st.setState({ message: null });
+      const j1 = await api.findObject("J1");
+      // J1 has links: its delete asks for confirmation once the plan is known.
+      const deleting = st.deleteObjects([j1]);
+      await st.openModel(p);
+      release();
+      await deleting;
+      const s = st.getState();
+      return { pending: s.pendingDelete !== null, message: s.message?.text ?? "", dirty: s.model?.dirty };
+    };
+    try {
+      const ok = await run("ok");
+      const failed = await run("fail");
+      return { ok, failed, edits };
+    } finally {
+      api.deletePlan = plan;
+      api.edit = edit;
+      st.setState({ crsDialog: false });
+    }
+  }, model);
+  if (r.ok.pending) fail("the confirmation of a delete in the previous model was shown");
+  if (r.edits !== 0 || r.ok.dirty) fail(`the delete reached the model opened since: ${r.edits} edits, dirty=${r.ok.dirty}`);
+  if (/plan failed/.test(r.failed.message)) fail(`the failure of the previous model's delete was shown: "${r.failed.message}"`);
   return r;
 });
 

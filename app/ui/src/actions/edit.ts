@@ -74,9 +74,10 @@ function remapProfiles(s: State, nodeIds: string[]): Pick<State, "profileViews" 
 /**
  * Updates the UI after the backend changed the model. `seq`: the opening of the model the
  * edit was made in; when another model (or the same file again) was opened since, the
- * outcome no longer applies and is dropped.
+ * outcome no longer applies and is dropped. `label` is said before the edit's own message
+ * (undo and redo say what they undid).
  */
-export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
+export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq, label?: string) {
   const s = getState();
   if (s.modelSeq !== seq) return;
   const info = { ...o.info };
@@ -106,8 +107,9 @@ export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
   }
   if (getState().modelSeq !== seq) return;
   setState(patch);
-  if (mapError) notify(mapError, true);
-  else if (o.message) notify(o.message);
+  // One message (the status bar shows the last one): what was done, then why the map is empty.
+  const text = [label, o.message, mapError].filter(Boolean).join(" — ");
+  if (text) notify(text, mapError !== null);
 }
 
 /**
@@ -145,8 +147,7 @@ function step(apply: (selection: ObjRef[]) => Promise<EditOutcome>) {
     if (getState().modelSeq !== seq) return;
     try {
       const o = await apply(getState().selection);
-      await applyOutcome(o, seq);
-      notify(o.label);
+      await applyOutcome(o, seq, o.label);
     } catch (e) {
       notify(errorText(e), true);
     }
