@@ -25,15 +25,14 @@ function build(names: string[][]): NameIndex {
 }
 
 /** The index of the names last seen in the store: built once for all the components that read it. */
-let built: { path: string; ids: State["ids"]; index: NameIndex | null } = { path: "", ids: {}, index: null };
+// No index until every kind is known: names of an earlier state of the model would link to
+// the wrong objects once indices have changed.
+let built: { ids: State["ids"]; index: NameIndex | null } = { ids: {}, index: null };
 
-function indexOf(path: string, ids: State["ids"]): NameIndex | null {
-  if (built.ids !== ids || built.path !== path) {
+function indexOf(ids: State["ids"]): NameIndex | null {
+  if (built.ids !== ids) {
     const names = KINDS.map((k) => ids[k]);
-    const complete = names.every((n) => n !== undefined);
-    // While names of this model are loaded again (after an edit), the previous index still serves.
-    const previous = built.path === path ? built.index : null;
-    built = { path, ids, index: complete ? build(names as string[][]) : previous };
+    built = { ids, index: names.every((n) => n !== undefined) ? build(names as string[][]) : null };
   }
   return built.index;
 }
@@ -51,7 +50,7 @@ export function useNameIndex(): NameIndex | null {
     // is tried again after the next edit.
     if (model) ensureIds(KINDS).catch(() => {});
   }, [model, ids, revision]);
-  return model ? indexOf(model, ids) : null;
+  return model ? indexOf(ids) : null;
 }
 
 /** The object a name refers to, preferring kind `prefer` when several share it. */

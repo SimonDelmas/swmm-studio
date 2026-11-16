@@ -70,16 +70,20 @@ await step("Escape does not discard the options dialog; Tab and Shift+Tab stay i
 });
 
 await step("object names are asked once for all the links of a panel; a link selects its object", async () => {
-  // A model opened anew has no names loaded yet.
-  await S((p) => window.swmmStudio.openModel(p), model);
-  await page.waitForFunction(() => window.swmmStudio.getState().busy === null && window.swmmStudio.getState().model, null, { timeout: 30000 });
+  // Every name request is counted from before the model is opened anew (with no names
+  // loaded), so that a load started as it opens counts too. Nothing else on screen shows names.
   await S(() => {
     const api = window.swmmStudio.api;
-    const ids = api.ids;
+    if (!window.idsCalls) {
+      const ids = api.ids;
+      api.ids = (kind) => (window.idsCalls.push(kind), ids(kind));
+    }
     window.idsCalls = [];
-    api.ids = (kind) => (window.idsCalls.push(kind), ids(kind));
-    window.swmmStudio.setState({ crsDialog: false, sideTab: "props" });
+    window.swmmStudio.setState({ selection: [], message: null, labels: false, sideTab: "props" });
   });
+  await S((p) => window.swmmStudio.openModel(p), model);
+  await page.waitForFunction(() => window.swmmStudio.getState().busy === null && window.swmmStudio.getState().model, null, { timeout: 30000 });
+  await S(() => window.swmmStudio.setState({ crsDialog: false, sideTab: "props", labels: false }));
   // C1 goes from J1 to J2: its properties show both names as links.
   const c1 = await S(() => window.swmmStudio.api.findObject("C1"));
   await S((o) => window.swmmStudio.setState({ selection: [o] }), c1);
@@ -92,11 +96,18 @@ await step("object names are asked once for all the links of a panel; a link sel
   const j2 = await S(() => window.swmmStudio.api.findObject("J2"));
   const s = await state();
   if (s.selection.length !== 1 || s.selection[0].index !== j2.index) fail(`the link selected ${JSON.stringify(s.selection)}`);
-  // Showing other links asks for no name again.
-  await S((o) => window.swmmStudio.setState({ selection: [o] }), c1);
-  await link.waitFor({ timeout: 5000 });
-  const after = await S(() => window.idsCalls.length);
-  if (after !== 4) fail(`names asked again: ${after} calls`);
+  // After a deletion that shifts the indices, a link still selects the object it names.
+  const j1 = await S(() => window.swmmStudio.api.findObject("J1"));
+  await S((o) => window.swmmStudio.tryEdit({ op: "delete", objects: [o] }), j1);
+  const c2 = await S(() => window.swmmStudio.api.findObject("C2"));
+  const j2now = await S(() => window.swmmStudio.api.findObject("J2"));
+  if (!c2 || !j2now || j2now.index === j2.index) fail(`the deletion did not shift J2: ${JSON.stringify([j2, j2now])}`);
+  await S((o) => window.swmmStudio.setState({ selection: [o] }), c2);
+  const link2 = page.locator(".tab-body .obj-link", { hasText: /^J2$/ }).first();
+  await link2.waitFor({ timeout: 5000 });
+  await link2.click();
+  await page.waitForFunction((i) => { const s = window.swmmStudio.getState().selection; return s[0]?.kind === "node" && s[0].index === i; }, j2now.index, { timeout: 5000 });
+  await S(() => window.swmmStudio.undo());
   return calls;
 });
 

@@ -10,7 +10,7 @@ export function indexOfId(list: string[] | undefined, id: string): number {
   return list ? list.findIndex((x) => x.toUpperCase() === up) : -1;
 }
 
-/** Loads in progress, by model and kinds: many components ask for the same names at once. */
+/** Loads in progress, by opened model and kinds: many components ask for the same names at once. */
 const loading = new Map<string, Promise<void>>();
 
 /** Loads the names of the kinds that are not in the store yet (`system` has none). */
@@ -19,7 +19,9 @@ export function ensureIds(kinds: readonly (ObjKind | ElementKind)[]): Promise<vo
     .filter((k): k is ObjKind => k !== "system" && !getState().ids[k])
     .sort();
   if (missing.length === 0) return Promise.resolve();
-  const key = `${getState().model?.path}|${missing.join(",")}`;
+  // By opening (`modelSeq`), not by file: a model opened again must not get the names of a load
+  // started for the previous opening.
+  const key = `${getState().modelSeq}|${missing.join(",")}`;
   let load = loading.get(key);
   if (!load) {
     load = loadIds(missing).finally(() => loading.delete(key));
@@ -30,14 +32,15 @@ export function ensureIds(kinds: readonly (ObjKind | ElementKind)[]): Promise<vo
 
 async function loadIds(missing: ObjKind[]): Promise<void> {
   // The names must be those of the model as it is when they arrive: after an edit they
-  // are asked again, and those of another model are dropped.
+  // are asked again, and those of another opening (another model, or the same file opened
+  // again) are dropped.
   let lists: string[][] = [];
   for (let attempt = 0; ; attempt++) {
-    const before = getState().model;
+    const before = getState();
     lists = await Promise.all(missing.map((k) => api.ids(k)));
-    const now = getState().model;
-    if (now?.path !== before?.path) return;
-    if (now?.revision === before?.revision) break;
+    const now = getState();
+    if (now.modelSeq !== before.modelSeq || !now.model) return;
+    if (now.model.revision === before.model?.revision) break;
     if (attempt === 3) return;
   }
   const ids = { ...getState().ids };
