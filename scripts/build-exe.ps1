@@ -42,7 +42,7 @@ function Invoke-Step([string]$name, [string]$dir, [scriptblock]$cmd) {
 }
 
 foreach ($tool in 'npm', 'cargo') {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool not found: install it first (see README)." }
+    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool not found: install it first (see DEVELOPMENT.md)." }
 }
 
 if ($CleanInstall -or -not (Test-Path (Join-Path $ui 'node_modules'))) {

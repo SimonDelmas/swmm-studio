@@ -1,5 +1,5 @@
 // Checks that the modules of src/ only import from their own layer or from a lower one
-// (see "Front-end layout" in the README). Run by `npm run build`.
+// (see "Front-end layout" in DEVELOPMENT.md). Run by `npm run build`.
 //
 //   node scripts/check-layers.mjs
 
