@@ -300,6 +300,11 @@ impl Display {
         self.index.nearest(self.to_index(p), tol).map(hit_ref)
     }
 
+    /// Every object within `tol` of a point, best first (as [`Display::pick`] ranks them).
+    pub(crate) fn pick_all(&self, p: [f64; 2], tol: f64) -> Vec<ObjRef> {
+        self.index.all_near(self.to_index(p), tol).into_iter().map(hit_ref).collect()
+    }
+
     pub(crate) fn in_rect(&self, a: [f64; 2], b: [f64; 2]) -> Vec<ObjRef> {
         self.index.in_rect(self.to_index(a), self.to_index(b)).into_iter().map(hit_ref).collect()
     }

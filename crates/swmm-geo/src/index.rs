@@ -222,9 +222,18 @@ impl SpatialIndex {
 
     /// Like [`SpatialIndex::nearest`], restricted to one layer when `layer` is set.
     pub fn nearest_in(&self, p: P, tol: f64, layer: Option<u8>) -> Option<Hit> {
-        let mut best: Option<(u8, f64, Hit)> = None;
-        let cands = self.candidates([p[0] - tol, p[1] - tol], [p[0] + tol, p[1] + tol]);
-        for s in cands.filter(|s| layer.is_none_or(|l| s.hit.layer == l)) {
+        self.ranked(p, tol).into_iter().map(|(_, _, h)| h).find(|h| layer.is_none_or(|l| h.layer == l))
+    }
+
+    /// Every object within `tol` of `p`, best first in the order of
+    /// [`SpatialIndex::nearest`]: the caller can skip the ones it does not show.
+    pub fn all_near(&self, p: P, tol: f64) -> Vec<Hit> {
+        self.ranked(p, tol).into_iter().map(|(_, _, h)| h).collect()
+    }
+
+    fn ranked(&self, p: P, tol: f64) -> Vec<(u8, f64, Hit)> {
+        let mut out = Vec::new();
+        for s in self.candidates([p[0] - tol, p[1] - tol], [p[0] + tol, p[1] + tol]) {
             let pts = self.pts(s);
             let (rank, d) = match s.kind {
                 ShapeKind::Point => (0, dist(p, pts[0])),
@@ -238,11 +247,14 @@ impl SpatialIndex {
                 }
                 ShapeKind::Polygon => (2, if point_in_ring(p, pts) { 0.0 } else { f64::INFINITY }),
             };
-            if d <= tol && best.is_none_or(|(r, bd, _)| (rank, d) < (r, bd)) {
-                best = Some((rank, d, s.hit));
+            if d <= tol {
+                out.push((rank, d, s.hit));
             }
         }
-        best.map(|(_, _, h)| h)
+        out.sort_by(|a, b| {
+            (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap_or(std::cmp::Ordering::Equal).then(a.2.cmp(&b.2))
+        });
+        out
     }
 }
 
@@ -370,5 +382,13 @@ mod tests {
         assert_eq!(idx.nearest([5.0, 0.3], 1.0), Some(Hit { layer: 1, index: 0 }));
         assert_eq!(idx.nearest([25.0, 5.0], 1.0), Some(Hit { layer: 2, index: 0 }));
         assert_eq!(idx.nearest([5.0, 3.0], 1.0), None);
+    }
+
+    #[test]
+    fn all_near_ranks_like_nearest() {
+        let idx = sample();
+        // At the origin: point 0, then the line starting there.
+        assert_eq!(idx.all_near([0.2, 0.0], 1.0), vec![Hit { layer: 0, index: 0 }, Hit { layer: 1, index: 0 }]);
+        assert!(idx.all_near([5.0, 3.0], 1.0).is_empty());
     }
 }

@@ -74,6 +74,11 @@ pub fn pick(state: State<'_, AppState>, x: f64, y: f64, tol: f64) -> Res<Option<
 }
 
 #[tauri::command(async)]
+pub fn pick_all(state: State<'_, AppState>, x: f64, y: f64, tol: f64) -> Res<Vec<ObjRef>> {
+    state.read(|s| Ok(s.pick_all([x, y], tol)))
+}
+
+#[tauri::command(async)]
 pub fn select_rect(state: State<'_, AppState>, a: [f64; 2], b: [f64; 2]) -> Res<Vec<ObjRef>> {
     state.read(|s| Ok(s.select_rect(a, b)))
 }

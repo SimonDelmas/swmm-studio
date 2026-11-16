@@ -54,6 +54,8 @@ export const api = {
   setCrs: (crs: string | null) => invoke<ModelInfo>("set_crs", { crs }),
   updateProject: (basemap?: Basemap, ui?: unknown) => invoke<void>("update_project", { basemap, ui }),
   pick: (x: number, y: number, tol: number) => invoke<ObjRef | null>("pick", { x, y, tol }),
+  /** Every object within `tol` of the point, best first. */
+  pickAll: (x: number, y: number, tol: number) => invoke<ObjRef[]>("pick_all", { x, y, tol }),
   selectRect: (a: [number, number], b: [number, number]) => invoke<ObjRef[]>("select_rect", { a, b }),
   selectPolygon: (ring: [number, number][]) => invoke<ObjRef[]>("select_polygon", { ring }),
   findObject: (id: string) => invoke<ObjRef | null>("find_object", { id }),
