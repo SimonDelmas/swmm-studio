@@ -336,6 +336,7 @@ await step("Climatology dialog: monthly evaporation and rainfall adjustments", a
 });
 
 await step("Sections as text: edit [REPORT] and apply", async () => {
+  const before = await S(() => window.swmmStudio.api.sectionText("REPORT"));
   await page.locator("button", { hasText: "Sections as text…" }).click();
   await page.waitForSelector(".sections-text textarea");
   await page.locator(".sections-list label input").check();
@@ -353,7 +354,8 @@ await step("Sections as text: edit [REPORT] and apply", async () => {
   await until(() => window.swmmStudio.getState().model.undo === "Edit [REPORT]");
   const t = await S(() => window.swmmStudio.api.sectionText("REPORT"));
   await page.locator(".modal button", { hasText: "Close" }).click();
-  if (!t.includes("NODES J1 J2")) fail(t);
+  // The line is added to the text of [REPORT], not to that of the section shown before it.
+  if (!t.includes("NODES J1 J2") || !t.trim().startsWith(before.trim())) fail(t);
   return t.trim().split("\n").slice(-1)[0];
 });
 
