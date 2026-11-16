@@ -1,7 +1,6 @@
 # SWMM Studio
 
-A desktop application to **view, edit, run and analyse EPA SWMM 5 stormwater and sewer models**,
-from small studies to whole-city networks.
+A desktop application to **view, edit, run and analyse EPA SWMM 5 models**.
 
 SWMM Studio stays fast where other tools slow down: networks with more than 100,000 objects, and
 continuous simulations over many years whose results files reach several gigabytes.
@@ -12,7 +11,7 @@ continuous simulations over many years whose results files reach several gigabyt
   (Lambert 93, CC zones, any EPSG code).
 - **Edit everything, safely**: properties, objects drawn on the map, curves, time series and more,
   with unlimited undo / redo and checks as you type.
-- **Your files stay yours**: when you save, only what you changed is rewritten. Comments, layout
+- **Minimal changes**: when you save, only what you changed is rewritten. Comments, layout
   and anything SWMM Studio doesn't know are kept exactly as they were.
 - **Run with your own SWMM engine**: EPA SWMM 5.1 or 5.2, OWA, or a custom build.
 - **Analyse long simulations in seconds**: animated maps, multi-year time series, longitudinal
