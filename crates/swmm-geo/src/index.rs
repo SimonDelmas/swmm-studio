@@ -251,7 +251,9 @@ impl SpatialIndex {
                 out.push((rank, d, s.hit));
             }
         }
-        out.sort_by(|a, b| (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap_or(std::cmp::Ordering::Equal).then(a.2.cmp(&b.2)));
+        out.sort_by(|a, b| {
+            (a.0, a.1).partial_cmp(&(b.0, b.1)).unwrap_or(std::cmp::Ordering::Equal).then(a.2.cmp(&b.2))
+        });
         out
     }
 }
