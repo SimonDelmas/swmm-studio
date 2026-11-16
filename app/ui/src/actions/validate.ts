@@ -8,11 +8,12 @@ import type { Issue } from "../analysisTypes";
 
 /** Runs the model checks; the result is kept in the store. Errors are thrown. */
 export async function validateModel(): Promise<Issue[]> {
-  const checked = getState().model;
-  // An answer for another model, or an earlier state of this one, is dropped: a newer check follows.
+  const checked = getState();
+  // An answer for another opening (another model, or the same file opened again) or an
+  // earlier state of this one is dropped: a newer check follows.
   const current = () => {
-    const m = getState().model;
-    return m?.path === checked?.path && m?.revision === checked?.revision;
+    const now = getState();
+    return now.modelSeq === checked.modelSeq && now.model?.revision === checked.model?.revision;
   };
   try {
     const issues = await api.validate();

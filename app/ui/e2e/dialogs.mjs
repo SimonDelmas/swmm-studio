@@ -83,7 +83,9 @@ await step("object names are asked once for all the links of a panel; a link sel
   });
   await S((p) => window.swmmStudio.openModel(p), model);
   await page.waitForFunction(() => window.swmmStudio.getState().busy === null && window.swmmStudio.getState().model, null, { timeout: 30000 });
-  await S(() => window.swmmStudio.setState({ crsDialog: false, sideTab: "props", labels: false }));
+  // Map labels load node and link names on their own: the count below is for links only.
+  if (await S(() => window.swmmStudio.getState().labels)) fail("the project of this copy turns map labels on: use a fresh copy of tiny.inp");
+  await S(() => window.swmmStudio.setState({ crsDialog: false, sideTab: "props" }));
   // C1 goes from J1 to J2: its properties show both names as links.
   const c1 = await S(() => window.swmmStudio.api.findObject("C1"));
   await S((o) => window.swmmStudio.setState({ selection: [o] }), c1);

@@ -48,9 +48,14 @@ function remapProfiles(s: State, nodeIds: string[]): Pick<State, "profileViews" 
   return { profileViews, profileNodes: shown ? shown.nodes : [], profileStart: null };
 }
 
-/** Updates the UI after the backend changed the model. */
-export async function applyOutcome(o: EditOutcome) {
+/**
+ * Updates the UI after the backend changed the model. `seq`: the opening of the model the
+ * edit was made in; when another model (or the same file again) was opened since, the
+ * outcome no longer applies and is dropped.
+ */
+export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
   const s = getState();
+  if (s.modelSeq !== seq) return;
   const info = { ...o.info };
   // Results and report only change when the network is rebuilt (objects matched again):
   // keeping them unchanged spares the panels that depend on them a reload.
@@ -75,6 +80,7 @@ export async function applyOutcome(o: EditOutcome) {
     patch.plotViews = remapPlotViews(now.plotViews, ids);
     Object.assign(patch, remapProfiles(now, ids.node ?? []));
   }
+  if (getState().modelSeq !== seq) return;
   setState(patch);
   if (o.message) notify(o.message);
 }
@@ -82,8 +88,9 @@ export async function applyOutcome(o: EditOutcome) {
 /** Applies an edit; errors are thrown (for inline display). */
 export function tryEdit(req: EditRequest): Promise<EditOutcome> {
   return enqueue(async () => {
+    const seq = getState().modelSeq;
     const o = await api.edit(req, getState().selection);
-    await applyOutcome(o);
+    await applyOutcome(o, seq);
     return o;
   });
 }
@@ -102,8 +109,9 @@ export async function edit(req: EditRequest): Promise<EditOutcome | null> {
 function step(apply: (selection: ObjRef[]) => Promise<EditOutcome>) {
   return enqueue(async () => {
     try {
+      const seq = getState().modelSeq;
       const o = await apply(getState().selection);
-      await applyOutcome(o);
+      await applyOutcome(o, seq);
       notify(o.label);
     } catch (e) {
       notify(errorText(e), true);
