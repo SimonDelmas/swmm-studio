@@ -112,7 +112,7 @@ function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "p
   );
 }
 
-/** The tab of a time series or profile view: double-click renames it, × closes it. */
+/** The tab of a time series or profile view: double-click renames it, × or a middle click closes it. */
 function ViewTab({ t, active, children }: { t: ViewTab; active: boolean; children?: React.ReactNode }) {
   const [editing, setEditing] = useState(false);
   const rename = (name: string) => {
@@ -135,7 +135,17 @@ function ViewTab({ t, active, children }: { t: ViewTab; active: boolean; childre
       />
     );
   return (
-    <span className={`view-tab${active ? " active" : ""}`} {...(t.type === "plot" ? { "data-drop-view": t.id } : {})}>
+    <span
+      className={`view-tab${active ? " active" : ""}`}
+      {...(t.type === "plot" ? { "data-drop-view": t.id } : {})}
+      // Middle click closes the tab, as in a browser; mousedown is cancelled so it does not start autoscroll.
+      onMouseDown={(e) => e.button === 1 && e.preventDefault()}
+      onAuxClick={(e) => {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        closeViewTab(t);
+      }}
+    >
       <button
         title={`${t.type === "plot" ? "Time series" : "Profile"} “${t.name}” – double-click to rename`}
         onClick={() => openViewTab(t)}
