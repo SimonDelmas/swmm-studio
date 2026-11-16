@@ -120,7 +120,8 @@ export function setState(patch: Partial<State> | ((s: State) => Partial<State>))
   listeners.forEach((l) => l());
 }
 
-export function resetForModel(model: ModelInfo, geometry: Geometry) {
+/** Shows a model just opened or created; `geometry` is null when its map could not be read. */
+export function resetForModel(model: ModelInfo, geometry: Geometry | null) {
   const ui = (model.project.ui ?? {}) as { styles?: Partial<Record<StyledKind, LayerStyle>>; labels?: boolean };
   const styles = { ...initial.styles };
   for (const k of ["node", "link", "subcatchment"] as StyledKind[]) {

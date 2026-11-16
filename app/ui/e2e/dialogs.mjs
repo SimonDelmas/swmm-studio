@@ -161,6 +161,33 @@ await step("opening a model waits for the edit asked before it; an edit asked wh
   return r.log;
 });
 
+await step("a model whose map cannot be read is shown anyway, with the reason", async () => {
+  const r = await S(async (p) => {
+    const st = window.swmmStudio;
+    const api = st.api;
+    const geometry = api.geometry;
+    const seq = st.getState().modelSeq;
+    api.geometry = async () => {
+      throw new Error("test: no geometry");
+    };
+    try {
+      await st.openModel(p);
+    } finally {
+      api.geometry = geometry;
+    }
+    const s = st.getState();
+    const out = { opened: s.modelSeq === seq + 1, geometry: s.geometry, message: s.message?.text ?? "" };
+    // Back to a model with its map, for what follows.
+    await st.openModel(p);
+    return { ...out, mapAfter: st.getState().geometry !== null };
+  }, model);
+  if (!r.opened) fail("the model was not shown when its map could not be read");
+  if (r.geometry !== null) fail("the map of the previous model was kept");
+  if (!/map cannot be drawn: .*test: no geometry/.test(r.message)) fail(`no reason given: "${r.message}"`);
+  if (!r.mapAfter) fail("opening again did not bring the map back");
+  return r.message;
+});
+
 if (errors.length) fail(`page errors: ${errors.join(" | ")}`);
 console.log("all dialog checks passed");
 await browser.close();

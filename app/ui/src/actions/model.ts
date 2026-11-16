@@ -6,7 +6,19 @@ import { afterEdits, confirmDiscard } from "./edit";
 import { getState, notify, resetForModel, setState } from "../store";
 import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
 import { mapPlotSeries } from "./views";
-import type { ModelInfo } from "../types";
+import type { Geometry, ModelInfo } from "../types";
+
+/**
+ * The map of the model the back-end has just opened, or null with the reason when it cannot
+ * be read: the model is shown anyway, since the back-end has replaced the previous one.
+ */
+async function openedGeometry(): Promise<{ geometry: Geometry | null; error: string | null }> {
+  try {
+    return { geometry: await api.geometry(), error: null };
+  } catch (e) {
+    return { geometry: null, error: `the map cannot be drawn: ${errorText(e)}` };
+  }
+}
 
 /** Opens a model file (after the edits already asked for: they belong to the current model). */
 export function openModel(path: string): Promise<void> {
@@ -14,10 +26,11 @@ export function openModel(path: string): Promise<void> {
   return afterEdits(async () => {
     try {
       const model = await api.openModel(path);
-      const geometry = await api.geometry();
+      const { geometry, error } = await openedGeometry();
       resetForModel(model, geometry);
       const notes = [...model.notes];
       if (model.project_error) notes.push(`Project file ignored: ${model.project_error}`);
+      if (error) notes.push(error);
       // One message: the status bar shows the last one only.
       if (notes.length > 0) notify(notes.join(" — "), true);
       if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
@@ -35,9 +48,10 @@ export function newModel(path: string, flowUnits: string): Promise<void> {
   return afterEdits(async () => {
     try {
       const model = await api.newModel(path, flowUnits);
-      const geometry = await api.geometry();
+      const { geometry, error } = await openedGeometry();
       resetForModel(model, geometry);
       setState({ dialog: null, crsDialog: true });
+      if (error) notify(error, true);
     } catch (e) {
       notify(errorText(e), true);
     } finally {
