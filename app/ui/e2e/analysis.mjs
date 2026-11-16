@@ -337,6 +337,8 @@ await step("Climatology dialog: monthly evaporation and rainfall adjustments", a
 
 await step("Sections as text: edit [REPORT] and apply", async () => {
   const before = await S(() => window.swmmStudio.api.sectionText("REPORT"));
+  // The check below compares with this text: it must not be empty.
+  if (!before.trim()) fail("the model has no [REPORT] section to edit");
   await page.locator("button", { hasText: "Sections as text…" }).click();
   await page.waitForSelector(".sections-text textarea");
   await page.locator(".sections-list label input").check();

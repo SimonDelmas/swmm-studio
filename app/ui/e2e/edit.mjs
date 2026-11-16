@@ -53,7 +53,17 @@ const nodeXY = (id) =>
   }, id);
 /** Screen positions of nodes, read together once two reads 100 ms apart agree (the view is still). */
 async function stillXY(...ids) {
-  const read = () => Promise.all(ids.map(nodeXY)).then((ps) => ps.flat());
+  // All the nodes in one call, so that they come from the same view.
+  const read = () =>
+    S((ids) => {
+      const st = window.swmmStudio.getState();
+      const g = st.geometry;
+      return ids.flatMap((id) => {
+        const i = st.ids.node ? st.ids.node.indexOf(id) : -1;
+        if (i < 0) throw new Error(`node ${id} not in the id list`);
+        return window.swmmStudio.mapProject([g.nodes[2 * i], g.nodes[2 * i + 1]]);
+      });
+    }, ids);
   let prev = await read();
   for (let i = 0; i < 50; i++) {
     await page.waitForTimeout(100);
