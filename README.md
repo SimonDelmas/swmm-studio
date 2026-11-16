@@ -214,7 +214,7 @@ node app/ui/e2e/edit.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)
 Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`.
 
 Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
-Dialog keyboard and name link test (Escape, Tab, object names loaded once): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
+Dialog keyboard, name link and edit-queue test (Escape, Tab, object names loaded once, no edit sent to a model opened since): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
 
 Analysis test (runs the model twice, then run history, comparison, envelope maps, profile, events,
 aggregated plots, tabular editor, validation, climatology, section text, exports):

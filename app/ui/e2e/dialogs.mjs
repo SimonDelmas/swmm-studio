@@ -113,6 +113,54 @@ await step("object names are asked once for all the links of a panel; a link sel
   return calls;
 });
 
+await step("opening a model waits for the edit asked before it; an edit asked while it opens is not sent; dialogs close", async () => {
+  // The back-end is slowed down so that the order is the one of the queue, not of chance.
+  const r = await S(async (p) => {
+    const st = window.swmmStudio;
+    const api = st.api;
+    const orig = { open: api.openModel, edit: api.edit };
+    const log = [];
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    api.openModel = async (path) => {
+      log.push("open start");
+      await wait(400);
+      const m = await orig.open(path);
+      log.push("open end");
+      return m;
+    };
+    api.edit = async (req, sel) => {
+      log.push("edit start");
+      await wait(300);
+      const o = await orig.edit(req, sel);
+      log.push("edit end");
+      return o;
+    };
+    try {
+      const j1 = await api.findObject("J1");
+      if (!j1) return { error: "J1 is missing before the test" };
+      // A dialog left open edits the model it was opened on: opening another one closes it.
+      st.setState({ dialog: "options" });
+      // Asked before the open: it belongs to the model shown, and must finish first.
+      const before = st.tryEdit({ op: "delete", objects: [j1] }).then(() => "applied", (e) => String(e?.message ?? e));
+      const opening = st.openModel(p);
+      // Asked while the model opens, with the indices of the old one: it must not be sent.
+      const during = st.tryEdit({ op: "delete", objects: [j1] }).then(() => "applied", (e) => String(e?.message ?? e));
+      const [b, , d] = await Promise.all([before, opening, during]);
+      return { log, before: b, during: d, dirty: st.getState().model?.dirty, dialog: st.getState().dialog, j1After: await api.findObject("J1") };
+    } finally {
+      api.openModel = orig.open;
+      api.edit = orig.edit;
+    }
+  }, model);
+  if (r.error) fail(r.error);
+  if (r.log.join(",") !== "edit start,edit end,open start,open end") fail(`back-end calls in the wrong order: ${r.log.join(", ")}`);
+  if (r.before !== "applied") fail(`the edit asked before the open failed: ${r.before}`);
+  if (!/another model was opened/.test(r.during)) fail(`the edit asked during the open was ${r.during}`);
+  if (r.dialog !== null) fail(`the options dialog of the previous model stayed open: ${r.dialog}`);
+  if (r.dirty || !r.j1After) fail(`the model opened again was changed: dirty=${r.dirty}, J1=${JSON.stringify(r.j1After)}`);
+  return r.log;
+});
+
 if (errors.length) fail(`page errors: ${errors.join(" | ")}`);
 console.log("all dialog checks passed");
 await browser.close();

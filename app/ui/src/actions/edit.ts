@@ -113,7 +113,9 @@ export async function edit(req: EditRequest): Promise<EditOutcome | null> {
   try {
     return await tryEdit(req);
   } catch (e) {
-    notify(errorText(e), true);
+    // An edit of the previous model says nothing about the one now open: the status bar
+    // keeps what the opening said.
+    if (!(e instanceof Error && e.message === STALE)) notify(errorText(e), true);
     return null;
   }
 }
@@ -180,8 +182,11 @@ export async function confirmDiscard(): Promise<boolean> {
 /** Asks for confirmation (with what else goes away), then deletes. */
 export async function deleteObjects(objects: ObjRef[]) {
   if (objects.length === 0) return;
+  const seq = getState().modelSeq;
   try {
     const plan = await api.deletePlan(objects);
+    // The objects are those of the model shown when they were chosen.
+    if (getState().modelSeq !== seq) return;
     const simple = plan.cascade_links.length === 0 && plan.cleared.length === 0 && plan.rules === 0;
     if (simple && objects.length === 1) {
       await edit({ op: "delete", objects });

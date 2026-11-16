@@ -153,6 +153,8 @@ export function resetForModel(model: ModelInfo, geometry: Geometry) {
     // The console of the previous model does not belong to this one.
     run: state.run.running ? state.run : initial.run,
     modelSeq: state.modelSeq + 1,
+    // Dialogs show and edit the previous model: their values must not reach this one.
+    dialog: null,
     tableEditor: null,
     pendingDelete: null,
   });
