@@ -10,14 +10,21 @@ import type { Tool } from "../uiTypes";
 import type { EditTools } from "./useEditTools";
 import type { Pt, Viewer } from "./viewers";
 
-/** Replaces the selection, or adds to it. Objects of a hidden type cannot be selected on the map. */
+/** Whether the map draws an object: its layer is shown and, for nodes and links, its type too. */
+function shown(h: ObjRef): boolean {
+  const { styles: st, geometry: geom } = getState();
+  if (h.kind === "subcatchment") return st.subcatchment.visible;
+  if (h.kind !== "node" && h.kind !== "link") return true;
+  const style = st[h.kind];
+  if (!style.visible) return false;
+  const t = h.kind === "node" ? geom?.nodeTypes[h.index] : geom?.linkTypes[h.index];
+  return t === undefined || !style.hiddenTypes.includes(t);
+}
+
+/** Replaces the selection, or adds to it. Objects the map does not draw cannot be selected on it. */
 function applySelection(all: ObjRef[], add: boolean) {
-  const { selection: cur, styles: st, geometry: geom } = getState();
-  const typeOf = (h: ObjRef) => (h.kind === "node" ? geom?.nodeTypes[h.index] : h.kind === "link" ? geom?.linkTypes[h.index] : undefined);
-  const hits = all.filter((h) => {
-    const t = typeOf(h);
-    return t === undefined || !st[h.kind as "node" | "link"].hiddenTypes.includes(t);
-  });
+  const cur = getState().selection;
+  const hits = all.filter(shown);
   if (!add) return setState({ selection: hits });
   const merged = [...cur];
   for (const h of hits) if (!merged.some((m) => sameRef(m, h))) merged.push(h);
@@ -61,8 +68,10 @@ export function useMapSelection(viewer: React.RefObject<Viewer | null>, containe
       if (tools.onClick(p, e)) return;
       if (tool.startsWith("add-")) return;
       const [x, y] = v.unproject(p);
+      // The closest object the map draws: a hidden one must not shadow a shown one under it.
       api
-        .pick(x, y, 6 * v.unitsPerPixel())
+        .pickAll(x, y, 6 * v.unitsPerPixel())
+        .then((all) => all.find(shown) ?? null)
         .then((hit) => (tool === "profile" ? profileClick(hit, d.shift) : applySelection(hit ? [hit] : [], d.shift)))
         .catch((err) => notify(errorText(err), true));
     },

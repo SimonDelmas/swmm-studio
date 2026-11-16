@@ -101,6 +101,9 @@ fn crs_and_selection() {
     let Space::Cartesian { origin } = s.display.space else { panic!() };
     let j1 = [651_200.0 - origin[0], 6_862_100.0 - origin[1]];
     assert_eq!(s.pick(j1, 1.0), Some(ObjRef { kind: ObjKind::Node, index: 0 }));
+    // Every object there, best first: the map skips the hidden ones.
+    let all = s.pick_all(j1, 1.0);
+    assert_eq!(all.first(), Some(&ObjRef { kind: ObjKind::Node, index: 0 }));
     s.set_crs(Some("EPSG:2154")).unwrap();
     assert!(crate::project::project_path(&inp).exists());
     let info = s.info();

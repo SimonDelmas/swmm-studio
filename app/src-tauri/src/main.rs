@@ -71,6 +71,7 @@ fn main() {
             commands::model::set_crs,
             commands::model::update_project,
             commands::model::pick,
+            commands::model::pick_all,
             commands::model::select_rect,
             commands::model::select_polygon,
             commands::model::find_object,

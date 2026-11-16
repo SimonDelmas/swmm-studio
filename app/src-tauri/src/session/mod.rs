@@ -316,6 +316,11 @@ impl Session {
         self.display.pick(p, tol)
     }
 
+    /// Every object within `tol` of a point, best first: the map keeps the first one it shows.
+    pub fn pick_all(&self, p: [f64; 2], tol: f64) -> Vec<ObjRef> {
+        self.display.pick_all(p, tol)
+    }
+
     pub fn select_rect(&self, a: [f64; 2], b: [f64; 2]) -> Vec<ObjRef> {
         self.display.in_rect(a, b)
     }
