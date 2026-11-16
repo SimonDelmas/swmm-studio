@@ -201,6 +201,34 @@ await step("a model whose map cannot be read is shown anyway, with the reason", 
   return r.message;
 });
 
+await step("the app stays busy while a model opens, even when another task ends meanwhile", async () => {
+  const r = await S(async (p) => {
+    const st = window.swmmStudio;
+    const api = st.api;
+    const open = api.openModel;
+    let release;
+    const gate = new Promise((res) => (release = res));
+    api.openModel = async (path) => {
+      await gate;
+      return open(path);
+    };
+    try {
+      const opening = st.openModel(p);
+      // Another task that marks the app busy, and ends while the model is still opening.
+      await st.applyCrs(null).catch(() => {});
+      const during = st.getState().busy;
+      release();
+      await opening;
+      return { during, after: st.getState().busy };
+    } finally {
+      api.openModel = open;
+    }
+  }, model);
+  if (r.during !== "Opening model…") fail(`busy while the model was still opening: ${JSON.stringify(r.during)}`);
+  if (r.after !== null) fail(`still busy once everything ended: ${JSON.stringify(r.after)}`);
+  return r;
+});
+
 if (errors.length) fail(`page errors: ${errors.join(" | ")}`);
 console.log("all dialog checks passed");
 await browser.close();

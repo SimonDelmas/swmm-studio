@@ -96,11 +96,14 @@ export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
   if (o.message) notify(o.message);
 }
 
-/** Applies an edit; errors are thrown (for inline display). */
-export function tryEdit(req: EditRequest): Promise<EditOutcome> {
-  // The request names objects by index in the model it was made in.
-  const seq = getState().modelSeq;
+/**
+ * Applies an edit; errors are thrown (for inline display). `seq`: the opening of the model
+ * the request was made for, by default the one open now; a dialog that applies several
+ * edits passes the same one to all, so that none reaches a model opened in between.
+ */
+export function tryEdit(req: EditRequest, seq = getState().modelSeq): Promise<EditOutcome> {
   return enqueue(async () => {
+    // The request names objects by index in the model it was made in.
     if (getState().modelSeq !== seq) throw new Error(STALE);
     const o = await api.edit(req, getState().selection);
     await applyOutcome(o, seq);

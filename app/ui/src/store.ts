@@ -170,6 +170,26 @@ export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(subscribe, () => sel(state));
 }
 
+/** Long tasks running, in the order they started: `busy` shows the last one. */
+const busyTasks: { text: string }[] = [];
+
+/**
+ * Marks the app busy with `text` until the returned function is called. Tasks can overlap
+ * (results loaded while a model waits to open): the app stays busy until all have ended.
+ */
+export function startBusy(text: string): () => void {
+  const task = { text };
+  busyTasks.push(task);
+  setState({ busy: text });
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    busyTasks.splice(busyTasks.indexOf(task), 1);
+    setState({ busy: busyTasks.at(-1)?.text ?? null });
+  };
+}
+
 export function notify(text: string, error = false) {
   setState({ message: { text, error } });
 }

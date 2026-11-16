@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
 import { tryEdit } from "../actions/edit";
-import { setState } from "../store";
+import { getState, setState } from "../store";
 import { EnginesPane } from "./EnginesPane";
 import { LoadingModal, Modal } from "./Modal";
 import { FilesPane, filesError, filesText, parseFiles, parseReport, ReportPane, reportError, reportText, type FilesData, type ReportData } from "./OptionSections";
@@ -141,11 +141,13 @@ export function OptionsDialog({ initialTab = "General" }: { initialTab?: string 
     const changed: [string, string][] = Object.keys({ ...values, ...orig })
       .filter((k) => (values[k] ?? "").trim() !== (orig[k] ?? ""))
       .map((k) => [k, (values[k] ?? "").trim()]);
+    // Every change goes to the model the dialog shows, also when another one opens meanwhile.
+    const seq = getState().modelSeq;
     try {
-      if (changed.length) await tryEdit({ op: "set_options", values: changed });
-      if (title.trim() !== origTitle.trim()) await tryEdit({ op: "set_title", text: title });
-      if (filesText(files) !== origFiles) await tryEdit({ op: "set_section_text", section: "FILES", text: filesText(files) });
-      if (reportText(report) !== origReport) await tryEdit({ op: "set_section_text", section: "REPORT", text: reportText(report) });
+      if (changed.length) await tryEdit({ op: "set_options", values: changed }, seq);
+      if (title.trim() !== origTitle.trim()) await tryEdit({ op: "set_title", text: title }, seq);
+      if (filesText(files) !== origFiles) await tryEdit({ op: "set_section_text", section: "FILES", text: filesText(files) }, seq);
+      if (reportText(report) !== origReport) await tryEdit({ op: "set_section_text", section: "REPORT", text: reportText(report) }, seq);
       close();
     } catch (e) {
       setError(errorText(e));
