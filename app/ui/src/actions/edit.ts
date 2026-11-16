@@ -6,7 +6,7 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { applyPatch } from "../geometryPatch";
 import { getState, notify, setState, type State } from "../store";
-import { sameRef, type EditOutcome, type EditRequest, type ObjKind, type ObjRef } from "../types";
+import { sameRef, type EditOutcome, type EditRequest, type Geometry, type ObjKind, type ObjRef } from "../types";
 import { seriesKey, type PlotView } from "../uiTypes";
 import { indexOfId } from "./ids";
 import { mapPlotSeries } from "./views";
@@ -26,6 +26,18 @@ function enqueue<T>(f: () => Promise<T>): Promise<T> {
  * next one. `f` must not wait for an edit itself.
  */
 export const afterEdits = enqueue;
+
+/**
+ * The map of the model as the back-end holds it, or null with the reason when it cannot be
+ * read. The back-end has already changed the model: the change is shown anyway, without a map.
+ */
+export async function readGeometry(): Promise<{ geometry: Geometry | null; error: string | null }> {
+  try {
+    return { geometry: await api.geometry(), error: null };
+  } catch (e) {
+    return { geometry: null, error: `the map cannot be drawn: ${errorText(e)}` };
+  }
+}
 
 /** Thrown for an edit asked for in a model that has been replaced (opened again, or another one) since. */
 const STALE = "another model was opened: the change was not applied";
@@ -76,7 +88,8 @@ export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
   }
   const same = o.selection.length === s.selection.length && o.selection.every((r, i) => sameRef(r, s.selection[i]));
   const patch: Partial<State> = { model: info, selection: same ? s.selection : o.selection };
-  if (o.geometry) patch.geometry = await api.geometry();
+  let mapError: string | null = null;
+  if (o.geometry) ({ geometry: patch.geometry, error: mapError } = await readGeometry());
   else if (o.patch && s.geometry) patch.geometry = applyPatch(s.geometry, o.patch);
   if (o.rebuilt) {
     // Indices changed: reload the cached IDs (the node names too when profiles need them).
@@ -93,7 +106,8 @@ export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq) {
   }
   if (getState().modelSeq !== seq) return;
   setState(patch);
-  if (o.message) notify(o.message);
+  if (mapError) notify(mapError, true);
+  else if (o.message) notify(o.message);
 }
 
 /**

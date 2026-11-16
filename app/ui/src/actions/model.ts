@@ -2,23 +2,11 @@
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
-import { afterEdits, confirmDiscard } from "./edit";
+import { afterEdits, confirmDiscard, readGeometry } from "./edit";
 import { getState, notify, resetForModel, setState, startBusy } from "../store";
 import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
 import { mapPlotSeries } from "./views";
-import type { Geometry, ModelInfo } from "../types";
-
-/**
- * The map of the model the back-end has just opened, or null with the reason when it cannot
- * be read: the model is shown anyway, since the back-end has replaced the previous one.
- */
-async function openedGeometry(): Promise<{ geometry: Geometry | null; error: string | null }> {
-  try {
-    return { geometry: await api.geometry(), error: null };
-  } catch (e) {
-    return { geometry: null, error: `the map cannot be drawn: ${errorText(e)}` };
-  }
-}
+import type { ModelInfo } from "../types";
 
 /** Opens a model file (after the edits already asked for: they belong to the current model). */
 export function openModel(path: string): Promise<void> {
@@ -27,7 +15,7 @@ export function openModel(path: string): Promise<void> {
   return afterEdits(async () => {
     try {
       const model = await api.openModel(path);
-      const { geometry, error } = await openedGeometry();
+      const { geometry, error } = await readGeometry();
       resetForModel(model, geometry);
       const notes = [...model.notes];
       if (model.project_error) notes.push(`Project file ignored: ${model.project_error}`);
@@ -49,7 +37,7 @@ export function newModel(path: string, flowUnits: string): Promise<void> {
   return afterEdits(async () => {
     try {
       const model = await api.newModel(path, flowUnits);
-      const { geometry, error } = await openedGeometry();
+      const { geometry, error } = await readGeometry();
       resetForModel(model, geometry);
       setState({ dialog: null, crsDialog: true });
       if (error) notify(error, true);
@@ -100,14 +88,18 @@ export async function chooseResults() {
   }
 }
 
-/** Sets the coordinate system of the model (null: local coordinates); errors are thrown. */
+/**
+ * Sets the coordinate system of the model (null: local coordinates); errors are thrown. Once
+ * the back-end has changed it, the new one is shown, with or without a map.
+ */
 export async function applyCrs(id: string | null) {
   const done = startBusy("Reprojecting…");
   try {
     const model = await api.setCrs(id);
-    const geometry = await api.geometry();
+    const { geometry, error } = await readGeometry();
     // The saved view belongs to the previous coordinate space.
     setState({ model, geometry, crsDialog: false, fitExtent: getState().fitExtent + 1 });
+    if (error) notify(error, true);
   } finally {
     done();
   }

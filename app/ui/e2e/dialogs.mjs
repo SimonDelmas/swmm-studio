@@ -190,13 +190,30 @@ await step("a model whose map cannot be read is shown anyway, with the reason", 
     }
     const s = st.getState();
     const out = { opened: s.modelSeq === seq + 1, geometry: s.geometry, message: s.message?.text ?? "" };
+    // An edit that needs the map read again still shows its change when the map cannot be read.
+    const revision = s.model.revision;
+    const j1 = await api.findObject("J1");
+    api.geometry = async () => {
+      throw new Error("test: no geometry");
+    };
+    let edited;
+    try {
+      await st.tryEdit({ op: "delete", objects: [j1] });
+      const e = st.getState();
+      edited = { revision: e.model.revision > revision, dirty: e.model.dirty, message: e.message?.text ?? "" };
+    } finally {
+      api.geometry = geometry;
+    }
     // Back to a model with its map, for what follows.
     await st.openModel(p);
-    return { ...out, mapAfter: st.getState().geometry !== null };
+    st.setState({ crsDialog: false });
+    return { ...out, edited, mapAfter: st.getState().geometry !== null };
   }, model);
   if (!r.opened) fail("the model was not shown when its map could not be read");
   if (r.geometry !== null) fail("the map of the previous model was kept");
   if (!/map cannot be drawn: .*test: no geometry/.test(r.message)) fail(`no reason given: "${r.message}"`);
+  if (!r.edited.revision || !r.edited.dirty) fail(`an edit without a map was not shown: ${JSON.stringify(r.edited)}`);
+  if (!/map cannot be drawn/.test(r.edited.message)) fail(`no reason given after the edit: "${r.edited.message}"`);
   if (!r.mapAfter) fail("opening again did not bring the map back");
   return r.message;
 });
@@ -206,14 +223,18 @@ await step("the app stays busy while a model opens, even when another task ends 
     const st = window.swmmStudio;
     const api = st.api;
     const open = api.openModel;
+    const setCrs = api.setCrs;
     let release;
     const gate = new Promise((res) => (release = res));
     api.openModel = async (path) => {
       await gate;
       return open(path);
     };
+    // The other task changes nothing in the back-end: the model it answers is the one shown.
+    api.setCrs = async () => st.getState().model;
+    let opening = null;
     try {
-      const opening = st.openModel(p);
+      opening = st.openModel(p);
       // Another task that marks the app busy, and ends while the model is still opening.
       await st.applyCrs(null).catch(() => {});
       const during = st.getState().busy;
@@ -221,7 +242,12 @@ await step("the app stays busy while a model opens, even when another task ends 
       await opening;
       return { during, after: st.getState().busy };
     } finally {
+      // Never leave the open waiting: the app would stay busy for good.
+      release();
+      await opening;
       api.openModel = open;
+      api.setCrs = setCrs;
+      st.setState({ crsDialog: false });
     }
   }, model);
   if (r.during !== "Opening model…") fail(`busy while the model was still opening: ${JSON.stringify(r.during)}`);
