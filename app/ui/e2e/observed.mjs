@@ -64,7 +64,7 @@ await step("the dialog reads the file and proposes the mapping from the column t
 
 await step("the user changes the mapping, OK saves the link in the project", async () => {
   // Drop the depth, keep the flow.
-  await page.locator(".observed-mapping tr", { hasText: "depth" }).locator("select").selectOption("");
+  await page.locator(".observed-mapping tr", { hasText: "depth" }).locator("select").first().selectOption("");
   await page.locator(".observed-modal button", { hasText: "OK" }).click();
   await page.waitForSelector(".observed-modal", { state: "detached", timeout: 10000 });
   const links = await S(() => window.swmmStudio.getState().model.project.observed);
@@ -72,6 +72,37 @@ await step("the user changes the mapping, OK saves the link in the project", asy
   const reopened = await S(() => window.swmmStudio.api.modelInfo().then((m) => m.project.observed));
   if (JSON.stringify(reopened) !== JSON.stringify(links)) fail(`back-end has ${JSON.stringify(reopened)}`);
   return links[0].columns;
+});
+
+/** Largest observed flow, in the results' unit. */
+const maxObserved = () =>
+  S(async (id) => {
+    const r = await window.swmmStudio.api.observedSeries("link", id, "flow", 0, 4e12, 10000);
+    return Math.max(...r.values);
+  }, id);
+
+await step("a unit chosen for the column converts its values; it is kept when the dialog opens again", async () => {
+  const before = await maxObserved();
+  await page.locator(".props button", { hasText: "Edit…" }).click();
+  await page.waitForSelector(".observed-modal .observed-mapping", { timeout: 10000 });
+  const unit = page.locator(".observed-mapping tr", { hasText: "flow" }).locator("select").nth(1);
+  const options = await unit.locator("option").allTextContents();
+  if (options[0] !== (await S(() => window.swmmStudio.getState().model.results.flow_units))) fail(`unit options ${options}`);
+  await unit.selectOption("CMS");
+  await shot("observed-units");
+  await page.locator(".observed-modal button", { hasText: "OK" }).click();
+  await page.waitForSelector(".observed-modal", { state: "detached", timeout: 10000 });
+  const link = await S(() => window.swmmStudio.getState().model.project.observed[0]);
+  if (link.units?.flow !== "CMS") fail(`units ${JSON.stringify(link.units)}`);
+  const after = await maxObserved();
+  if (Math.abs(after / before - 1000) > 1e-3) fail(`m3/s to l/s: ${before} → ${after}`);
+  // Opens again with CMS chosen.
+  await page.locator(".props button", { hasText: "Edit…" }).click();
+  await page.waitForSelector(".observed-modal .observed-mapping", { timeout: 10000 });
+  const shown = await page.locator(".observed-mapping tr", { hasText: "flow" }).locator("select").nth(1).inputValue();
+  await page.locator(".observed-modal button", { hasText: "Cancel" }).click();
+  if (shown !== "CMS") fail(`unit shown ${shown}`);
+  return { before, after, options };
 });
 
 await step("the properties panel lists the link; plotting the flow draws the observed values", async () => {

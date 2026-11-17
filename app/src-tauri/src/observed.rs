@@ -9,7 +9,7 @@ use std::time::SystemTime;
 use serde::Serialize;
 use swmm_model::ObjKind;
 use swmm_obs::{DateOrder, Inspection, Series};
-use swmm_out::ElementKind;
+use swmm_out::{ElementKind, FlowUnits};
 
 use crate::project::ObservedLink;
 use crate::session::{err, Res, Session, VarInfo};
@@ -52,6 +52,12 @@ pub struct ObservedFile {
     pub variables: Vec<VarInfo>,
     /// Default column of each variable.
     pub mapping: BTreeMap<String, String>,
+    /// Units each variable's series can be in (the model's unit first; none: no conversion).
+    pub unit_options: BTreeMap<String, Vec<String>>,
+    /// Unit written in the title of a column, when there is one.
+    pub column_units: BTreeMap<String, String>,
+    /// Default unit of the series of each mapped variable (from its column's title).
+    pub units: BTreeMap<String, String>,
     /// Time range of the dates read with the time column and order asked (ms since 1970).
     pub start_ms: Option<i64>,
     pub end_ms: Option<i64>,
@@ -94,6 +100,13 @@ pub fn inspect(
     };
     let names: Vec<String> = variables.iter().map(|v| v.name.clone()).collect();
     let mapping = swmm_obs::mapping::suggest(kind, id, &names, &columns);
+    let unit_options: BTreeMap<String, Vec<String>> = variables
+        .iter()
+        .map(|v| (v.name.clone(), swmm_obs::units::options(&v.unit).into_iter().map(str::to_string).collect()))
+        .collect();
+    let column_units: BTreeMap<String, String> =
+        columns.iter().filter_map(|c| Some((c.clone(), swmm_obs::units::from_title(c)?.to_string()))).collect();
+    let units = default_units(&mapping, &column_units, &unit_options);
     Ok(ObservedFile {
         path: path.to_path_buf(),
         inspection: swmm_obs::Inspection { time_column: time, ..inspection },
@@ -103,8 +116,28 @@ pub fn inspect(
         series: columns,
         variables,
         mapping,
+        unit_options,
+        column_units,
+        units,
         time_error,
     })
+}
+
+/// Unit of each mapped variable read from its column's title, when the variable can be in it
+/// (none: the model's unit).
+fn default_units(
+    mapping: &BTreeMap<String, String>,
+    column_units: &BTreeMap<String, String>,
+    options: &BTreeMap<String, Vec<String>>,
+) -> BTreeMap<String, String> {
+    mapping
+        .iter()
+        .filter_map(|(v, c)| {
+            let u = column_units.get(c)?;
+            let own = options.get(v)?;
+            (own.contains(u) && own.first() != Some(u)).then(|| (v.clone(), u.clone()))
+        })
+        .collect()
 }
 
 fn element(kind: &str) -> Res<(ObjKind, ElementKind)> {
@@ -130,7 +163,22 @@ impl Session {
                     .map(|(v, name)| VarInfo { name, unit: m.unit(ek, v).to_string() })
                     .collect()
             }
-            None => ek.base_variables().iter().map(|n| VarInfo { name: n.to_string(), unit: String::new() }).collect(),
+            None => {
+                // Units of the model's flow units, as the results will have them.
+                let flow = ["CFS", "GPM", "MGD", "CMS", "LPS", "MLD"]
+                    .iter()
+                    .position(|n| *n == self.inp.flow_units().name())
+                    .and_then(|i| FlowUnits::from_code(i as i32))
+                    .unwrap_or(FlowUnits::Cms);
+                ek.base_variables()
+                    .iter()
+                    .enumerate()
+                    .map(|(v, n)| VarInfo {
+                        name: n.to_string(),
+                        unit: swmm_out::format::unit(ek, v, flow).to_string(),
+                    })
+                    .collect()
+            }
         })
     }
 
@@ -149,6 +197,13 @@ impl Session {
             let s = self.observed_cache.get(l)?;
             if let Some(c) = l.columns.values().find(|c| s.column(c).is_none()) {
                 return Err(format!("no column of numbers “{c}” in {}", l.file.display()));
+            }
+            let vars = self.observed_variables(kind)?;
+            for (v, u) in &l.units {
+                let model = vars.iter().find(|x| &x.name == v).map_or("", |x| x.unit.as_str());
+                if swmm_obs::units::factor(u, model).is_none() {
+                    return Err(format!("{v}: {u} cannot be converted to {model}"));
+                }
             }
         }
         self.project.observed.retain(|o| !(o.kind == kind && o.id == id));
@@ -171,11 +226,21 @@ impl Session {
             .position(|c| c == col)
             .ok_or_else(|| format!("observed data of {id}: no column “{col}”"))?;
         let (ts, vs) = s.window(ci, t0, t1, buckets);
+        // In the units of the results.
+        let factor = match link.units.get(var) {
+            Some(u) => {
+                let vars = self.observed_variables(kind)?;
+                let model = vars.iter().find(|x| x.name == var).map_or("", |x| x.unit.as_str());
+                swmm_obs::units::factor(u, model)
+                    .ok_or_else(|| format!("observed {var} of {id}: {u} cannot be converted to {model}"))?
+            }
+            None => 1.0,
+        };
         let mut out = Vec::with_capacity(8 + 12 * ts.len());
         out.extend((ts.len() as u32).to_le_bytes());
         out.extend(0u32.to_le_bytes());
         out.extend(ts.iter().flat_map(|&t| (t as f64).to_le_bytes()));
-        out.extend(vs.iter().flat_map(|&v| (v as f32).to_le_bytes()));
+        out.extend(vs.iter().flat_map(|&v| ((v * factor) as f32).to_le_bytes()));
         Ok(out)
     }
 }
@@ -194,16 +259,23 @@ mod tests {
         let csv = dir.path().join("obs.csv");
         std::fs::write(
             &csv,
-            format!("Date;{link_id} Q;{link_id} H;Other\n01/01/2020 00:00;1;0,1;5\n01/01/2020 00:10;3;0,2;5\n"),
+            format!(
+                "Date;{link_id} Q (m3/s);{link_id} H [cm];Other\n01/01/2020 00:00;1;0,1;5\n01/01/2020 00:10;3;0,2;5\n"
+            ),
         )
         .unwrap();
 
         let vars = s.observed_variables("link").unwrap();
         let f = inspect(&csv, None, None, DateOrder::Auto, "link", &link_id, vars).unwrap();
         assert_eq!(f.inspection.time_column.as_deref(), Some("Date"));
-        assert_eq!(f.series, [format!("{link_id} Q"), format!("{link_id} H"), "Other".into()]);
-        assert_eq!(f.mapping.get("flow"), Some(&format!("{link_id} Q")));
-        assert_eq!(f.mapping.get("depth"), Some(&format!("{link_id} H")));
+        let (q, h) = (format!("{link_id} Q (m3/s)"), format!("{link_id} H [cm]"));
+        assert_eq!(f.series, [q.clone(), h.clone(), "Other".into()]);
+        assert_eq!(f.mapping.get("flow"), Some(&q));
+        assert_eq!(f.mapping.get("depth"), Some(&h));
+        // Without results, the units of the model (LPS); those of the titles are proposed.
+        assert_eq!(f.unit_options["flow"][0], "LPS");
+        assert_eq!(f.unit_options["depth"][0], "m");
+        assert_eq!(f.units, [("depth".to_string(), "cm".to_string()), ("flow".to_string(), "CMS".to_string())].into());
         assert_eq!(f.end_ms.unwrap() - f.start_ms.unwrap(), 600_000);
 
         let link = ObservedLink {
@@ -214,15 +286,18 @@ mod tests {
             time_column: "Date".into(),
             date_order: DateOrder::Auto,
             columns: f.mapping.clone(),
+            units: f.units.clone(),
         };
         assert!(s.set_observed("link", "nope", Some(link.clone())).is_err());
         let bad = ObservedLink { columns: [("flow".to_string(), "Missing".to_string())].into(), ..link.clone() };
+        assert!(s.set_observed("link", &link_id, Some(bad)).is_err());
+        let bad = ObservedLink { units: [("flow".to_string(), "m".to_string())].into(), ..link.clone() };
         assert!(s.set_observed("link", &link_id, Some(bad)).is_err());
         s.set_observed("link", &link_id, Some(link)).unwrap();
 
         let buf = s.observed_series("link", &link_id, "flow", 0, i64::MAX, 100).unwrap();
         assert_eq!(u32::from_le_bytes(buf[0..4].try_into().unwrap()), 2);
-        assert_eq!(f32::from_le_bytes(buf[8 + 16 + 4..8 + 16 + 8].try_into().unwrap()), 3.0);
+        assert_eq!(f32::from_le_bytes(buf[8 + 16 + 4..8 + 16 + 8].try_into().unwrap()), 3000.0, "m3/s to LPS");
         assert!(s.observed_series("link", &link_id, "velocity", 0, i64::MAX, 100).is_err());
 
         // Kept in the project, relative to it, and found again on opening.

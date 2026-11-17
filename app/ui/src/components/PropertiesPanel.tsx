@@ -49,6 +49,7 @@ function ObservedSection({ kind, index, id }: { kind: "node" | "link" | "subcatc
                     )}
                   </td>
                   <td>{c}</td>
+                  <td className="muted">{link.units?.[v] ?? ""}</td>
                 </tr>
               ))}
             </tbody>

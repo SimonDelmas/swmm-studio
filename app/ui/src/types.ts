@@ -417,6 +417,8 @@ export interface ObservedLink {
   date_order: DateOrder;
   /** Variable name → column. */
   columns: Record<string, string>;
+  /** Variable name → unit of its series, when not the results' unit (values are converted). */
+  units?: Record<string, string>;
 }
 
 export interface ObservedColumn {
@@ -441,6 +443,12 @@ export interface ObservedFile {
   series: string[];
   variables: VarInfo[];
   mapping: Record<string, string>;
+  /** Units each variable's series can be in, the results' unit first (empty: no conversion). */
+  unit_options: Record<string, string[]>;
+  /** Unit written in a column's title. */
+  column_units: Record<string, string>;
+  /** Default unit of each mapped variable (absent: the results' unit). */
+  units: Record<string, string>;
   start_ms: number | null;
   end_ms: number | null;
   skipped: number;

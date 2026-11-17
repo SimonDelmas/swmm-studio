@@ -15,6 +15,10 @@ All notable changes to SWMM Studio are recorded here. The format follows
   variables, by default from their titles (object name, variable names in English or French,
   units). The link is kept in the project file, and the observed values are drawn as points on
   the time series plots of the object's results (and in their exports).
+- Observed data: the unit of each mapped column can be chosen (flows in CMS, LPS, m3/h, MLD,
+  CFS, GPM or MGD; lengths in m, cm, mm, ft or in; velocities, volumes, rain and evaporation
+  rates, fractions or %), proposed from the unit written in the column's title; the values
+  are converted to the units of the results.
 - Profile: hovering a conduit shows its length, diameter or height, inverts at both ends and
   slope; hovering a node shows its rim, invert and depth.
 - Map style: show or hide each node and link type, whatever the layer is coloured by; hidden

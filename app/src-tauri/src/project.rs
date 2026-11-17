@@ -52,6 +52,10 @@ pub struct ObservedLink {
     pub date_order: DateOrder,
     /// Column of each variable of the object (by variable name: `flow`, `depth`…).
     pub columns: BTreeMap<String, String>,
+    /// Unit of the series of each variable, when it is not the unit of the results (`LPS`,
+    /// `cm`, `mm/hr`…); the values are converted to the results' unit.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub units: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -151,6 +155,7 @@ mod tests {
             time_column: "Date".into(),
             date_order: DateOrder::Auto,
             columns: [("flow".to_string(), "Q".to_string())].into(),
+            units: [("flow".to_string(), "m3/h".to_string())].into(),
         });
         p.save(&inp).unwrap();
         let text = std::fs::read_to_string(project_path(&inp)).unwrap();

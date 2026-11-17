@@ -19,22 +19,38 @@ function keep(mapping: Record<string, string>, f: ObservedFile): Record<string, 
   return Object.fromEntries(Object.entries(mapping).filter(([v, c]) => f.series.includes(c) && f.variables.some((x) => x.name === v)));
 }
 
+/** The unit written in the title of column `col`, if variable `v` can be in it and it is not the results' unit. */
+function titleUnit(f: ObservedFile, col: string, v: string): string | undefined {
+  const u = f.column_units[col];
+  const opts = f.unit_options[v] ?? [];
+  return u && opts.includes(u) && u !== opts[0] ? u : undefined;
+}
+
 /**
  * Links a file of observed series to an object: the file, its sheet, its column of dates
  * and the column of each variable of the object (proposed from the column titles).
  */
 export function ObservedDialog({ kind, id, onClose }: { kind: Kind; id: string; onClose: () => void }) {
   const existing = useStore((s) => observedLink(kind, id, s.model));
-  const units = useStore((s) => s.model?.results?.flow_units ?? s.model?.flow_units ?? "");
+  const flowUnits = useStore((s) => s.model?.results?.flow_units ?? s.model?.flow_units ?? "");
   const [file, setFile] = useState<ObservedFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  /** Unit of each mapped variable's column, when not the results' unit. */
+  const [unitOf, setUnitOf] = useState<Record<string, string>>({});
   const [order, setOrder] = useState<DateOrder>(existing?.date_order ?? "auto");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const req = useRef(0);
 
-  /** Reads the file with these settings; `map`: the mapping to keep (default: the one proposed). */
-  const read = async (path: string, sheet: string | null, time: string | null, o: DateOrder, map?: Record<string, string>) => {
+  /** Reads the file with these settings; `map`, `units`: the mapping to keep (default: the one proposed). */
+  const read = async (
+    path: string,
+    sheet: string | null,
+    time: string | null,
+    o: DateOrder,
+    map?: Record<string, string>,
+    units?: Record<string, string>,
+  ) => {
     const n = ++req.current;
     setBusy(true);
     try {
@@ -43,7 +59,13 @@ export function ObservedDialog({ kind, id, onClose }: { kind: Kind; id: string; 
       setFile(f);
       setOrder(o);
       const kept = map ? keep(map, f) : {};
-      setMapping(Object.keys(kept).length > 0 ? kept : f.mapping);
+      if (Object.keys(kept).length > 0) {
+        setMapping(kept);
+        setUnitOf(Object.fromEntries(Object.entries(units ?? {}).filter(([v, u]) => kept[v] && f.unit_options[v]?.includes(u))));
+      } else {
+        setMapping(f.mapping);
+        setUnitOf(f.units);
+      }
       setError(null);
     } catch (e) {
       if (n === req.current) setError(errorText(e));
@@ -59,7 +81,8 @@ export function ObservedDialog({ kind, id, onClose }: { kind: Kind; id: string; 
 
   // Opens on the linked file, else asks for one.
   useEffect(() => {
-    if (existing) void read(existing.file, existing.sheet ?? null, existing.time_column, existing.date_order, existing.columns);
+    if (existing)
+      void read(existing.file, existing.sheet ?? null, existing.time_column, existing.date_order, existing.columns, existing.units ?? {});
     else void choose();
   }, []);
 
@@ -75,6 +98,7 @@ export function ObservedDialog({ kind, id, onClose }: { kind: Kind; id: string; 
         time_column: file.time_column,
         date_order: order,
         columns: mapping,
+        units: Object.fromEntries(Object.entries(unitOf).filter(([v]) => mapping[v])),
       });
       onClose();
     } catch (e) {
@@ -169,9 +193,16 @@ export function ObservedDialog({ kind, id, onClose }: { kind: Kind; id: string; 
                         value={mapping[v.name] ?? ""}
                         onChange={(e) => {
                           const m = { ...mapping };
-                          if (e.target.value) m[v.name] = e.target.value;
-                          else delete m[v.name];
+                          const u = { ...unitOf };
+                          delete u[v.name];
+                          if (e.target.value) {
+                            m[v.name] = e.target.value;
+                            // The unit written in the column's title, if the variable can be in it.
+                            const t = titleUnit(file, e.target.value, v.name);
+                            if (t) u[v.name] = t;
+                          } else delete m[v.name];
                           setMapping(m);
+                          setUnitOf(u);
                         }}
                       >
                         <option value="">—</option>
@@ -182,13 +213,37 @@ export function ObservedDialog({ kind, id, onClose }: { kind: Kind; id: string; 
                         ))}
                       </select>
                     </td>
-                    <td className="unit muted">{v.unit}</td>
+                    <td className="unit">
+                      {mapping[v.name] && (file.unit_options[v.name]?.length ?? 0) > 1 ? (
+                        <select
+                          title={`Unit of the column; the values are converted to ${v.unit}`}
+                          value={unitOf[v.name] ?? file.unit_options[v.name][0]}
+                          onChange={(e) => {
+                            const u = { ...unitOf };
+                            if (e.target.value === file.unit_options[v.name][0]) delete u[v.name];
+                            else u[v.name] = e.target.value;
+                            setUnitOf(u);
+                          }}
+                        >
+                          {file.unit_options[v.name].map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="muted">{v.unit}</span>
+                      )}
+                    </td>
+                    <td className="muted">{unitOf[v.name] && mapping[v.name] ? `→ ${v.unit}` : ""}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          <p className="muted">Values are read as they are, in the units of the model's results{units ? ` (${units})` : ""}.</p>
+          <p className="muted">
+            The values are converted from the unit chosen to the unit of the results{flowUnits ? ` (flows in ${flowUnits})` : ""}.
+          </p>
           <div className="observed-preview">
             <table className="kv">
               <thead>

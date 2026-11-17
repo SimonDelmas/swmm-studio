@@ -7,10 +7,12 @@
 //! - [`inspect`]: the columns of a file, the one with the dates, a preview;
 //! - [`load`]: the series of a file, sorted by time;
 //! - [`mapping::suggest`]: the default mapping of its columns to the variables of an object.
+//! - [`units`]: the units of its columns, converted to the units of the results.
 
 pub mod mapping;
 mod read;
 pub mod time;
+pub mod units;
 
 use std::path::Path;
 
