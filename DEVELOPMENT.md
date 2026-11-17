@@ -13,6 +13,7 @@ How the project is built, organised and tested. For what the application does, s
 | [`swmm-geo`](crates/swmm-geo) | EPSG registry (search by code or name), reprojection of model coordinates to WGS 84 (pure Rust, `proj4rs`), Web Mercator, R-tree for box / lasso selection and picking. |
 | [`swmm-model`](crates/swmm-model) | Network view of a model: nodes, links, subcatchments, rain gages, connectivity and map geometry; named properties of any object; numeric attributes for thematic maps. Editing: undoable line-level transactions, field schema (types, units, validation), rename and delete with every reference, curves / time series / patterns / unit hydrographs / transects. |
 | [`swmm-analysis`](crates/swmm-analysis) | Statistics of results over any range of periods (max, min, mean, time of max, total volume / depth, time above a threshold) from the cache's chunk summaries; calendar days / months / years; event detection with a minimum inter-event time and per-year statistics; shortest path and longitudinal profile between nodes. |
+| [`swmm-obs`](crates/swmm-obs) | Observed series read from tabular files (CSV and other delimited text, Excel, OpenDocument, Parquet): column of dates and times found and read (ISO, day or month first), series sorted and decimated to min/max per bucket, default mapping of the columns to an object's variables. |
 | [`swmm-cli`](crates/swmm-cli) | Command-line front-end. |
 | [`app/src-tauri`](app/src-tauri) | Desktop application (Tauri 2): session state, commands, background results cache. |
 | [`app/ui`](app/ui) | Front-end (React, TypeScript, MapLibre GL, deck.gl, uPlot). |
@@ -126,6 +127,7 @@ Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`
 
 Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
 Dialog keyboard, name link and edit-queue test (Escape, Tab, object names loaded once, no edit sent to a model opened since): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
+Observed data test (link a file to a link through the dialog, proposed mapping, saved in the project, drawn on the plot), on a model with results and a file with columns such as `C1 Débit (l/s)`, `C1 Hauteur (m)`: `node app/ui/e2e/observed.mjs copy/tiny.inp mesures.csv C1 shots`.
 
 Analysis test (runs the model twice, then run history, comparison, envelope maps, profile, events,
 aggregated plots, tabular editor, validation, climatology, section text, exports):

@@ -21,6 +21,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
   const zoom = view.zoom;
   const results = useStore((s) => s.model?.results ?? null);
   const compare = useStore((s) => s.model?.compare ?? null);
+  const observed = useStore((s) => s.model?.project.observed);
   const period = useStore((s) => s.period);
   const wrap = useRef<HTMLDivElement | null>(null);
   const chart = useRef<uPlot | null>(null);
@@ -81,11 +82,11 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
         .catch((e) => id === req.current && setError(errorText(e)));
     }, 50);
     return () => clearTimeout(t);
-  }, [plot, agg ? null : zoom, size.w, results?.path, results?.cache.state, compare?.path, compare?.cache.state, n, agg, cap !== null ? win : null]);
+  }, [plot, agg ? null : zoom, size.w, results?.path, results?.cache.state, compare?.path, compare?.cache.state, n, agg, cap !== null ? win : null, observed]);
 
   // (Re)create the chart when the series, their units or the size change.
   const units = built ? Array.from(new Set(built.units)) : [];
-  const shape = `${(built?.series ?? []).map((p) => p.key).join("|")}#${size.w}x${size.h}#${units.join(",")}#${built?.stepped}`;
+  const shape = `${(built?.series ?? []).map((p) => p.key).join("|")}#${(built?.obs ?? []).map((o) => o.parent).join("|")}#${size.w}x${size.h}#${units.join(",")}#${built?.stepped}`;
   useEffect(() => {
     chart.current?.destroy();
     chart.current = null;
@@ -181,6 +182,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
         </button>
       </div>
       {error && <div className="panel-error">{error}</div>}
+      {built && built.obsErrors.length > 0 && <div className="muted plot-window-note">Observed data not shown: {built.obsErrors.join("; ")}</div>}
       {cap !== null && win && results && plot.length > 0 && (
         <div className="muted plot-window-note">
           {formatDateTime(periodMs(results, win[0]))} – {formatDateTime(periodMs(results, win[1] - 1))} only: the whole run needs the results

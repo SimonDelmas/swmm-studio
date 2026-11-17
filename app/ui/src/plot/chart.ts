@@ -70,6 +70,18 @@ export function chartOptions(built: Built, units: string[], size: { w: number; h
         spanGaps: false,
         paths: stepped,
       })),
+      // Observed values: points only, with the colour of their series.
+      ...built.obs.map((o) => {
+        const color = COLORS[o.parent % COLORS.length];
+        return {
+          label: o.label,
+          scale: built.units[o.parent],
+          stroke: color,
+          width: 1,
+          paths: () => null,
+          points: { show: true, size: 4, width: 1, stroke: color, fill: color },
+        };
+      }),
     ],
     hooks: {
       draw: [

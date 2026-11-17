@@ -67,6 +67,9 @@ continuous simulations over many years whose results files reach several gigabyt
 - **Event statistics** for long-term studies: how often and how long an outfall overflows, with
   volume and peak per event and per year.
 - **Compare two runs**: side-by-side statistics, difference maps and overlaid plots.
+- **Observed data**: link a file of measurements (CSV, Excel, OpenDocument, Parquet) to a node,
+  link or subcatchment, map its columns to the object's variables (proposed from the column
+  titles), and see the measured values on the plots of the results.
 
 ### Share your work
 

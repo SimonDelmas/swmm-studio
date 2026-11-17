@@ -1423,3 +1423,34 @@ body.dragging-series * {
   font-weight: 600;
   background: var(--accent-bg);
 }
+
+/* Observed data */
+.observed-path {
+  align-self: center;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.observed-modal h4 {
+  margin: 4px 0 0;
+}
+.observed-mapping select {
+  min-width: 180px;
+}
+.observed-preview {
+  overflow: auto;
+  max-height: 200px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.observed-preview td,
+.observed-preview th {
+  white-space: nowrap;
+}
+.observed-preview th.time {
+  color: var(--accent, #1f77b4);
+}
+.observed-preview th.mapped {
+  text-decoration: underline;
+}

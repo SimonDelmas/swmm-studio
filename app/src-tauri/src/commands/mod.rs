@@ -8,6 +8,7 @@ pub mod editing;
 pub mod engines;
 pub mod files;
 pub mod model;
+pub mod observed;
 pub mod results;
 pub mod run;
 pub mod runs;

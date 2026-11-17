@@ -1,0 +1,22 @@
+[package]
+name = "swmm-obs"
+description = "Observed time series read from tabular files (CSV, Excel, OpenDocument, Parquet) for comparison with SWMM results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+calamine = { version = "0.35", features = ["dates"] }
+chrono.workspace = true
+csv = "1"
+encoding_rs.workspace = true
+parquet = { version = "59", default-features = false, features = ["snap", "brotli", "flate2-zlib-rs", "lz4", "zstd"] }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+rust_xlsxwriter = "0.101"
