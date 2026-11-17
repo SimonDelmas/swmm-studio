@@ -18,6 +18,7 @@ swmm-engine = { path = "crates/swmm-engine" }
 swmm-geo = { path = "crates/swmm-geo" }
 swmm-model = { path = "crates/swmm-model" }
 swmm-analysis = { path = "crates/swmm-analysis" }
+swmm-obs = { path = "crates/swmm-obs" }
 
 anyhow = "1"
 thiserror = "2"

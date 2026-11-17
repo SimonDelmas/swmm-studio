@@ -1,7 +1,8 @@
 // Data of a graph: fetching the series of a view and shaping them for uPlot.
 
 import uPlot from "uplot";
-import { api } from "../api";
+import { api, errorText } from "../api";
+import { observedLink } from "../actions/observed";
 import { periodAt, periodMs } from "../format";
 import { getState } from "../store";
 import { makeStat, type PlotAgg, type PlotSeries } from "../uiTypes";
@@ -15,6 +16,16 @@ export interface Built {
   decimated: boolean;
   units: string[];
   stepped: boolean;
+  /** Observed values drawn as points, after the series in `data` (none for aggregates). */
+  obs: ObservedPlot[];
+  /** Observed files that could not be read. */
+  obsErrors: string[];
+}
+
+/** Observed values of series `parent` of a graph (same axis and colour). */
+export interface ObservedPlot {
+  parent: number;
+  label: string;
 }
 
 type Table = [number[], (number | null)[]];
@@ -82,9 +93,10 @@ export async function fetchGraph(
       if (a.end_ms !== null && y.length) (x.push(a.end_ms / 1000), y.push(y[y.length - 1]));
       return [x, y] as Table;
     });
-    return { series: plot, data: align(tables), decimated: false, units: all.map((a) => a.unit), stepped: true };
+    return { series: plot, data: align(tables), decimated: false, units: all.map((a) => a.unit), stepped: true, obs: [], obsErrors: [] };
   }
   const m = getState().model;
+  const observed = fetchObserved(results, plot, [p0, p1], width);
   const all = await Promise.all(
     plot.map(async (s) => {
       const r = s.b ? m?.compare : m?.results;
@@ -95,11 +107,52 @@ export async function fetchGraph(
       return table(r, mm, q1);
     }),
   );
+  const obs = await observed;
   return {
     series: plot,
-    data: align(all.map((a) => a.t)),
+    data: align([...all.map((a) => a.t), ...obs.tables]),
     decimated: all.some((a) => a.decimated),
     units: plot.map((p) => p.unit),
     stepped: false,
+    obs: obs.series,
+    obsErrors: obs.errors,
   };
+}
+
+/**
+ * Observed values of the plotted results (not run B's) whose object has a file linked,
+ * over the times of periods `[p0, p1)`. A file that cannot be read gives a message, not an error.
+ */
+async function fetchObserved(
+  results: ResultsInfo,
+  plot: PlotSeries[],
+  [p0, p1]: [number, number],
+  width: number,
+): Promise<{ series: ObservedPlot[]; tables: Table[]; errors: string[] }> {
+  const t0 = periodMs(results, p0);
+  const t1 = periodMs(results, Math.max(p0, p1 - 1));
+  const wanted = plot.flatMap((s, parent) => {
+    if (s.b || s.kind === "system" || !s.id) return [];
+    const name = results.variables[s.kind][s.var]?.name;
+    const link = name ? observedLink(s.kind, s.id) : undefined;
+    return link && name && link.columns[name] ? [{ parent, name, link, label: `${s.label} observed` }] : [];
+  });
+  const got = await Promise.all(
+    wanted.map((w) =>
+      api.observedSeries(w.link.kind, w.link.id, w.name, t0, t1, Math.max(100, width)).then(
+        (r) => ({ w, r, e: null }),
+        (e) => ({ w, r: null, e: `${w.label}: ${errorText(e)}` }),
+      ),
+    ),
+  );
+  const series: ObservedPlot[] = [];
+  const tables: Table[] = [];
+  const errors: string[] = [];
+  for (const { w, r, e } of got) {
+    if (e) errors.push(e);
+    if (!r || r.times.length === 0) continue;
+    series.push({ parent: w.parent, label: w.label });
+    tables.push([Array.from(r.times, (t) => t / 1000), Array.from(r.values, (v) => (Number.isFinite(v) ? v : null))]);
+  }
+  return { series, tables, errors };
 }

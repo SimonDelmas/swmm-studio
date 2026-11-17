@@ -24,6 +24,8 @@ export interface SvgSeries {
   x: number[];
   y: (number | null)[];
   stepped?: boolean;
+  /** Drawn as points (observed values), not as a line. */
+  points?: boolean;
 }
 
 /** Line chart as a standalone SVG document; one y axis per unit (left, then right). */
@@ -71,10 +73,21 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
   parts.push(`<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="none" stroke="#888"/>`);
   // Series.
   for (const s of series) {
+    if (s.points) {
+      const dots: string[] = [];
+      s.x.forEach((x, i) => {
+        const y = s.y[i];
+        if (y !== null && y !== undefined && Number.isFinite(y)) dots.push(`<circle cx="${X(x).toFixed(1)}" cy="${Y(s.unit, y).toFixed(1)}" r="2"/>`);
+      });
+      parts.push(`<g fill="${s.color}">${dots.join("")}</g>`);
+      continue;
+    }
     let d = "";
     let pen = false;
     for (let i = 0; i < s.x.length; i++) {
       const y = s.y[i];
+      // Undefined: no value at this x (series aligned on the x of others), not a gap.
+      if (y === undefined) continue;
       if (y === null || !Number.isFinite(y)) {
         pen = false;
         continue;
@@ -92,7 +105,11 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
   series.forEach((s, i) => {
     const lx = m.l + (i % 3) * (pw / 3);
     const ly = m.t + ph + 30 + 16 * Math.floor(i / 3);
-    parts.push(`<line x1="${lx}" x2="${lx + 18}" y1="${ly - 4}" y2="${ly - 4}" stroke="${s.color}" stroke-width="2"/>`);
+    parts.push(
+      s.points
+        ? `<circle cx="${lx + 9}" cy="${ly - 4}" r="2.5" fill="${s.color}"/>`
+        : `<line x1="${lx}" x2="${lx + 18}" y1="${ly - 4}" y2="${ly - 4}" stroke="${s.color}" stroke-width="2"/>`,
+    );
     parts.push(`<text x="${lx + 22}" y="${ly}" font-size="10">${esc(`${s.label} (${s.unit})`)}</text>`);
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif">${parts.join("")}</svg>`;

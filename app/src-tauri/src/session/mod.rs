@@ -25,7 +25,7 @@ pub(crate) use display::Display;
 pub use display::{GeometryPatch, Space};
 pub use report::{BlockDto, ReportSummary};
 pub(crate) use results::object_kind;
-pub use results::{element_by_name, LoadedResults, ResultsInfo, VarValue};
+pub use results::{element_by_name, LoadedResults, ResultsInfo, VarInfo, VarValue};
 
 pub type Res<T> = Result<T, String>;
 
@@ -119,6 +119,8 @@ pub struct Session {
     pub(crate) history: swmm_model::edit::History,
     /// Incremented on every change of the model (edit, undo, redo).
     pub(crate) revision: u64,
+    /// Observed series read from their files.
+    pub(crate) observed_cache: crate::observed::Cache,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -155,6 +157,7 @@ impl Session {
             notes,
             history: Default::default(),
             revision: 0,
+            observed_cache: Default::default(),
         };
         let (out, rpt) = s.find_results();
         if let Some(out) = out {

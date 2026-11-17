@@ -8,6 +8,13 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Observed data: link a file of measured series to a node, link or subcatchment (properties
+  panel, "Link a file…"). CSV and other delimited text (`,` `;` tab, decimal comma), Excel
+  (`xlsx`, `xls`, `xlsb`), OpenDocument (`ods`) and Parquet files are read; the column of dates
+  and times is found (ISO, day or month first), and the columns are mapped to the object's
+  variables, by default from their titles (object name, variable names in English or French,
+  units). The link is kept in the project file, and the observed values are drawn as points on
+  the time series plots of the object's results (and in their exports).
 - Profile: hovering a conduit shows its length, diameter or height, inverts at both ends and
   slope; hovering a node shows its rim, invert and depth.
 - Map style: show or hide each node and link type, whatever the layer is coloured by; hidden

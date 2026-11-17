@@ -13,6 +13,7 @@ import { applyStyle } from "./actions/style";
 import { mapPerf } from "./map/useMapLayers";
 import { mapProject } from "./map/useViewer";
 import { currentPlotView } from "./actions/views";
+import { observedChooser } from "./actions/observed";
 import { getState, setState } from "./store";
 import "./styles.css";
 
@@ -38,6 +39,7 @@ import "./styles.css";
   saveModel,
   startRun,
   validateModel,
+  observedChooser,
   profileFromSelection,
 };
 

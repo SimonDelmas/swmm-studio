@@ -32,6 +32,8 @@ export interface Project {
   crs: string | null;
   basemap: Basemap;
   results: { out: string | null; rpt: string | null };
+  /** Files of observed series linked to objects (absent: none). */
+  observed?: ObservedLink[];
   ui: Record<string, unknown>;
 }
 
@@ -400,4 +402,53 @@ export interface RunFinished {
   warnings: number;
   console: string[];
   info: ModelInfo | null;
+}
+
+/** Order of day and month in dates that do not start with the year. */
+export type DateOrder = "auto" | "dmy" | "mdy";
+
+/** A file of observed series linked to an object, with the column of each variable. */
+export interface ObservedLink {
+  kind: "node" | "link" | "subcatchment";
+  id: string;
+  file: string;
+  sheet?: string | null;
+  time_column: string;
+  date_order: DateOrder;
+  /** Variable name → column. */
+  columns: Record<string, string>;
+}
+
+export interface ObservedColumn {
+  name: string;
+  kind: "time" | "number" | "text" | "empty";
+  values: number;
+}
+
+/** A file read to link it to an object: its columns and the default mapping. */
+export interface ObservedFile {
+  path: string;
+  format: "text" | "workbook" | "parquet";
+  sheets: string[];
+  sheet: string | null;
+  columns: ObservedColumn[];
+  time_column: string | null;
+  date_order: DateOrder;
+  date_order_ambiguous: boolean;
+  rows: number;
+  preview: string[][];
+  /** Columns of numbers. */
+  series: string[];
+  variables: VarInfo[];
+  mapping: Record<string, string>;
+  start_ms: number | null;
+  end_ms: number | null;
+  skipped: number;
+  time_error: string | null;
+}
+
+/** Observed values: times in ms (model clock) and values. */
+export interface ObservedSeries {
+  times: Float64Array;
+  values: Float32Array;
 }

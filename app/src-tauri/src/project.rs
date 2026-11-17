@@ -1,9 +1,11 @@
 //! Project file `<model>.swproj` (JSON) next to the `.inp`: coordinate system, basemap,
-//! linked results and the UI state (view, styles).
+//! linked results, observed data and the UI state (view, styles).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use swmm_obs::DateOrder;
 
 pub const OSM_TILES: &str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 pub const OSM_ATTRIBUTION: &str = "© OpenStreetMap contributors";
@@ -32,6 +34,26 @@ pub struct LinkedResults {
     pub rpt: Option<PathBuf>,
 }
 
+/// A file of observed series linked to an object of the model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObservedLink {
+    /// `node`, `link` or `subcatchment`.
+    pub kind: String,
+    /// Name of the object.
+    pub id: String,
+    /// Stored relative to the project folder when possible.
+    pub file: PathBuf,
+    /// Sheet of a workbook (none: the first one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
+    /// Column of the dates and times.
+    pub time_column: String,
+    #[serde(default)]
+    pub date_order: DateOrder,
+    /// Column of each variable of the object (by variable name: `flow`, `depth`…).
+    pub columns: BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Project {
@@ -43,6 +65,9 @@ pub struct Project {
     /// Engine used to run this model (name in the registry); `None` = default engine.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine: Option<String>,
+    /// Observed data of objects.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub observed: Vec<ObservedLink>,
     /// State owned by the front-end (view, map styles, panels).
     pub ui: serde_json::Value,
 }
@@ -55,6 +80,7 @@ impl Default for Project {
             basemap: Basemap::default(),
             results: LinkedResults::default(),
             engine: None,
+            observed: Vec::new(),
             ui: serde_json::Value::Object(Default::default()),
         }
     }
@@ -77,6 +103,9 @@ impl Project {
                     let dir = inp.parent().unwrap_or(Path::new("."));
                     proj.results.out = proj.results.out.map(|f| dir.join(f));
                     proj.results.rpt = proj.results.rpt.map(|f| dir.join(f));
+                    for o in &mut proj.observed {
+                        o.file = dir.join(&o.file);
+                    }
                     (proj, None)
                 }
                 Err(e) => (Project::default(), Some(format!("{}: {e}", p.display()))),
@@ -92,6 +121,9 @@ impl Project {
         let mut copy = self.clone();
         copy.results.out = rel(&self.results.out);
         copy.results.rpt = rel(&self.results.rpt);
+        for o in &mut copy.observed {
+            o.file = o.file.strip_prefix(dir).map(Path::to_path_buf).unwrap_or(o.file.clone());
+        }
         let text = serde_json::to_string_pretty(&copy).expect("project serializes");
         std::fs::write(project_path(inp), text)
     }
@@ -111,9 +143,19 @@ mod tests {
         p.crs = Some("EPSG:2154".into());
         p.results.out = Some(dir.path().join("runs").join("a.out"));
         p.ui = serde_json::json!({ "view": { "zoom": 14 } });
+        p.observed.push(ObservedLink {
+            kind: "link".into(),
+            id: "C1".into(),
+            file: dir.path().join("data").join("q.csv"),
+            sheet: None,
+            time_column: "Date".into(),
+            date_order: DateOrder::Auto,
+            columns: [("flow".to_string(), "Q".to_string())].into(),
+        });
         p.save(&inp).unwrap();
         let text = std::fs::read_to_string(project_path(&inp)).unwrap();
         assert!(text.contains("\"out\": \"runs"), "{text}");
+        assert!(text.contains("\"file\": \"data"), "{text}");
         let (q, err) = Project::load(&inp);
         assert!(err.is_none());
         assert_eq!(q, p);

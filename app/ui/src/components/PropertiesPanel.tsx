@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
 import { formatDateTime, formatNumber, periodMs } from "../format";
 import { deleteObjects, edit } from "../actions/edit";
-import { setState, useStore } from "../store";
+import { notify, setState, useStore } from "../store";
 import type { ElementKind, ObjectInfo, RefKind } from "../types";
 import { addToPlot } from "../plot/series";
 import { startSeriesDrag } from "../dragSeries";
@@ -13,6 +13,62 @@ import { GroupEditor } from "./properties/GroupEditor";
 import { MultiSelection } from "./properties/MultiSelection";
 import { LISTED, NameList } from "./properties/ValueInput";
 import { latest } from "../latest";
+import { baseName, observedLink, saveObserved } from "../actions/observed";
+import { ObservedDialog } from "./ObservedDialog";
+
+/** The file of observed series linked to the object, the column of each variable, and the dialog to link one. */
+function ObservedSection({ kind, index, id }: { kind: "node" | "link" | "subcatchment"; index: number; id: string }) {
+  const link = useStore((s) => observedLink(kind, id, s.model));
+  const results = useStore((s) => s.model?.results ?? null);
+  const [open, setOpen] = useState(false);
+  const plot = (name: string) => {
+    const v = results?.variables[kind].findIndex((x) => x.name === name) ?? -1;
+    if (v >= 0) void addToPlot(kind, index, v, false, undefined, "new");
+  };
+  const remove = () => saveObserved(kind, id, null).catch((e) => notify(errorText(e), true));
+  return (
+    <>
+      <h4>Observed data</h4>
+      {link ? (
+        <>
+          <div className="muted" title={link.file}>
+            {baseName(link.file)}
+            {link.sheet ? ` – ${link.sheet}` : ""}
+          </div>
+          <table className="kv">
+            <tbody>
+              {Object.entries(link.columns).map(([v, c]) => (
+                <tr key={v}>
+                  <td>
+                    {results?.variables[kind].some((x) => x.name === v) ? (
+                      <LinkButton title="Plot the result with the observed values in a new time series tab" onClick={() => plot(v)}>
+                        {v}
+                      </LinkButton>
+                    ) : (
+                      v
+                    )}
+                  </td>
+                  <td>{c}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="row">
+            <button onClick={() => setOpen(true)}>Edit…</button>
+            <button onClick={remove}>Remove</button>
+          </div>
+        </>
+      ) : (
+        <div className="row">
+          <button title="Link a file of measured series (CSV, Excel, Parquet…) to this object" onClick={() => setOpen(true)}>
+            Link a file…
+          </button>
+        </div>
+      )}
+      {open && <ObservedDialog kind={kind} id={id} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
 
 export function PropertiesPanel() {
   const selection = useStore((s) => s.selection);
@@ -160,6 +216,7 @@ export function PropertiesPanel() {
           </table>
         </>
       )}
+      {one.kind !== "gage" && <ObservedSection kind={one.kind} index={one.index} id={info.id} />}
     </div>
   );
 }

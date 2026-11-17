@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RunDto, SectionInfo, Stat } from "./analysisTypes";
-import type { Basemap, BlockDto, Climate, CrsEntry, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, OptionsDto, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
+import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
   const r = await invoke<ArrayBuffer | number[]>(cmd, args);
@@ -143,6 +143,15 @@ export const api = {
   launchFile: () => invoke<string | null>("launch_file"),
   exportTable: (path: string, title: string, columns: string[], rows: string[][]) =>
     invoke<void>("export_table", { path, title, columns, rows }),
+  inspectObserved: (path: string, kind: string, id: string, sheet: string | null, timeColumn: string | null, dateOrder: DateOrder) =>
+    invoke<ObservedFile>("inspect_observed", { path, kind, id, sheet, timeColumn, dateOrder }),
+  /** Links a file to an object (null: removes the link). */
+  setObserved: (kind: string, id: string, link: ObservedLink | null) => invoke<ModelInfo>("set_observed", { kind, id, link }),
+  observedSeries: async (kind: string, id: string, v: string, t0: number, t1: number, buckets: number): Promise<ObservedSeries> => {
+    const buf = await buffer("observed_series", { kind, id, var: v, t0, t1, buckets: Math.max(1, Math.round(buckets)) });
+    const n = new DataView(buf).getUint32(0, true);
+    return { times: new Float64Array(buf.slice(8, 8 + 8 * n)), values: new Float32Array(buf.slice(8 + 8 * n, 8 + 12 * n)) };
+  },
 };
 
 export function onRunProgress(f: (p: RunProgress) => void): Promise<UnlistenFn> {

@@ -7,6 +7,7 @@ mod commands;
 mod editing;
 mod export;
 mod model_views;
+mod observed;
 mod project;
 mod runs;
 mod session;
@@ -109,6 +110,9 @@ fn main() {
             commands::runs::set_run_label,
             commands::runs::delete_run,
             commands::files::export_table,
+            commands::observed::inspect_observed,
+            commands::observed::set_observed,
+            commands::observed::observed_series,
         ])
         .run(tauri::generate_context!())
         .expect("error while running SWMM Studio");

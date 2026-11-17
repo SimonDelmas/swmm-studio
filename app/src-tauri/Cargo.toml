@@ -30,6 +30,7 @@ swmm-geo.workspace = true
 swmm-model.workspace = true
 swmm-engine.workspace = true
 swmm-analysis.workspace = true
+swmm-obs.workspace = true
 rayon.workspace = true
 rust_xlsxwriter = "0.101"
 chrono.workspace = true
