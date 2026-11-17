@@ -20,7 +20,7 @@ pub enum DateOrder {
 /// The three numbers of a date and the text after it.
 fn date_parts(s: &str) -> Option<([&str; 3], &str)> {
     let s = s.trim();
-    let end = s.find(|c: char| c == ' ' || c == 'T' || c == 't').unwrap_or(s.len());
+    let end = s.find([' ', 'T', 't']).unwrap_or(s.len());
     let (date, rest) = s.split_at(end);
     let mut it = date.split(['/', '-', '.']);
     let parts = [it.next()?, it.next()?, it.next()?];

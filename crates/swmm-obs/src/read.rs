@@ -143,7 +143,7 @@ fn text_cell(s: &str, comma: bool) -> Cell {
 fn sniff_delimiter(text: &str) -> u8 {
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).take(30).collect();
     let mut best = (0usize, b',');
-    for d in [b';', b'\t', b',', b'|'] {
+    for d in *b";\t,|" {
         let counts: Vec<usize> = lines.iter().map(|l| l.bytes().filter(|&b| b == d).count()).collect();
         let Some(&first) = counts.iter().find(|&&c| c > 0) else { continue };
         let same = counts.iter().filter(|&&c| c == first).count();
@@ -230,7 +230,7 @@ fn parquet_cell(f: &Field) -> Cell {
         Field::Float16(v) => Cell::Number(f64::from(*v)),
         Field::Float(v) => Cell::Number(f64::from(*v)),
         Field::Double(v) => Cell::Number(*v),
-        Field::Decimal(_) => Cell::Text(f.to_string()).to_number(),
+        Field::Decimal(_) => Cell::Text(f.to_string()).into_number(),
         Field::Str(s) => text_cell(s, true),
         Field::Date(days) => NaiveDate::from_num_days_from_ce_opt(*days + 719_163)
             .map_or(Cell::Empty, |d| Cell::Time(d.and_time(chrono::NaiveTime::MIN))),
@@ -241,7 +241,7 @@ fn parquet_cell(f: &Field) -> Cell {
 }
 
 impl Cell {
-    fn to_number(self) -> Cell {
+    fn into_number(self) -> Cell {
         match &self {
             Cell::Text(s) => number(s, false).map_or(self, Cell::Number),
             _ => self,
