@@ -14,11 +14,14 @@ use swmm_out::{ElementKind, FlowUnits};
 use crate::project::ObservedLink;
 use crate::session::{err, Res, Session, VarInfo};
 
+/// File, sheet, time column and date order.
 type Key = (PathBuf, Option<String>, String, DateOrder);
+/// The series of a file and the time the file had then.
+type Entry = (Option<SystemTime>, Arc<Series>);
 
 /// Series of the files read, with the time the file had then.
 #[derive(Default)]
-pub struct Cache(Mutex<HashMap<Key, (Option<SystemTime>, Arc<Series>)>>);
+pub struct Cache(Mutex<HashMap<Key, Entry>>);
 
 impl Cache {
     fn get(&self, link: &ObservedLink) -> Res<Arc<Series>> {
