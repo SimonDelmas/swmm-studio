@@ -39,6 +39,8 @@ export interface State {
   profileError: string | null;
   /** Profile tool: start node clicked, waiting for the end node. */
   profileStart: number | null;
+  /** The network upstream of the selected objects is highlighted on the map. */
+  upstream: boolean;
   /** Last model check (null: not run yet), and why it could not run. */
   issues: Issue[] | null;
   issuesError: string | null;
@@ -89,6 +91,7 @@ const initial: State = {
   profile: null,
   profileError: null,
   profileStart: null,
+  upstream: false,
   issues: null,
   issuesError: null,
   fitExtent: 0,

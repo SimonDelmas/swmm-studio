@@ -71,6 +71,7 @@ const ADD: [Tool, string][] = [
 export function Toolbar() {
   const model = useStore((s) => s.model);
   const tool = useStore((s) => s.tool);
+  const upstream = useStore((s) => s.upstream);
   const [search, setSearch] = useState("");
   const find = () => {
     const id = search.trim();
@@ -135,6 +136,14 @@ export function Toolbar() {
           title="Longitudinal profile: click a start node, then an end node"
         >
           ⟋ Profile
+        </button>
+        <button
+          disabled={!model}
+          className={upstream ? "active" : ""}
+          onClick={() => setState({ upstream: !upstream })}
+          title="Upstream: highlight the network draining to the selected nodes, links and subcatchments"
+        >
+          ⇡ Upstream
         </button>
       </div>
       <span className="sep" />
