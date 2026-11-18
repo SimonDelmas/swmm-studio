@@ -7,18 +7,14 @@ import { profileClick } from "../profile/profiles";
 import { getState, notify, setState } from "../store";
 import { sameRef, type ObjRef } from "../types";
 import type { Tool } from "../uiTypes";
+import { isShown } from "./shown";
 import type { EditTools } from "./useEditTools";
 import type { Pt, Viewer } from "./viewers";
 
-/** Whether the map draws an object: its layer is shown and, for nodes and links, its type too. */
+/** Whether the map draws an object. */
 function shown(h: ObjRef): boolean {
-  const { styles: st, geometry: geom } = getState();
-  if (h.kind === "subcatchment") return st.subcatchment.visible;
-  if (h.kind !== "node" && h.kind !== "link") return true;
-  const style = st[h.kind];
-  if (!style.visible) return false;
-  const t = h.kind === "node" ? geom?.nodeTypes[h.index] : geom?.linkTypes[h.index];
-  return t === undefined || !style.hiddenTypes.includes(t);
+  const { styles, geometry } = getState();
+  return isShown(h, styles, geometry);
 }
 
 /** Replaces the selection, or adds to it. Objects the map does not draw cannot be selected on it. */

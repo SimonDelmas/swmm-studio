@@ -2,7 +2,9 @@
 // to node to their from node, and subcatchments to their outlet.
 
 import { useStore } from "../store";
-import type { Geometry, ObjRef } from "../types";
+import type { Geometry, ObjKind, ObjRef } from "../types";
+import type { LayerStyle, StyledKind } from "../uiTypes";
+import { isShown } from "./shown";
 
 const NONE = 0xffffffff;
 
@@ -97,12 +99,28 @@ export function upstreamCached(g: Geometry, roots: ObjRef[]): Upstream {
   return last.up;
 }
 
-/** The network upstream of the selection while the upstream view is on (null: off, or no map). */
+/** The objects of `up` the map draws (hidden layers and types left out). */
+export function shownUpstream(g: Geometry, up: Upstream, styles: Record<StyledKind, LayerStyle>): Upstream {
+  const keep = (kind: ObjKind, list: number[]) => list.filter((index) => isShown({ kind, index }, styles, g));
+  return { nodes: keep("node", up.nodes), links: keep("link", up.links), subcatchments: keep("subcatchment", up.subcatchments) };
+}
+
+let lastShown: { up: Upstream; styles: Record<StyledKind, LayerStyle>; shown: Upstream } | null = null;
+
+/**
+ * The network upstream of the selection that the map draws, while the upstream view is on
+ * (null: off, or no map). The network is followed through hidden objects: only what is
+ * highlighted, counted and selected leaves them out.
+ */
 export function useUpstream(): Upstream | null {
   const on = useStore((s) => s.upstream);
   const g = useStore((s) => s.geometry);
   const selection = useStore((s) => s.selection);
-  return on && g ? upstreamCached(g, selection) : null;
+  const styles = useStore((s) => s.styles);
+  if (!on || !g) return null;
+  const up = upstreamCached(g, selection);
+  if (lastShown?.up !== up || lastShown.styles !== styles) lastShown = { up, styles, shown: shownUpstream(g, up, styles) };
+  return lastShown.shown;
 }
 
 /** The upstream objects as a selection. */
