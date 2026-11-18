@@ -3,12 +3,15 @@ import { LinkButton } from "./LinkButton";
 import { useEffect } from "react";
 import { api, errorText } from "../api";
 import { notify, setState, useStore } from "../store";
+import { selectObjects } from "../actions/selection";
+import { upstreamRefs, useUpstream } from "../map/upstream";
 
 export function StatusBar() {
   const model = useStore((s) => s.model);
   const selection = useStore((s) => s.selection);
   const message = useStore((s) => s.message);
   const busy = useStore((s) => s.busy);
+  const up = useUpstream();
 
   useEffect(() => {
     if (!message) return;
@@ -73,6 +76,12 @@ export function StatusBar() {
       )}
       {cache}
       {selection.length > 0 && <span>{selection.length} selected</span>}
+      {up && selection.length > 0 && (
+        <span className="upstream-count" title="Network upstream of the selection (highlighted in blue)">
+          Upstream: {up.nodes.length} nodes · {up.links.length} links · {up.subcatchments.length} subcatchments{" "}
+          <LinkButton onClick={() => selectObjects(upstreamRefs(up), false)}>select</LinkButton>
+        </span>
+      )}
       <span className="grow" />
       {message && <span className={message.error ? "bad" : ""}><Linkified text={message.text} /></span>}
     </div>

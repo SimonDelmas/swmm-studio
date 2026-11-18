@@ -8,7 +8,8 @@ import { useStore } from "../store";
 import { styleObjects } from "./colors";
 import { baseLayers, staticGeometry } from "./layers";
 import { outletSegments } from "./outlets";
-import { labelLayer, profileLayers, selectionLayers } from "./overlayLayers";
+import { labelLayer, profileLayers, selectionLayers, upstreamLayers } from "./overlayLayers";
+import { useUpstream } from "./upstream";
 import { useLayerValues } from "./useLayerValues";
 import type { Viewer } from "./viewers";
 
@@ -75,6 +76,11 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
     () => (g ? selectionLayers(g, selection, coordSystem, styles.link.size, styles.node.size) : []),
     [g, selection, coordSystem, styles.link.size, styles.node.size],
   );
+  const upstream = useUpstream();
+  const upstreamed = useMemo(
+    () => (g && upstream ? upstreamLayers(g, upstream, coordSystem, styles.link.size, styles.node.size) : []),
+    [g, upstream, coordSystem, styles.link.size, styles.node.size],
+  );
   const profiled = useMemo(
     () => (g ? profileLayers(g, profile, profileStart, coordSystem, styles.link.size, styles.node.size) : []),
     [g, profile, profileStart, coordSystem, styles.link.size, styles.node.size],
@@ -92,7 +98,7 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
   }, [period]);
 
   useEffect(() => {
-    viewer.current?.setLayers([...base, ...profiled, ...selected, ...(labelled ? [labelled] : []), ...toolLayers]);
+    viewer.current?.setLayers([...base, ...upstreamed, ...profiled, ...selected, ...(labelled ? [labelled] : []), ...toolLayers]);
     const s = stepStart.current;
     if (s) {
       requestAnimationFrame(() => {
@@ -100,5 +106,5 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
         if (mapPerf.steps.length > 500) mapPerf.steps.shift();
       });
     }
-  }, [base, profiled, selected, labelled, toolLayers]);
+  }, [base, upstreamed, profiled, selected, labelled, toolLayers]);
 }

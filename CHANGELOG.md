@@ -8,6 +8,10 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Upstream: the "Upstream" toolbar button highlights, in blue, the network draining to the
+  selected nodes, links and subcatchments (links followed from their to node to their from
+  node, subcatchments to their outlet node or subcatchment). The status bar counts the upstream
+  nodes, links and subcatchments, and "select" selects them.
 - Observed data: link a file of measured series to a node, link or subcatchment (properties
   panel, "Link a file…"). CSV and other delimited text (`,` `;` tab, decimal comma), Excel
   (`xlsx`, `xls`, `xlsb`), OpenDocument (`ods`) and Parquet files are read; the column of dates

@@ -1,14 +1,18 @@
 // Layers drawn over the network: the selection, the current profile and the labels.
 
 import type { CoordinateSystem, Layer } from "@deck.gl/core";
-import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import type { LayerStyle } from "../uiTypes";
 import type { ProfileDto } from "../analysisTypes";
 import type { Geometry, ObjKind, ObjRef } from "../types";
+import type { Upstream } from "./upstream";
 import type { Extent, Pt } from "./viewers";
 
 type Rgba = [number, number, number, number];
 const HIGHLIGHT: Rgba = [255, 200, 0, 255];
+/** The network upstream of the selection. */
+const UPSTREAM: Rgba = [0, 170, 230, 220];
+const UPSTREAM_FILL: Rgba = [0, 170, 230, 60];
 /** Path of the current longitudinal profile. */
 const PROFILE: Rgba = [230, 40, 150, 210];
 const MAX_LABELS = 400;
@@ -64,6 +68,58 @@ export function selectionLayers(g: Geometry, selection: ObjRef[], coordSystem: C
       getLineColor: HIGHLIGHT,
       getLineWidth: 3,
       lineWidthUnits: "pixels",
+    }),
+  ];
+}
+
+/** The network upstream of the selection: its subcatchments, links and nodes. */
+export function upstreamLayers(g: Geometry, up: Upstream, coordSystem: CoordinateSystem, linkSize: number, nodeSize: number): Layer[] {
+  if (up.nodes.length + up.links.length + up.subcatchments.length === 0) return [];
+  const common = { coordinateSystem: coordSystem, pickable: false };
+  const slice = (a: Float64Array, s: number, e: number) => {
+    const out: Pt[] = [];
+    for (let i = s; i < e; i++) out.push([a[2 * i], a[2 * i + 1]]);
+    return out;
+  };
+  const rings = up.subcatchments.map((i) => slice(g.subPts, g.subStarts[i], g.subStarts[i + 1])).filter((r) => r.length >= 3);
+  const paths = up.links.map((i) => slice(g.linkPts, g.linkStarts[i], g.linkStarts[i + 1])).filter((p) => p.length >= 2);
+  const pts = up.nodes.map((i): Pt => [g.nodes[2 * i], g.nodes[2 * i + 1]]).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  return [
+    new SolidPolygonLayer<Pt[]>({
+      ...common,
+      id: "upstream-subcatchment-fill",
+      data: rings,
+      getPolygon: (r) => r,
+      getFillColor: UPSTREAM_FILL,
+    }),
+    new PathLayer<Pt[]>({
+      ...common,
+      id: "upstream-subcatchments",
+      data: rings,
+      getPath: (r) => r,
+      getColor: UPSTREAM,
+      getWidth: 2,
+      widthUnits: "pixels",
+    }),
+    new PathLayer<Pt[]>({
+      ...common,
+      id: "upstream-links",
+      data: paths,
+      getPath: (p) => p,
+      getColor: UPSTREAM,
+      getWidth: Math.max(5, linkSize + 4),
+      widthUnits: "pixels",
+      capRounded: true,
+      jointRounded: true,
+    }),
+    new ScatterplotLayer<Pt>({
+      ...common,
+      id: "upstream-nodes",
+      data: pts,
+      getPosition: (p) => p,
+      getRadius: Math.max(4, nodeSize + 1),
+      radiusUnits: "pixels",
+      getFillColor: UPSTREAM,
     }),
   ];
 }
