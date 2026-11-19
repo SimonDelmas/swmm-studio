@@ -162,13 +162,17 @@ export function createDeckViewer(container: HTMLDivElement, onView: () => void):
     initialViewState: viewState,
     controller: { doubleClickZoom: true, inertia: false },
     layers: [],
+    // What was drawn before (labels of the objects in view) is drawn again with the viewport.
+    onLoad: onView,
     onViewStateChange: ({ viewState: v }) => {
       viewState = v as typeof viewState;
       onView();
       return v;
     },
   });
-  const viewport = () => deck.getViewports()[0];
+  // None until deck is initialized (a frame or so after it is created): `getViewports`
+  // asserts before. A model reopened with its labels on asks for the extent right away.
+  const viewport = () => (deck.isInitialized ? deck.getViewports()[0] : undefined);
   return {
     setLayers: (layers) => deck.setProps({ layers }),
     unproject: (p) => {

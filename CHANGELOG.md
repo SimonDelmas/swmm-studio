@@ -120,6 +120,9 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Fixed
 
+- Map: a model without a coordinate system, reopened with its labels on, no longer stops the
+  interface ("deck.gl: assertion failed"); the labels asked for the view before the map was
+  ready. The view is not saved in the project until the map has one.
 - A model opened while an edit, undo or delete was on its way (for example from the file
   explorer while a dialog was open) can no longer receive that change with the object
   numbering of the previous model. The dialogs that edit the previous model (options,
