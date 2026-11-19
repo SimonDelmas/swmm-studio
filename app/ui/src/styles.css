@@ -1675,3 +1675,23 @@ body.dragging-tab * {
   font-size: 0.85em;
   white-space: nowrap;
 }
+
+/* X-Y plots: the canvas takes the pointer (box zoom, points); the tip follows it. */
+.xy-area {
+  position: relative;
+  cursor: crosshair;
+}
+.xy-tip {
+  position: absolute;
+  pointer-events: none;
+  white-space: pre;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  z-index: 2;
+}
+.xy-area canvas {
+  display: block;
+}

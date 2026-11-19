@@ -7,9 +7,9 @@ import { api, errorText } from "../api";
 import { applyPatch } from "../geometryPatch";
 import { getState, notify, setState, type State } from "../store";
 import { sameRef, type EditOutcome, type EditRequest, type Geometry, type ObjKind, type ObjRef } from "../types";
-import { seriesKey, type PlotView } from "../uiTypes";
+import { seriesKey, type PlotSeries } from "../uiTypes";
 import { indexOfId } from "./ids";
-import { mapPlotSeries } from "./views";
+import { mapPlotSeries, mapXYSeries } from "./views";
 
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -42,13 +42,11 @@ export async function readGeometry(): Promise<{ geometry: Geometry | null; error
 /** Thrown for an edit asked for in a model that has been replaced (opened again, or another one) since. */
 const STALE = "another model was opened: the change was not applied";
 
-/** Plotted series found again by name after the indices changed (dropped when gone). */
-function remapPlotViews(views: PlotView[], ids: State["ids"]): PlotView[] {
-  return mapPlotSeries(views, (p) => {
-    if (p.kind === "system" || !p.id) return p;
-    const index = indexOfId(ids[p.kind as ObjKind], p.id);
-    return index < 0 ? null : { ...p, index, key: seriesKey(p.kind, index, p.var, p.b) };
-  });
+/** A plotted series found again by name after the indices changed (null when gone). */
+function remapSeries(p: PlotSeries, ids: State["ids"]): PlotSeries | null {
+  if (p.kind === "system" || !p.id) return p;
+  const index = indexOfId(ids[p.kind as ObjKind], p.id);
+  return index < 0 ? null : { ...p, index, key: seriesKey(p.kind, index, p.var, p.b) };
 }
 
 /**
@@ -102,7 +100,8 @@ export async function applyOutcome(o: EditOutcome, seq = getState().modelSeq, la
     patch.ids = ids;
     // The views may have changed while the names were loaded: remap the current ones.
     const now = getState();
-    patch.plotViews = remapPlotViews(now.plotViews, ids);
+    patch.plotViews = mapPlotSeries(now.plotViews, (p) => remapSeries(p, ids));
+    patch.xyViews = mapXYSeries(now.xyViews, (p) => remapSeries(p, ids));
     Object.assign(patch, remapProfiles(now, ids.node ?? []));
   }
   if (getState().modelSeq !== seq) return;

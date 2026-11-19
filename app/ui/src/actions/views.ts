@@ -1,9 +1,9 @@
-// The time series, profile, comparison and report tabs of the bottom panel: opening, updating,
+// The time series, X-Y, profile, comparison and report tabs of the bottom panel: opening, updating,
 // ordering and closing them.
 
 import { api, errorText } from "../api";
 import { getState, isViewTabType, notify, setState, type State } from "../store";
-import type { CompareView, PlotAgg, PlotGraph, PlotSeries, PlotView, ProfileView, ReportTabView } from "../uiTypes";
+import type { CompareView, PlotAgg, PlotGraph, PlotSeries, PlotView, ProfileView, ReportTabView, XYPair, XYView } from "../uiTypes";
 import { setResultsInfo } from "./model";
 
 let plotIds = 0;
@@ -34,6 +34,34 @@ function uniqueName(prefix: string, names: string[]): string {
 }
 
 export const newPlotName = (s: State = getState()) => uniqueName("Time series", s.plotViews.map((v) => v.name));
+
+export const newXYName = (s: State = getState()) => uniqueName("X-Y", s.xyViews.map((v) => v.name));
+
+/** Opens a new X-Y tab (with `pairs`). */
+export function openXYView(pairs: XYPair[] = [], name?: string) {
+  setState((s) => {
+    const v: XYView = { id: newPlotId(), name: name ?? newXYName(s), pairs, fixedX: null, lines: false };
+    return { xyViews: [...s.xyViews, v], xyView: v.id, bottomTab: "xy" };
+  });
+}
+
+export function updateXYView(id: number, patch: Partial<XYView> | ((v: XYView) => Partial<XYView>)) {
+  setState((s) => ({
+    xyViews: s.xyViews.map((v) => (v.id === id ? { ...v, ...(typeof patch === "function" ? patch(v) : patch) } : v)),
+  }));
+}
+
+/** Maps every series of every X-Y view (null drops it, and the pairs it is in). */
+export function mapXYSeries(views: XYView[], f: (p: PlotSeries) => PlotSeries | null): XYView[] {
+  return views.map((v) => {
+    const pairs = v.pairs.flatMap((p) => {
+      const x = f(p.x);
+      const y = f(p.y);
+      return x && y ? [{ key: `${x.key}|${y.key}`, x, y }] : [];
+    });
+    return { ...v, pairs, fixedX: v.fixedX && f(v.fixedX) };
+  });
+}
 
 /** Opens a profile through `nodes` in a new tab. */
 export function openProfileView(nodes: number[], name?: string) {
@@ -126,9 +154,9 @@ export function renameReportView(dir: string, name: string) {
   setState((s) => ({ reportViews: s.reportViews.map((v) => (v.dir === dir ? { ...v, name } : v)) }));
 }
 
-/** A time series, profile, comparison or report tab. */
+/** A time series, X-Y, profile, comparison or report tab. */
 export interface ViewTab {
-  type: "plot" | "profile" | "compare" | "report";
+  type: "plot" | "xy" | "profile" | "compare" | "report";
   id: number;
   name: string;
 }
@@ -136,11 +164,12 @@ export interface ViewTab {
 export const viewTabKey = (t: Pick<ViewTab, "type" | "id">) => `${t.type}:${t.id}`;
 
 /** The tabs created as needed: in the order they were dragged to, then in creation order. */
-export function viewTabs(s: Pick<State, "plotViews" | "profileViews" | "compareViews" | "reportViews" | "viewOrder">): ViewTab[] {
+export function viewTabs(s: Pick<State, "plotViews" | "xyViews" | "profileViews" | "compareViews" | "reportViews" | "viewOrder">): ViewTab[] {
   const rank = new Map(s.viewOrder.map((k, i) => [k, i]));
   const at = (t: ViewTab) => rank.get(viewTabKey(t)) ?? Infinity;
   return [
     ...s.plotViews.map((v) => ({ type: "plot" as const, id: v.id, name: v.name })),
+    ...s.xyViews.map((v) => ({ type: "xy" as const, id: v.id, name: v.name })),
     ...s.profileViews.map((v) => ({ type: "profile" as const, id: v.id, name: v.name })),
     ...s.compareViews.map((v) => ({ type: "compare" as const, id: v.id, name: v.name })),
     ...s.reportViews.map((v) => ({ type: "report" as const, id: v.id, name: v.name })),
@@ -152,15 +181,16 @@ export function orderViewTabs(keys: string[]) {
   setState({ viewOrder: keys });
 }
 
-type OpenTabs = Pick<State, "bottomTab" | "plotView" | "profileView" | "compareView" | "reportView">;
+type OpenTabs = Pick<State, "bottomTab" | "plotView" | "xyView" | "profileView" | "compareView" | "reportView">;
 
 const openId = (s: OpenTabs, type: ViewTab["type"]) =>
-  type === "plot" ? s.plotView : type === "profile" ? s.profileView : type === "compare" ? s.compareView : s.reportView;
+  type === "plot" ? s.plotView : type === "xy" ? s.xyView : type === "profile" ? s.profileView : type === "compare" ? s.compareView : s.reportView;
 
 export const isViewTabOpen = (s: OpenTabs, t: ViewTab) => s.bottomTab === t.type && openId(s, t.type) === t.id;
 
 export function openViewTab(t: ViewTab) {
   if (t.type === "plot") setState({ plotView: t.id, bottomTab: "plot" });
+  else if (t.type === "xy") setState({ xyView: t.id, bottomTab: "xy" });
   else if (t.type === "compare") setState({ compareView: t.id, bottomTab: "compare" });
   else if (t.type === "report") setState({ reportView: t.id, bottomTab: "report" });
   else selectProfileView(t.id);
@@ -168,6 +198,7 @@ export function openViewTab(t: ViewTab) {
 
 export function renameViewTab(t: ViewTab, name: string) {
   if (t.type === "plot") updatePlotView(t.id, { name });
+  else if (t.type === "xy") updateXYView(t.id, { name });
   else if (t.type === "compare") updateCompareView(t.id, { name });
   else if (t.type === "report") setState((s) => ({ reportViews: s.reportViews.map((v) => (v.id === t.id ? { ...v, name } : v)) }));
   else updateProfileView(t.id, { name });
@@ -193,6 +224,7 @@ export function closeViewTab(t: ViewTab) {
   const i = tabs.findIndex((x) => x.type === t.type && x.id === t.id);
   const wasOpen = isViewTabOpen(s, t);
   if (t.type === "plot") setState({ plotViews: s.plotViews.filter((v) => v.id !== t.id) });
+  else if (t.type === "xy") setState({ xyViews: s.xyViews.filter((v) => v.id !== t.id) });
   else if (t.type === "compare") {
     setState({ compareViews: s.compareViews.filter((v) => v.id !== t.id) });
     releaseComparison();
@@ -210,11 +242,12 @@ export function closeReportViews(dir: string) {
   for (const v of getState().reportViews.filter((x) => x.dir === dir)) closeViewTab({ type: "report", id: v.id, name: v.name });
 }
 
-/** Closes all the time series, profile, comparison and report tabs. */
+/** Closes all the time series, X-Y, profile, comparison and report tabs. */
 export function closeAllViewTabs() {
   const s = getState();
   setState({
     plotViews: [],
+    xyViews: [],
     profileViews: [],
     compareViews: [],
     reportViews: [],

@@ -8,6 +8,14 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- X-Y plots (#32): a new "X-Y" tab of the bottom panel ("+" menu) plots one result variable
+  against another at each time of the run, for an object (depth vs flow of a conduit, rainfall
+  vs runoff) or across objects ("Fix x" keeps one object's variable on the x axis). Points can
+  be joined in time order to show hysteresis loops; drag a box to zoom, hover a point for its
+  values and time, click it to go to that time. The current time is marked on every series.
+  Exports to CSV / Excel, SVG and PNG. Long runs plot one time step in N (20,000 points at most
+  per series).
+
 - Autosave and crash recovery: while a model has unsaved changes, they are written every 30 s
   to a recovery file (in `%APPDATA%\SwmmStudio\recovery\`, removed on save or when the app
   quits). After a crash, the empty window lists the unsaved work, and opening the model offers

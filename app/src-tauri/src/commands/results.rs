@@ -66,6 +66,22 @@ pub fn series(
     })
 }
 
+/// `f32` values of a series of the loaded results at periods `p0, p0 + stride, …` before `p1`.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+pub fn series_values(
+    state: State<'_, AppState>,
+    kind: String,
+    index: usize,
+    var: usize,
+    p0: usize,
+    p1: usize,
+    stride: usize,
+) -> Res<Response> {
+    let k = element_by_name(&kind)?;
+    state.read(|s| s.series_values(k, index, var, p0, p1, stride).map(|v| floats(&v)))
+}
+
 #[tauri::command(async)]
 pub fn time_of_max(state: State<'_, AppState>, kind: String, index: usize, var: usize) -> Res<usize> {
     let k = element_by_name(&kind)?;

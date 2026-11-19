@@ -123,6 +123,28 @@ export interface ProfileView {
   nodes: number[];
 }
 
+/** A series of an X-Y plot: the values of `y` against those of `x` at the same times. */
+export interface XYPair {
+  /** `x key|y key`: the same pair is plotted once per view. */
+  key: string;
+  x: PlotSeries;
+  y: PlotSeries;
+}
+
+/** A tab of the bottom panel plotting result variables against each other (scatter). */
+export interface XYView {
+  id: number;
+  name: string;
+  pairs: XYPair[];
+  /**
+   * X of the pairs added next: a series common to all of them (one variable plotted against
+   * the others across objects), or null for the x variable of each object added.
+   */
+  fixedX: PlotSeries | null;
+  /** The points of each pair are joined in time order (loops of hysteresis). */
+  lines: boolean;
+}
+
 export type Tool =
   | "select"
   | "box"
@@ -152,10 +174,10 @@ export interface RunState {
 export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | "shortcuts" | "recovery" | "query" | "palette" | null;
 
 /**
- * Tabs of the bottom panel: fixed views, then time series (`plotView`), profile
- * (`profileView`), comparison (`compareView`) and report (`reportView`) tabs.
+ * Tabs of the bottom panel: fixed views, then time series (`plotView`), X-Y (`xyView`),
+ * profile (`profileView`), comparison (`compareView`) and report (`reportView`) tabs.
  */
-export type BottomTab = "table" | "issues" | "simulation" | "events" | "compare" | "plot" | "profile" | "report";
+export type BottomTab = "table" | "issues" | "simulation" | "events" | "compare" | "plot" | "xy" | "profile" | "report";
 
 /** A tab of the bottom panel showing the report of a run, or of the loaded results. */
 export interface ReportTabView {

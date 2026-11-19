@@ -75,6 +75,7 @@ fn main() {
             commands::results::open_report,
             commands::results::frame,
             commands::results::series,
+            commands::results::series_values,
             commands::results::time_of_max,
             commands::results::next_event,
             commands::results::report_block,

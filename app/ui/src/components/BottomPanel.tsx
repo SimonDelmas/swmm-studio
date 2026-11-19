@@ -9,6 +9,7 @@ import {
   openPlotView,
   openProfileView,
   openViewTab,
+  openXYView,
   orderViewTabs,
   renameViewTab,
   viewTabKey,
@@ -29,6 +30,7 @@ import { ProfilePanel } from "./ProfilePanel";
 import { pruneReportMemos } from "./ReportPanel";
 import { ReportTab, reportErrors, SimulationPanel } from "./SimulationPanel";
 import { TablePanel } from "./TablePanel";
+import { XYPanel } from "./XYPanel";
 
 /** Views always there, in the order of `FIXED_TABS`. */
 const FIXED_LABELS: Record<(typeof FIXED_TABS)[number], [string, string]> = {
@@ -39,8 +41,8 @@ const FIXED_LABELS: Record<(typeof FIXED_TABS)[number], [string, string]> = {
 };
 const FIXED: [BottomTab, string, string][] = FIXED_TABS.map((t) => [t, ...FIXED_LABELS[t]]);
 
-const ICONS: Record<ViewTab["type"], string> = { plot: "〜", profile: "⟋", compare: "⇄", report: "▤" };
-const KINDS: Record<ViewTab["type"], string> = { plot: "Time series", profile: "Profile", compare: "Comparison", report: "Report" };
+const ICONS: Record<ViewTab["type"], string> = { plot: "〜", xy: "⁘", profile: "⟋", compare: "⇄", report: "▤" };
+const KINDS: Record<ViewTab["type"], string> = { plot: "Time series", xy: "X-Y", profile: "Profile", compare: "Comparison", report: "Report" };
 
 /** A tab was just dragged: the click that ends the drag does not open it. */
 let dragEnded = false;
@@ -119,7 +121,7 @@ function startTabDrag(e: React.PointerEvent, key: string, strip: HTMLDivElement 
 }
 
 /**
- * The "+" menu: new time series, profile or comparison tab, or one rebuilt from a view or
+ * The "+" menu: new time series, X-Y, profile or comparison tab, or one rebuilt from a view or
  * profile saved in the project.
  */
 function AddMenu() {
@@ -159,13 +161,20 @@ function AddMenu() {
   };
   return (
     <div className="menu" ref={ref}>
-      <button className={`tab-add${open ? " active" : ""}`} title="New view: time series, profile or comparison, or a saved one" onClick={() => setOpen(!open)}>
+      <button className={`tab-add${open ? " active" : ""}`} title="New view: time series, X-Y, profile or comparison, or a saved one" onClick={() => setOpen(!open)}>
         +
       </button>
       {open && (
         <div className="menu-items">
           <button disabled={!results} title={results ? "" : "Load results first"} onClick={run(() => openPlotView(newPlotView(newPlotName())))}>
             Time series
+          </button>
+          <button
+            disabled={!results}
+            title={results ? "One result variable against another (depth vs flow…), for an object or across objects" : "Load results first"}
+            onClick={run(() => openXYView())}
+          >
+            X-Y
           </button>
           <button disabled={!model} onClick={run(() => openProfileView([]))}>
             Profile
@@ -198,8 +207,8 @@ function AddMenu() {
   );
 }
 
-/** All the time series, profile and comparison tabs, when they do not fit in the tab bar: open or close one, or close them all. */
-function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "plotView" | "profileView" | "compareView" | "reportView"> }) {
+/** All the time series, X-Y, profile, comparison and report tabs, when they do not fit in the tab bar: open or close one, or close them all. */
+function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "plotView" | "xyView" | "profileView" | "compareView" | "reportView"> }) {
   const { open, setOpen, ref, run } = useDropdown();
   return (
     <div className="menu" ref={ref}>
@@ -220,7 +229,7 @@ function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "p
             </div>
           ))}
           <hr />
-          <button onClick={run(closeAllViewTabs)}>Close all the time series, profile, comparison and report tabs</button>
+          <button onClick={run(closeAllViewTabs)}>Close all the time series, X-Y, profile, comparison and report tabs</button>
         </div>
       )}
     </div>
@@ -228,7 +237,7 @@ function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "p
 }
 
 /**
- * The tab of a time series, profile, comparison or report view: double-click renames it,
+ * The tab of a time series, X-Y, profile, comparison or report view: double-click renames it,
  * × or a middle click closes it, a drag moves it among the tabs of `strip`.
  */
 function ViewTab({ t, active, strip }: { t: ViewTab; active: boolean; strip: React.RefObject<HTMLDivElement | null> }) {
@@ -283,6 +292,7 @@ function ViewTab({ t, active, strip }: { t: ViewTab; active: boolean; strip: Rea
 function Body() {
   const tab = useStore((s) => s.bottomTab);
   const plot = useStore((s) => (s.bottomTab === "plot" ? s.plotViews.find((v) => v.id === s.plotView) : undefined));
+  const xy = useStore((s) => (s.bottomTab === "xy" ? s.xyViews.find((v) => v.id === s.xyView) : undefined));
   const profile = useStore((s) => (s.bottomTab === "profile" ? s.profileViews.find((v) => v.id === s.profileView) : undefined));
   const compare = useStore((s) => (s.bottomTab === "compare" ? s.compareViews.find((v) => v.id === s.compareView) : undefined));
   const report = useStore((s) => (s.bottomTab === "report" ? s.reportViews.find((v) => v.id === s.reportView) : undefined));
@@ -301,13 +311,15 @@ function Body() {
       return compare ? <ComparePanel key={compare.id} view={compare} /> : <div className="panel-empty">No comparison tab open: “+” creates one.</div>;
     case "plot":
       return plot ? <PlotPanel key={plot.id} view={plot} /> : <div className="panel-empty">No time series tab open: “+” creates one.</div>;
+    case "xy":
+      return xy ? <XYPanel key={xy.id} view={xy} /> : <div className="panel-empty">No X-Y tab open: “+” creates one.</div>;
     case "profile":
       return profile ? <ProfilePanel key={profile.id} view={profile} /> : <div className="panel-empty">No profile tab open: “+” creates one.</div>;
   }
 }
 
 /**
- * The views of the bottom panel: fixed tabs, then time series, profile, comparison and
+ * The views of the bottom panel: fixed tabs, then time series, X-Y, profile, comparison and
  * report tabs created as needed (dragged to reorder them).
  */
 export function BottomPanel() {
@@ -315,6 +327,8 @@ export function BottomPanel() {
   const plotView = useStore((x) => x.plotView);
   const profileView = useStore((x) => x.profileView);
   const plotViews = useStore((x) => x.plotViews);
+  const xyView = useStore((x) => x.xyView);
+  const xyViews = useStore((x) => x.xyViews);
   const profileViews = useStore((x) => x.profileViews);
   const compareView = useStore((x) => x.compareView);
   const compareViews = useStore((x) => x.compareViews);
@@ -332,8 +346,8 @@ export function BottomPanel() {
   useEffect(() => {
     void refreshRuns();
   }, [model?.path, model?.results?.path, model?.compare?.path, model?.overlays.length]);
-  const s = { bottomTab, plotView, profileView, compareView, reportView, bottomMax };
-  const tabs = viewTabs({ plotViews, profileViews, compareViews, reportViews, viewOrder });
+  const s = { bottomTab, plotView, xyView, profileView, compareView, reportView, bottomMax };
+  const tabs = viewTabs({ plotViews, xyViews, profileViews, compareViews, reportViews, viewOrder });
   // The tabs created as needed scroll when they do not fit (wheel, or the list).
   const strip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
@@ -383,7 +397,7 @@ export function BottomPanel() {
         <AddMenu />
         <span className="grow" />
         {tabs.length > 0 && (
-          <button className="tabs-tool" title="Close all the time series, profile, comparison and report tabs" onClick={closeAllViewTabs}>
+          <button className="tabs-tool" title="Close all the time series, X-Y, profile, comparison and report tabs" onClick={closeAllViewTabs}>
             × Close all tabs
           </button>
         )}

@@ -203,6 +203,26 @@ impl Session {
         lr.results.series_minmax(kind, o, var, p0..p1, buckets).map_err(err)
     }
 
+    /// Values of a series of the loaded results at periods `p0, p0 + stride, …` before `p1`
+    /// (not reduced: the values of two series at the same periods pair up, for X-Y plots).
+    pub fn series_values(
+        &self,
+        kind: ElementKind,
+        index: usize,
+        var: usize,
+        p0: usize,
+        p1: usize,
+        stride: usize,
+    ) -> Res<Vec<f32>> {
+        let lr = self.loaded()?;
+        let o = lr.out_index(kind, index)?;
+        let p1 = p1.min(lr.results.out().n_periods());
+        let p0 = p0.min(p1);
+        lr.check_long_read(p1 - p0)?;
+        let values = lr.results.series(kind, o, var, p0..p1).map_err(err)?;
+        Ok(values.into_iter().step_by(stride.max(1)).collect())
+    }
+
     /// Period of the maximum of a series over the whole run.
     pub fn time_of_max(&self, kind: ElementKind, index: usize, var: usize) -> Res<usize> {
         let lr = self.loaded()?;
