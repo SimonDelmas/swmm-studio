@@ -8,6 +8,12 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Shortcuts: P turns the longitudinal profile tool on or off, U the upstream highlight.
+  S, B, L, M and V choose the select, box, lasso, move and vertices tools; F zooms to the
+  whole model and Shift+F to the selection; T shows or hides the labels. Ctrl+F goes to the
+  "Find object ID" field (Escape leaves it), Ctrl+, opens the simulation options, Alt+← / →
+  go through the bottom panel tabs and Ctrl+ù maximizes or restores the panel. ? (or
+  Project ▸ Keyboard shortcuts) lists them all. The toolbar tooltips show their key.
 - Bottom panel: the time series, profile, comparison and report tabs are moved by dragging
   them, and "Close all tabs" closes them all at once.
 - Reports: clicking a run in Simulation opens its report in a tab of its own (or shows the tab

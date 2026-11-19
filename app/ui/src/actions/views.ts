@@ -173,6 +173,19 @@ export function renameViewTab(t: ViewTab, name: string) {
   else updateProfileView(t.id, { name });
 }
 
+/** The tabs always there, in the order the bottom panel shows them (before the tabs created as needed). */
+export const FIXED_TABS = ["table", "issues", "simulation", "events"] as const;
+
+/** Opens the next (`step` 1) or previous (-1) tab of the bottom panel, going round. */
+export function stepBottomTab(step: 1 | -1) {
+  const s = getState();
+  const all = [...FIXED_TABS.map((t) => ({ fixed: t })), ...viewTabs(s).map((t) => ({ view: t }))];
+  const at = all.findIndex((x) => ("fixed" in x ? s.bottomTab === x.fixed : isViewTabOpen(s, x.view)));
+  const next = all[(at + step + all.length) % all.length];
+  if ("fixed" in next) setState({ bottomTab: next.fixed });
+  else openViewTab(next.view);
+}
+
 /** Closes a tab; when it was open, the next one (or the previous, or the table) opens. */
 export function closeViewTab(t: ViewTab) {
   const s = getState();

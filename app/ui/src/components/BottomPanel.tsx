@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   closeAllViewTabs,
   closeViewTab,
+  FIXED_TABS,
   isViewTabOpen,
   newPlotName,
   newPlotView,
@@ -29,13 +30,14 @@ import { pruneReportMemos } from "./ReportPanel";
 import { ReportTab, reportErrors, SimulationPanel } from "./SimulationPanel";
 import { TablePanel } from "./TablePanel";
 
-/** Views always there. */
-const FIXED: [BottomTab, string, string][] = [
-  ["table", "Table", "Edit the objects of a section in a table"],
-  ["issues", "Issues", "Check the model data"],
-  ["simulation", "Simulation", "Run the model; the runs and their console (a run's report opens in a tab)"],
-  ["events", "Events", "Rain and flood events of the results"],
-];
+/** Views always there, in the order of `FIXED_TABS`. */
+const FIXED_LABELS: Record<(typeof FIXED_TABS)[number], [string, string]> = {
+  table: ["Table", "Edit the objects of a section in a table"],
+  issues: ["Issues", "Check the model data"],
+  simulation: ["Simulation", "Run the model; the runs and their console (a run's report opens in a tab)"],
+  events: ["Events", "Rain and flood events of the results"],
+};
+const FIXED: [BottomTab, string, string][] = FIXED_TABS.map((t) => [t, ...FIXED_LABELS[t]]);
 
 const ICONS: Record<ViewTab["type"], string> = { plot: "〜", profile: "⟋", compare: "⇄", report: "▤" };
 const KINDS: Record<ViewTab["type"], string> = { plot: "Time series", profile: "Profile", compare: "Comparison", report: "Report" };
@@ -387,7 +389,7 @@ export function BottomPanel() {
         )}
         <button
           className="tabs-tool"
-          title={s.bottomMax ? "Show the map again" : "Hide the map: the panel fills the window (more room for the graphs)"}
+          title={s.bottomMax ? "Show the map again (Ctrl+ù)" : "Hide the map: the panel fills the window, more room for the graphs (Ctrl+ù)"}
           onClick={() => setState({ bottomMax: !s.bottomMax })}
         >
           {s.bottomMax ? "▾ Restore" : "▴ Maximize"}
