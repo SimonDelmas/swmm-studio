@@ -132,6 +132,9 @@ export function Toolbar() {
             {icon}
           </button>
         ))}
+        <button disabled={!model} onClick={() => setState({ dialog: "query" })} title="Select by query: diameter < 0.3, type = outfall, max(flow) > 2… (Q)">
+          ≟ Query
+        </button>
         <button
           disabled={!model}
           className={tool === "profile" ? "active" : ""}

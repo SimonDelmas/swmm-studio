@@ -70,7 +70,7 @@ function letterShortcut(e: KeyboardEvent, s: State): boolean {
     return true;
   }
   const k = e.key.toLowerCase();
-  if (k.length !== 1 || !"sblmvputf".includes(k)) return false;
+  if (k.length !== 1 || !"sblmvputfq".includes(k)) return false;
   if (!s.model || e.repeat) return true;
   const tool = TOOL_KEYS[k];
   if (tool) setState({ tool });
@@ -78,6 +78,7 @@ function letterShortcut(e: KeyboardEvent, s: State): boolean {
   else if (k === "p") setState({ tool: s.tool === "profile" ? "select" : "profile" });
   else if (k === "u") setState({ upstream: !s.upstream });
   else if (k === "t") setState({ labels: !s.labels });
+  else if (k === "q") setState({ dialog: "query" });
   else if (k === "f") {
     if (!e.shiftKey) setState({ fitExtent: s.fitExtent + 1 });
     else if (s.selection.length > 0) zoomToSelection();

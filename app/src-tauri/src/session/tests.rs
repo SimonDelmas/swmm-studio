@@ -188,3 +188,22 @@ fn geometry_layout() {
     assert_eq!(g.len(), types + nodes + links);
     assert_eq!(g[types + 3], 1); // Out1 is an outfall
 }
+
+#[test]
+fn queries_read_results() {
+    let (_dir, inp) = fixture();
+    let s = Session::open(&inp).unwrap();
+    let layout = *s.results.as_ref().unwrap().results.out().layout();
+    let flow = |link, p: usize| (p * 1000 + layout.series(ElementKind::Link, link, 0)) as f32;
+    let q = |text: &str, period| s.select_query(ObjKind::Link, text, period);
+    // The flow at the time step given.
+    let mid = (flow(1, 3) + flow(2, 3)) / 2.0;
+    assert_eq!(q(&format!("flow > {mid}"), Some(3)).unwrap(), vec![2]);
+    // A statistic over the whole run.
+    let mid = (flow(0, 39) + flow(1, 39)) / 2.0;
+    assert_eq!(q(&format!("max(flow) < {mid}"), None).unwrap(), vec![0]);
+    assert_eq!(q(&format!("MAX(Flow) >= {} and type = conduit", flow(1, 39)), None).unwrap(), vec![1, 2]);
+    assert!(q("flow > 0", None).unwrap_err().contains("time step"));
+    assert!(q("median(flow) > 0", None).unwrap_err().contains("unknown statistic"));
+    assert!(q("max(rainfall) > 0", None).unwrap_err().contains("no rainfall"));
+}

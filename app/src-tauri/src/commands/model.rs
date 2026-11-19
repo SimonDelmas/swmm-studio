@@ -93,6 +93,17 @@ pub fn find_object(state: State<'_, AppState>, id: String) -> Res<Option<ObjRef>
     state.read(|s| Ok(s.find(&id)))
 }
 
+/// Objects of a layer matching an attribute query (`u32` indices, network order); result
+/// variables are read at `period`.
+#[tauri::command(async)]
+pub fn select_query(state: State<'_, AppState>, kind: String, query: String, period: Option<usize>) -> Res<Response> {
+    let k = obj_kind(&kind)?;
+    state.read(|s| {
+        let hits = s.select_query(k, &query, period)?;
+        Ok(Response::new(hits.iter().flat_map(|i| i.to_le_bytes()).collect::<Vec<u8>>()))
+    })
+}
+
 #[tauri::command(async)]
 pub fn object_info(state: State<'_, AppState>, kind: String, index: u32, period: Option<usize>) -> Res<ObjectInfo> {
     let k = obj_kind(&kind)?;

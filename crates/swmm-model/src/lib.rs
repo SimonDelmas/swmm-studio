@@ -5,6 +5,9 @@
 //! source of truth for attribute values: [`properties`] reads them from the file with
 //! named fields, and [`attributes`] extracts numeric columns for thematic maps.
 //!
+//! [`expr`] reads and evaluates expressions over the values of objects (selection queries,
+//! bulk edits).
+//!
 //! Editing: [`edit`] (undoable transactions on the file), [`ops`] (operations such as
 //! renaming or deleting with cascade), [`schema`] (field layouts, units, validation),
 //! [`refs`] (where names are used), [`tables`] (curves, time series, patterns, unit
@@ -14,6 +17,7 @@
 mod attributes;
 pub mod climate;
 pub mod edit;
+pub mod expr;
 pub mod grid;
 pub mod ops;
 mod properties;

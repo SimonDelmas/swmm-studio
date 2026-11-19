@@ -29,6 +29,7 @@ const GROUPS: [string, [string, string][]][] = [
       ["S", "Select"],
       ["B", "Box selection"],
       ["L", "Lasso selection"],
+      ["Q", "Select by query"],
       ["M", "Move"],
       ["V", "Edit vertices"],
       ["P", "Longitudinal profile (on / off)"],
