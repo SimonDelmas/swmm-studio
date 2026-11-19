@@ -277,6 +277,13 @@ impl History {
     pub fn mark_saved(&mut self) {
         self.saved = self.current();
     }
+
+    /// The file differs from the one on disk, whatever is undone (a model restored from
+    /// a recovery file). Saving makes it clean again.
+    pub fn mark_unsaved(&mut self) {
+        // Edit ids start at 1: the file is never at edit 0.
+        self.saved = Some(0);
+    }
 }
 
 #[cfg(test)]

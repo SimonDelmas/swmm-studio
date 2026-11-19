@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RunDto, SectionInfo, Stat } from "./analysisTypes";
 import type { ReportSummary } from "./types";
-import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
+import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RecentFile, RecoveryInfo, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
   const r = await invoke<ArrayBuffer | number[]>(cmd, args);
@@ -151,6 +151,13 @@ export const api = {
   runConsole: (dir: string) => invoke<string[]>("run_console", { dir }),
   setOverlays: (paths: string[]) => invoke<ModelInfo>("set_overlays", { paths }),
   launchFile: () => invoke<string | null>("launch_file"),
+  recentFiles: () => invoke<RecentFile[]>("recent_files"),
+  /** Removes a model from the recent files (null: all of them). */
+  forgetRecentFile: (path: string | null) => invoke<RecentFile[]>("forget_recent_file", { path }),
+  recoveries: () => invoke<RecoveryInfo[]>("recoveries"),
+  restoreRecovery: () => invoke<ModelInfo>("restore_recovery"),
+  /** Gives up the changes left for `model` (null: the open model's, whose info is returned). */
+  discardRecovery: (model: string | null) => invoke<ModelInfo | null>("discard_recovery", { model }),
   exportTable: (path: string, title: string, columns: string[], rows: string[][]) =>
     invoke<void>("export_table", { path, title, columns, rows }),
   inspectObserved: (path: string, kind: string, id: string, sheet: string | null, timeColumn: string | null, dateOrder: DateOrder) =>

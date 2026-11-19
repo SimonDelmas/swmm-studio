@@ -9,17 +9,24 @@ use tauri::ipc::Response;
 use tauri::{AppHandle, State};
 
 use super::cache::start_cache_job;
+use super::recent::remember;
 use super::{floats, obj_kind, AppState};
 use crate::editing::create_model;
 use crate::project::Basemap;
+use crate::recovery;
 use crate::session::{ModelInfo, ObjectInfo, Res, Session};
 
 #[tauri::command(async)]
 pub fn open_model(app: AppHandle, state: State<'_, AppState>, path: PathBuf) -> Res<ModelInfo> {
     state.cancel_job();
     let session = Session::open(&path)?;
-    let info = session.info();
+    // The previous model goes first: reopening the same one, its autosave holds the lock.
     state.replace(session)?;
+    let info = state.write(|s| {
+        s.start_autosave(&recovery::default_dir());
+        Ok(s.info())
+    })?;
+    remember(&path);
     start_cache_job(&app, &state);
     Ok(info)
 }
@@ -119,10 +126,14 @@ pub fn attribute(state: State<'_, AppState>, kind: String, name: String) -> Res<
 /// Saves the model; `path` saves a copy under a new name and continues with it.
 #[tauri::command(async)]
 pub fn save_model(state: State<'_, AppState>, path: Option<PathBuf>) -> Res<ModelInfo> {
-    state.write(|s| {
+    let info = state.write(|s| {
         s.save(path.as_deref())?;
         Ok(s.info())
-    })
+    })?;
+    if let Some(p) = &path {
+        remember(p);
+    }
+    Ok(info)
 }
 
 /// Writes a new empty model and opens it.

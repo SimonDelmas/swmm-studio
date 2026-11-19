@@ -370,8 +370,17 @@ impl Session {
         if target != self.inp_path {
             self.inp_path = target;
             self.save_project()?;
+            // The autosave follows the model to its new file (the old one's is removed).
+            if let Some(dir) = self.autosave.take().map(|a| a.dir().to_path_buf()) {
+                self.start_autosave(&dir);
+                // Changes left for the file it replaces are gone with it.
+                self.discard_recovery();
+            }
         }
         self.history.mark_saved();
+        if let Some(a) = &self.autosave {
+            a.clear();
+        }
         Ok(())
     }
 }

@@ -8,6 +8,7 @@ import { DeleteDialog } from "./components/DeleteDialog";
 import { NewModelDialog } from "./components/NewModelDialog";
 import { OptionsDialog } from "./components/OptionsDialog";
 import { PropertiesPanel } from "./components/PropertiesPanel";
+import { RecoveryDialog } from "./components/RecoveryDialog";
 import { QueryDialog } from "./components/QueryDialog";
 import { SectionsDialog } from "./components/SectionsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
@@ -16,6 +17,7 @@ import { StylePanel } from "./components/StylePanel";
 import { TableEditor } from "./components/TableEditor";
 import { Timeline } from "./components/Timeline";
 import { Toolbar } from "./components/Toolbar";
+import { Welcome } from "./components/Welcome";
 import { useBackendEvents } from "./hooks/useBackendEvents";
 import { useShortcuts } from "./hooks/useShortcuts";
 import { useStylePersistence } from "./hooks/useStylePersistence";
@@ -81,7 +83,7 @@ export function App() {
       <Toolbar />
       <div className="main">
         <div ref={centerRef} className={bottomMax ? "center bottom-max" : "center"}>
-          <MapView />
+          <MapView empty={<Welcome />} />
           <Timeline />
           <Splitter vertical={false} onDrag={dragBottom} />
           <div ref={bottomRef} className="bottom" style={{ height: bottomMax ? undefined : (bottomH ?? "40%") }}>
@@ -116,6 +118,7 @@ export function App() {
       {dialog === "climate" && <ClimateDialog />}
       {dialog === "sections" && <SectionsDialog />}
       {dialog === "shortcuts" && <ShortcutsDialog />}
+      {dialog === "recovery" && <RecoveryDialog />}
       {dialog === "query" && <QueryDialog />}
       <TableEditor />
       <DeleteDialog />

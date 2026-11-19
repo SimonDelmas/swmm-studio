@@ -8,6 +8,11 @@ import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
 import { mapPlotSeries } from "./views";
 import type { ModelInfo } from "../types";
 
+/** Offers a coordinate system for a model opened without one, when one can be suggested. */
+function askCrs(model: ModelInfo) {
+  if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
+}
+
 /** Opens a model file (after the edits already asked for: they belong to the current model). */
 export function openModel(path: string): Promise<void> {
   const done = startBusy("Opening model…");
@@ -22,7 +27,10 @@ export function openModel(path: string): Promise<void> {
       if (error) notes.push(error);
       // One message: the status bar shows the last one only.
       if (notes.length > 0) notify(notes.join(" — "), true);
-      if (!model.crs && model.bounds) setState({ crsDialog: !model.project.crs && model.crs_hint !== null });
+      // Changes autosaved by a session that ended without saving: restore or discard them
+      // (the coordinate system is asked for after).
+      if (model.recovery) setState({ dialog: "recovery" });
+      else askCrs(model);
     } catch (e) {
       notify(errorText(e), true);
     } finally {
@@ -54,6 +62,47 @@ export async function chooseModel() {
   if (!(await confirmDiscard())) return;
   const path = await open({ filters: [{ name: "SWMM model", extensions: ["inp"] }] });
   if (typeof path === "string") await openModel(path);
+}
+
+/** Opens a recent model (unsaved changes are offered to be saved first). */
+export async function openRecent(path: string) {
+  if (await confirmDiscard()) await openModel(path);
+}
+
+/** Replaces the open model by the changes a session that ended without saving left. */
+export function restoreRecovery(): Promise<void> {
+  const done = startBusy("Restoring unsaved changes…");
+  return afterEdits(async () => {
+    try {
+      const model = await api.restoreRecovery();
+      const { geometry, error } = await readGeometry();
+      resetForModel(model, geometry);
+      setState({ dialog: null });
+      askCrs(model);
+      notify(error ?? `Restored the unsaved changes of ${model.name}: save to keep them`, !!error);
+    } catch (e) {
+      notify(errorText(e), true);
+    } finally {
+      done();
+    }
+  });
+}
+
+/** Gives up the changes a session that ended without saving left for the open model. */
+export function discardRecovery(): Promise<void> {
+  return afterEdits(async () => {
+    try {
+      const model = await api.discardRecovery(null);
+      if (model) {
+        setState({ model });
+        askCrs(model);
+      }
+    } catch (e) {
+      notify(errorText(e), true);
+    } finally {
+      setState({ dialog: null });
+    }
+  });
 }
 
 /** Opens the "new model" dialog (unsaved changes are offered to be saved first). */

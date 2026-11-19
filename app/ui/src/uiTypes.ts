@@ -149,7 +149,7 @@ export interface RunState {
 }
 
 /** "engines" is the options dialog opened on its engine tab. */
-export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | "shortcuts" | "query" | null;
+export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | "shortcuts" | "recovery" | "query" | null;
 
 /**
  * Tabs of the bottom panel: fixed views, then time series (`plotView`), profile

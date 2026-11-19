@@ -9,6 +9,7 @@ pub mod engines;
 pub mod files;
 pub mod model;
 pub mod observed;
+pub mod recent;
 pub mod results;
 pub mod run;
 pub mod runs;
@@ -45,6 +46,23 @@ impl AppState {
     fn replace(&self, session: Session) -> Res<()> {
         *self.session.write().map_err(|_| "internal error (lock)".to_string())? = Some(session);
         Ok(())
+    }
+
+    /// Writes the unsaved changes of the open model to its recovery file.
+    pub fn autosave(&self) {
+        if let Ok(g) = self.session.read() {
+            if let Some(Err(e)) = g.as_ref().map(Session::autosave) {
+                eprintln!("autosave failed: {e}");
+            }
+        }
+    }
+
+    /// Closes the model (the app quits): its recovery file goes with it, the user
+    /// already chose not to save.
+    pub fn close(&self) {
+        if let Ok(mut g) = self.session.write() {
+            g.take();
+        }
     }
 
     /// Stops the running cache build, if any.

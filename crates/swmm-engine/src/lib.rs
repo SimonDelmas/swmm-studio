@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 pub use progress::{parse_progress, Fragments};
 pub use run::{run, run_inp, RunEvent, RunOptions, RunOutcome, RunStatus};
-pub use settings::{EngineConfig, Settings};
+pub use settings::{same_file, EngineConfig, Settings, MAX_RECENT};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {

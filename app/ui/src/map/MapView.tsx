@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { mapTools } from "../actions/mapTools";
 import { getState, setState, useStore } from "../store";
 import { ToolHint } from "./ToolHint";
@@ -7,8 +7,8 @@ import { useMapLayers } from "./useMapLayers";
 import { useMapSelection } from "./useMapSelection";
 import { useViewer } from "./useViewer";
 
-/** The map: the network on a basemap or on a plain plane, with the selection and drawing tools. */
-export function MapView() {
+/** The map: the network on a basemap or on a plain plane, with the selection and drawing tools. `empty`: shown without a model. */
+export function MapView({ empty }: { empty?: ReactNode }) {
   const hasModel = useStore((s) => !!s.model);
   const crs = useStore((s) => s.model?.crs?.id ?? "");
   const modelSeq = useStore((s) => s.modelSeq);
@@ -74,7 +74,7 @@ export function MapView() {
       {g && space !== "lonlat" && <div className="map-note">Local coordinates (no coordinate system)</div>}
       {cursor && <div className="map-cursor">{cursor}</div>}
       {hasModel && <ToolHint tool={tool} sketching={tools.busy || (tool === "profile" && profileStart !== null)} />}
-      {!hasModel && <div className="map-empty">Open a SWMM model (.inp) to start.</div>}
+      {!hasModel && (empty ?? <div className="map-empty">Open a SWMM model (.inp) to start.</div>)}
     </div>
   );
 }

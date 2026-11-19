@@ -8,6 +8,14 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Autosave and crash recovery: while a model has unsaved changes, they are written every 30 s
+  to a recovery file (in `%APPDATA%\SwmmStudio\recovery\`, removed on save or when the app
+  quits). After a crash, the empty window lists the unsaved work, and opening the model offers
+  to restore its changes (restored, they are unsaved changes: save to keep them) or discard
+  them. Models open in another window are not taken for a crash.
+- Recent files: the last 10 models opened or saved are listed in the Project menu and in the
+  empty window (where one can be removed from the list).
+- The empty window has Open and New model buttons.
 - Select by query (toolbar "≟ Query", or Q): select the nodes, links or subcatchments matching
   an expression such as `diameter < 0.3`, `type = outfall and invert_elevation < 95`,
   `id = "C1*"` or `max(flow) > 2`. A query uses the object's ID, type and numeric attributes
