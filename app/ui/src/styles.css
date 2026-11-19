@@ -1337,41 +1337,43 @@ body.dragging-series * {
   background: var(--accent-bg);
 }
 
-/* Side panel "Simulation": console, runs and reports in a narrow column. */
-.sim-panel {
+/* Bottom panel "Simulation": a run (console or report) under a toolbar. */
+.sim-detail {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
-.sub-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-}
-.sub-tabs button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.sim-body {
+.sim-detail > .report-panel,
+.sim-detail > .report-summary,
+.sim-detail > .panel-empty {
   flex: 1;
   min-height: 0;
+  height: auto;
+}
+.sim-detail > .report-summary {
   overflow: auto;
 }
-.sim-body .report-panel {
-  flex-direction: column;
+.runs td.check {
+  text-align: center;
 }
-.sim-body .report-side {
-  width: auto;
-  max-height: 35%;
+.run-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.run-progress .progress {
+  width: 160px;
+  margin-left: 0;
+}
+.running-row td {
+  background: var(--accent-bg);
+}
+.console-errors .run-log {
+  max-height: 14em;
   flex: none;
-  border-right: none;
-  border-bottom: 1px solid var(--border);
 }
-.sim-body .report-main {
-  flex: 1;
-  min-height: 0;
+.link-like {
+  cursor: pointer;
 }
 
 /* Many time series / profile tabs: they scroll (wheel), the rest of the bar stays in place. */

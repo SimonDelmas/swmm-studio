@@ -6,7 +6,7 @@ import { formatDateTime, periodMs } from "../format";
 import { cssVar } from "../hooks/useSize";
 import { getState } from "../store";
 import type { PlotView } from "../uiTypes";
-import { zoomPeriods, type Built } from "./data";
+import { runDash, zoomPeriods, type Built } from "./data";
 import { COLORS } from "./series";
 
 /** Time axis labels in the model clock (UTC), 24 h. */
@@ -69,6 +69,16 @@ export function chartOptions(built: Built, units: string[], size: { w: number; h
         points: { show: false },
         spanGaps: false,
         paths: stepped,
+      })),
+      // Other runs: dashed, with the colour of their series.
+      ...built.runs.map((r) => ({
+        label: r.label,
+        scale: built.units[r.parent],
+        stroke: COLORS[r.parent % COLORS.length],
+        width: 1.25,
+        dash: runDash(r.run),
+        points: { show: false },
+        spanGaps: false,
       })),
       // Observed values: points only, with the colour of their series.
       ...built.obs.map((o) => {

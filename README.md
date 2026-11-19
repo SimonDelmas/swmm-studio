@@ -49,8 +49,8 @@ continuous simulations over many years whose results files reach several gigabyt
 
 - Press **F5** to run the model as it is, without saving it first. Follow the progress and cancel
   at any time.
-- Every run is kept in a history with its label, engine and continuity errors, so you can reload or
-  compare past runs.
+- Every run is kept in a history with its label, engine and continuity errors, so you can reload,
+  compare or overlay past runs on the time series graphs.
 - The report opens with errors and warnings linked to the objects they name, continuity errors
   highlighted, and every summary table sortable and linked to the map.
 
@@ -66,7 +66,8 @@ continuous simulations over many years whose results files reach several gigabyt
   with the timeline, plus the maximum water line of the run.
 - **Event statistics** for long-term studies: how often and how long an outfall overflows, with
   volume and peak per event and per year.
-- **Compare two runs**: side-by-side statistics, difference maps and overlaid plots.
+- **Compare runs**: side-by-side statistics and difference maps in a comparison tab, and the
+  series of any number of runs on the same graphs.
 - **Observed data**: link a file of measurements (CSV, Excel, OpenDocument, Parquet) to a node,
   link or subcatchment, map its columns to the object's variables (proposed from the column
   titles), and see the measured values on the plots of the results.

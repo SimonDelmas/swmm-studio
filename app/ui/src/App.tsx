@@ -9,7 +9,6 @@ import { NewModelDialog } from "./components/NewModelDialog";
 import { OptionsDialog } from "./components/OptionsDialog";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { SectionsDialog } from "./components/SectionsDialog";
-import { reportErrors, SimulationPanel } from "./components/SimulationPanel";
 import { StatusBar } from "./components/StatusBar";
 import { StylePanel } from "./components/StylePanel";
 import { TableEditor } from "./components/TableEditor";
@@ -54,8 +53,6 @@ export function App() {
   const dialog = useStore((s) => s.dialog);
   const bottomMax = useStore((s) => s.bottomMax);
   const sideTab = useStore((s) => s.sideTab);
-  const running = useStore((s) => s.run.running);
-  const reportIssues = useStore(reportErrors);
   const [sideW, setSideW] = useState(360);
   // Null: 40 % of the centre (60 % for the map) until dragged.
   const [bottomH, setBottomH] = useState<number | null>(null);
@@ -75,7 +72,6 @@ export function App() {
     ["props", "Properties"],
     ["data", "Data"],
     ["style", "Map style"],
-    ["simulation", "Simulation"],
   ];
 
   return (
@@ -96,8 +92,6 @@ export function App() {
             {sideTabs.map(([t, label]) => (
               <button key={t} className={sideTab === t ? "active" : ""} onClick={() => setState({ sideTab: t })}>
                 {label}
-                {t === "simulation" && sideTab !== t && running && <span className="badge warn">…</span>}
-                {t === "simulation" && sideTab !== t && !running && reportIssues > 0 && <span className="badge bad">{reportIssues}</span>}
               </button>
             ))}
           </div>
@@ -106,10 +100,8 @@ export function App() {
               <PropertiesPanel />
             ) : sideTab === "data" ? (
               <DataPanel />
-            ) : sideTab === "style" ? (
-              <StylePanel />
             ) : (
-              <SimulationPanel />
+              <StylePanel />
             )}
           </div>
         </div>

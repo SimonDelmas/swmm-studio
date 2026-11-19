@@ -215,7 +215,7 @@ impl Session {
                 Space::LonLat => None,
             };
             self.display = Display::build(&self.net, self.crs.as_ref(), origin);
-            for lr in [&mut self.results, &mut self.compare].into_iter().flatten() {
+            for lr in [&mut self.results, &mut self.compare].into_iter().flatten().chain(&mut self.overlays) {
                 lr.remap(&self.net);
             }
         } else if r.geometry_changed() {

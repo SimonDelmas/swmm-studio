@@ -123,6 +123,19 @@ impl Session {
         Ok(())
     }
 
+    /// Overlays the results of these `.out` files on the time series graphs: those
+    /// already open stay open, the others are opened, the rest closed.
+    pub fn set_overlays(&mut self, paths: &[PathBuf]) -> Res<()> {
+        self.overlays.retain(|lr| paths.contains(&lr.path));
+        for p in paths {
+            if !self.overlays.iter().any(|lr| &lr.path == p) {
+                let lr = LoadedResults::open(p, &self.net).map_err(|e| format!("{}: {e}", p.display()))?;
+                self.overlays.push(lr);
+            }
+        }
+        Ok(())
+    }
+
     pub fn results_info(&self) -> Option<ResultsInfo> {
         self.results.as_ref().map(LoadedResults::info)
     }
@@ -155,8 +168,22 @@ impl Session {
         Ok(lr.to_network(kind, &max, f32::NAN))
     }
 
+    /// Results of a series: the overlaid ones read from `path`, else the loaded results or
+    /// the compared ones (`b`).
+    fn series_source(&self, path: Option<&Path>, b: bool) -> Res<&LoadedResults> {
+        match path {
+            Some(p) => [&self.results, &self.compare]
+                .into_iter()
+                .flatten()
+                .chain(&self.overlays)
+                .find(|lr| lr.path == p)
+                .ok_or_else(|| format!("the results {} are not open", p.display())),
+            None => self.source(b),
+        }
+    }
+
     /// Min/max envelope of a series over `[p0, p1)` in about `buckets` points, from the
-    /// loaded results or the compared ones (`b`).
+    /// loaded results, the compared ones (`b`) or overlaid ones (`path`).
     #[allow(clippy::too_many_arguments)]
     pub fn series(
         &self,
@@ -167,8 +194,9 @@ impl Session {
         p1: usize,
         buckets: usize,
         b: bool,
+        path: Option<&Path>,
     ) -> Res<MinMax> {
-        let lr = self.source(b)?;
+        let lr = self.series_source(path, b)?;
         let o = lr.out_index(kind, index)?;
         let p1 = p1.min(lr.results.out().n_periods());
         lr.check_long_read(p1.saturating_sub(p0)).map_err(|e| format!("{e}; zoom in for a shorter range"))?;
@@ -203,15 +231,21 @@ impl Session {
         let mut v: Vec<PathBuf> = [&self.results, &self.compare]
             .into_iter()
             .flatten()
+            .chain(&self.overlays)
             .filter(|lr| matches!(lr.cache, CacheState::Building { .. }))
             .map(|lr| lr.path.clone())
             .collect();
+        v.sort();
         v.dedup();
         v
     }
 
     fn results_at<'a>(&'a mut self, path: &'a Path) -> impl Iterator<Item = &'a mut LoadedResults> + 'a {
-        [&mut self.results, &mut self.compare].into_iter().flatten().filter(move |lr| lr.path == path)
+        [&mut self.results, &mut self.compare]
+            .into_iter()
+            .flatten()
+            .chain(&mut self.overlays)
+            .filter(move |lr| lr.path == path)
     }
 
     /// Called when the background build of `path` ends.

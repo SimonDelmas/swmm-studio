@@ -42,6 +42,14 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Changed
 
+- Simulation: back in the bottom panel, between Issues and Events, without sub-tabs. It lists
+  the runs, the running one first with its progress bar; a click on a run shows its console
+  while it runs, its report once it has finished, with the errors of its console when it failed
+  (the console is now kept in the run folder). The first columns of the list: a check box that
+  draws the run with each series of the time series graphs (dashed, in the colour of the
+  series, one dash pattern per run), then Load.
+- Compare: no longer a fixed tab. "+" opens a comparison tab with one of the runs or with a
+  results file; closing the tab closes the comparison.
 - Map labels are off by default.
 - Bottom panel: 40 % of the height by default; under the timeline, one row of tabs: Table,
   Issues, Events and Compare, then time series and profile tabs created as needed. "+" opens a

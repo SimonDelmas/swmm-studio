@@ -26,6 +26,8 @@ export interface SvgSeries {
   stepped?: boolean;
   /** Drawn as points (observed values), not as a line. */
   points?: boolean;
+  /** Dash pattern of the line (dash and gap lengths). */
+  dash?: number[];
 }
 
 /** Line chart as a standalone SVG document; one y axis per unit (left, then right). */
@@ -99,7 +101,8 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
       else d += `L${px} ${py}`;
       pen = true;
     }
-    parts.push(`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.3"/>`);
+    const dash = s.dash ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
+    parts.push(`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.3"${dash}/>`);
   }
   // Legend.
   series.forEach((s, i) => {
@@ -108,7 +111,7 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
     parts.push(
       s.points
         ? `<circle cx="${lx + 9}" cy="${ly - 4}" r="2.5" fill="${s.color}"/>`
-        : `<line x1="${lx}" x2="${lx + 18}" y1="${ly - 4}" y2="${ly - 4}" stroke="${s.color}" stroke-width="2"/>`,
+        : `<line x1="${lx}" x2="${lx + 18}" y1="${ly - 4}" y2="${ly - 4}" stroke="${s.color}" stroke-width="2"${s.dash ? ` stroke-dasharray="${s.dash.join(" ")}"` : ""}/>`,
     );
     parts.push(`<text x="${lx + 22}" y="${ly}" font-size="10">${esc(`${s.label} (${s.unit})`)}</text>`);
   });

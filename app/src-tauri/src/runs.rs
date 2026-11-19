@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use swmm_engine::history::{self, RunRecord};
 
-use crate::session::{err, LoadedResults, Res, Session};
+use crate::session::{err, LoadedResults, ReportSummary, Res, Session};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunDto {
@@ -66,6 +66,15 @@ impl Session {
         self.open_comparison(&out)
     }
 
+    /// Report of a run, to look at it without loading its results.
+    pub fn run_report(&mut self, dir: &Path) -> Res<ReportSummary> {
+        let (_, rpt) = self.run_files(dir)?;
+        if !rpt.is_file() {
+            return Err("this run has no report".into());
+        }
+        self.view_report(&rpt)
+    }
+
     pub fn set_run_label(&self, dir: &Path, label: Option<&str>) -> Res<()> {
         history::set_label(dir, label).map(|_| ()).map_err(err)
     }
@@ -81,6 +90,8 @@ impl Session {
         if self.compare.as_ref().is_some_and(|lr| lr.path.starts_with(dir)) {
             self.close_comparison();
         }
+        self.overlays.retain(|lr| !lr.path.starts_with(dir));
+        self.drop_viewed_report(dir);
         history::delete_run(&self.inp_path, dir).map_err(err)?;
         self.save_project()
     }

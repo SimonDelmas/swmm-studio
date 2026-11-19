@@ -52,10 +52,11 @@ pub fn series(
     p1: usize,
     buckets: usize,
     b: Option<bool>,
+    path: Option<PathBuf>,
 ) -> Res<Response> {
     let k = element_by_name(&kind)?;
     state.read(|s| {
-        let mm = s.series(k, index, var, p0, p1, buckets.clamp(1, 20_000), b.unwrap_or(false))?;
+        let mm = s.series(k, index, var, p0, p1, buckets.clamp(1, 20_000), b.unwrap_or(false), path.as_deref())?;
         let mut b = Vec::with_capacity(4 + 12 * mm.len());
         b.extend_from_slice(&(mm.len() as u32).to_le_bytes());
         b.extend(mm.periods.iter().flat_map(|&p| (p as u32).to_le_bytes()));
@@ -84,9 +85,21 @@ pub fn next_event(
     state.read(|s| s.next_event(k, index, var, from, threshold))
 }
 
+/// A block of the loaded report, or of the report at `path` (one looked at with `run_report`).
 #[tauri::command(async)]
-pub fn report_block(state: State<'_, AppState>, index: usize) -> Res<BlockDto> {
-    state.read(|s| s.report_block(index))
+pub fn report_block(state: State<'_, AppState>, index: usize, path: Option<PathBuf>) -> Res<BlockDto> {
+    state.read(|s| s.report_block(index, path.as_deref()))
+}
+
+/// Results of other runs overlaid on the time series graphs.
+#[tauri::command(async)]
+pub fn set_overlays(app: AppHandle, state: State<'_, AppState>, paths: Vec<PathBuf>) -> Res<ModelInfo> {
+    let info = state.write(|s| {
+        s.set_overlays(&paths)?;
+        Ok(s.info())
+    })?;
+    start_cache_job(&app, &state);
+    Ok(info)
 }
 
 /// Whole-run maximum per object (`f32` array, network order).

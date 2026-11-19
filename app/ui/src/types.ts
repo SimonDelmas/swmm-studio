@@ -120,6 +120,8 @@ export interface ModelInfo {
   results: ResultsInfo | null;
   /** Results compared with the loaded ones (run B). */
   compare: ResultsInfo | null;
+  /** Results of other runs drawn with each series of the time series graphs. */
+  overlays: ResultsInfo[];
   report: ReportSummary | null;
   notes: string[];
   dirty: boolean;
