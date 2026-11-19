@@ -98,14 +98,13 @@ export function PropertiesPanel() {
   if (selection.length === 0)
     return (
       <div className="panel-empty">
-        Click an object on the map to see and edit its properties. Use the box or lasso tools (or Shift) to select several
-        and edit them together.
+        Click an object on the map to see and edit its properties. Use the box or lasso tools (or Shift) to select several and edit them
+        together.
       </div>
     );
   if (!one) return <MultiSelection selection={selection} />;
   if (error) return <div className="panel-error">{error}</div>;
-  if (!info || info.object.kind !== one.kind || info.object.index !== one.index)
-    return <div className="panel-empty">Loading…</div>;
+  if (!info || info.object.kind !== one.kind || info.object.index !== one.index) return <div className="panel-empty">Loading…</div>;
 
   /** Plots result variable `v` of the object in a new time series tab. */
   const plotNew = (v: number) => void addToPlot(one.kind as ElementKind, one.index, v, false, undefined, "new");
@@ -113,65 +112,68 @@ export function PropertiesPanel() {
   info.groups.forEach((g) => g.fields.forEach((f) => f.type === "ref" && LISTED.includes(f.to) && refKinds.add(f.to)));
 
   return (
-    <div className="props">
-      <h3>
-        {info.id} <span className="muted">{info.type}</span>
-      </h3>
-      <div className="row">
-        <button onClick={zoomToSelection}>Zoom to</button>
-        {results && one.kind !== "gage" && (
-          <button
-            title="Plot its main result in a new time series tab"
-            onClick={() => addToPlot(one.kind as ElementKind, one.index, one.kind === "subcatchment" ? 4 : 0, false, undefined, "new")}
-          >
-            Plot
-          </button>
-        )}
-        {(one.kind === "link" || one.kind === "subcatchment") && (
-          <button title="Drag, add or delete vertices on the map" onClick={() => setState({ tool: "vertex" })}>
-            Edit vertices
-          </button>
-        )}
-        <button className="danger" onClick={() => deleteObjects([one])}>
-          Delete
-        </button>
-      </div>
-      {Array.from(refKinds).map((k) => (
-        <NameList key={k} id={`names-${k}`} kind={k} />
-      ))}
-      {info.groups.map((g, i) => (
-        <GroupEditor key={`${g.section}:${g.key.join(" ")}:${i}`} g={g} info={info} />
-      ))}
-      {info.addable.length > 0 && (
+    <div className="props props-split">
+      <div className="props-scroll">
+        <h3>
+          {info.id} <span className="muted">{info.type}</span>
+        </h3>
         <div className="row">
-          {info.addable.map((a) => (
-            <button key={a.section} onClick={() => edit({ op: "add_line", section: a.section, key: a.key })}>
-              + {a.title}
+          <button onClick={zoomToSelection}>Zoom to</button>
+          {results && one.kind !== "gage" && (
+            <button
+              title="Plot its main result in a new time series tab"
+              onClick={() => addToPlot(one.kind as ElementKind, one.index, one.kind === "subcatchment" ? 4 : 0, false, undefined, "new")}
+            >
+              Plot
             </button>
-          ))}
+          )}
+          {(one.kind === "link" || one.kind === "subcatchment") && (
+            <button title="Drag, add or delete vertices on the map" onClick={() => setState({ tool: "vertex" })}>
+              Edit vertices
+            </button>
+          )}
+          <button className="danger" onClick={() => deleteObjects([one])}>
+            Delete
+          </button>
         </div>
-      )}
-      {info.connections.length > 0 && (
-        <>
-          <h4>Connections</h4>
-          <table className="kv">
-            <tbody>
-              {info.connections.map((c, i) => (
-                <tr key={i}>
-                  <td>{c.role}</td>
-                  <td>
-                    <ObjLink obj={c.object} zoom={false}>
-                      {c.id}
-                    </ObjLink>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+        {Array.from(refKinds).map((k) => (
+          <NameList key={k} id={`names-${k}`} kind={k} />
+        ))}
+        {info.groups.map((g, i) => (
+          <GroupEditor key={`${g.section}:${g.key.join(" ")}:${i}`} g={g} info={info} />
+        ))}
+        {info.addable.length > 0 && (
+          <div className="row">
+            {info.addable.map((a) => (
+              <button key={a.section} onClick={() => edit({ op: "add_line", section: a.section, key: a.key })}>
+                + {a.title}
+              </button>
+            ))}
+          </div>
+        )}
+        {info.connections.length > 0 && (
+          <>
+            <h4>Connections</h4>
+            <table className="kv">
+              <tbody>
+                {info.connections.map((c, i) => (
+                  <tr key={i}>
+                    <td>{c.role}</td>
+                    <td>
+                      <ObjLink obj={c.object} zoom={false}>
+                        {c.id}
+                      </ObjLink>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+        {one.kind !== "gage" && <ObservedSection kind={one.kind} index={one.index} id={info.id} />}
+      </div>
       {info.results && results && (
-        <>
+        <div className="props-results">
           <h4>Results at {formatDateTime(periodMs(results, period))}</h4>
           <table className="kv">
             <thead>
@@ -190,7 +192,16 @@ export function PropertiesPanel() {
                       className="drag-result"
                       title="Click: plot in a new time series tab; drag onto a graph (or a time series tab) to add it there"
                       onPointerDown={(e) =>
-                        startSeriesDrag(e, { kind: one.kind as ElementKind, index: one.index, var: i, label: `${info.id} ${v.name}` }, () => plotNew(i))
+                        startSeriesDrag(
+                          e,
+                          {
+                            kind: one.kind as ElementKind,
+                            index: one.index,
+                            var: i,
+                            label: `${info.id} ${v.name}`,
+                          },
+                          () => plotNew(i),
+                        )
                       }
                       onActivate={() => plotNew(i)}
                     >
@@ -215,9 +226,8 @@ export function PropertiesPanel() {
               ))}
             </tbody>
           </table>
-        </>
+        </div>
       )}
-      {one.kind !== "gage" && <ObservedSection kind={one.kind} index={one.index} id={info.id} />}
     </div>
   );
 }
