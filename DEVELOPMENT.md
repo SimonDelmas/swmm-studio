@@ -127,6 +127,7 @@ Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`
 
 Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
 Select by query test (Q, replace / add / intersect / remove, names inserted from the dialog, errors): `node app/ui/e2e/query.mjs copy/tiny.inp shots`.
+Command palette test (Ctrl+P, filtering, arrows, recent commands, Escape): `node app/ui/e2e/palette.mjs copy/tiny.inp`.
 Dialog keyboard, name link and edit-queue test (Escape, Tab, object names loaded once, no edit sent to a model opened since, map drawn when a model is reopened with its labels on): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
 Observed data test (link a file to a link through the dialog, proposed mapping, saved in the project, drawn on the plot), on a model with results and a file with columns such as `C1 Débit (l/s)`, `C1 Hauteur (m)`: `node app/ui/e2e/observed.mjs copy/tiny.inp mesures.csv C1 shots`.
 
