@@ -8,6 +8,7 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Shortcuts: P turns the longitudinal profile tool on or off, U the upstream highlight.
 - Bottom panel: the time series, profile, comparison and report tabs are moved by dragging
   them, and "Close all tabs" closes them all at once.
 - Reports: clicking a run in Simulation opens its report in a tab of its own (or shows the tab

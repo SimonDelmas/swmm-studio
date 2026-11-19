@@ -133,7 +133,7 @@ export function Toolbar() {
           disabled={!model}
           className={tool === "profile" ? "active" : ""}
           onClick={() => setState({ tool: tool === "profile" ? "select" : "profile" })}
-          title="Longitudinal profile: click a start node, then an end node"
+          title="Longitudinal profile: click a start node, then an end node (P)"
         >
           ⟋ Profile
         </button>
@@ -141,7 +141,7 @@ export function Toolbar() {
           disabled={!model}
           className={upstream ? "active" : ""}
           onClick={() => setState({ upstream: !upstream })}
-          title="Upstream: highlight the network draining to the selected nodes, links and subcatchments"
+          title="Upstream: highlight the network draining to the selected nodes, links and subcatchments (U)"
         >
           ⇡ Upstream
         </button>

@@ -58,6 +58,11 @@ function editShortcut(e: KeyboardEvent, s: State) {
     if (!e.repeat) deleteObjects(s.selection);
   } else if (e.key === "Backspace" && mapTools.current?.back()) {
     e.preventDefault();
+  } else if (!ctrl && !e.altKey && (k === "p" || k === "u")) {
+    // Same as the toolbar buttons: P turns the profile tool on or off, U the upstream highlight.
+    if (!s.model || e.repeat) return;
+    if (k === "p") setState({ tool: s.tool === "profile" ? "select" : "profile" });
+    else setState({ upstream: !s.upstream });
   } else if (e.key === "Enter") {
     mapTools.current?.finish();
   } else if (e.key === "Escape") {
