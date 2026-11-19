@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useModelChecks } from "./actions/validate";
 import { BottomPanel } from "./components/BottomPanel";
 import { ClimateDialog } from "./components/ClimateDialog";
+import { CommandPalette } from "./components/CommandPalette";
 import { CrsDialog } from "./components/CrsDialog";
 import { DataPanel } from "./components/DataPanel";
 import { DeleteDialog } from "./components/DeleteDialog";
@@ -120,6 +121,7 @@ export function App() {
       {dialog === "shortcuts" && <ShortcutsDialog />}
       {dialog === "recovery" && <RecoveryDialog />}
       {dialog === "query" && <QueryDialog />}
+      {dialog === "palette" && <CommandPalette />}
       <TableEditor />
       <DeleteDialog />
     </div>

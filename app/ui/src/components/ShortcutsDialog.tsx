@@ -11,6 +11,7 @@ const GROUPS: [string, [string, string][]][] = [
       ["Ctrl+S / Ctrl+Shift+S", "Save / save as"],
       ["Ctrl+,", "Simulation options"],
       ["F5", "Run the model"],
+      ["Ctrl+P", "Command palette: find and run any command"],
       ["?", "This list"],
     ],
   ],

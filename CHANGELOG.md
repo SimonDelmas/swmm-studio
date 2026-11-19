@@ -25,6 +25,10 @@ All notable changes to SWMM Studio are recorded here. The format follows
   ignore case, and `*` and `?` are wildcards in quotes. The objects found replace the
   selection, are added to it, intersected with it or removed from it. On a model of 100,000
   conduits, `diameter < 0.3` takes about 25 ms.
+- Command palette: Ctrl+P (or Project ▸ Command palette) lists the commands usable now — project,
+  simulation, edition, adding objects, map tools, view, panels and results — with their
+  shortcut. Typing filters them (words, or starts of words: "zsel" finds Zoom to the
+  selection), ↑ / ↓ choose, Enter or a click runs; the commands last run come first.
 - Shortcuts: P turns the longitudinal profile tool on or off, U the upstream highlight.
   S, B, L, M and V choose the select, box, lasso, move and vertices tools; F zooms to the
   whole model and Shift+F to the selection; T shows or hides the labels. Ctrl+F goes to the
@@ -120,6 +124,9 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Fixed
 
+- Map: a model without a coordinate system, reopened with its labels on, no longer stops the
+  interface ("deck.gl: assertion failed"); the labels asked for the view before the map was
+  ready. The view is not saved in the project until the map has one.
 - A model opened while an edit, undo or delete was on its way (for example from the file
   explorer while a dialog was open) can no longer receive that change with the object
   numbering of the previous model. The dialogs that edit the previous model (options,

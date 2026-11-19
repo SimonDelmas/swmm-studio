@@ -7,7 +7,7 @@ import { getState, notify, setState, useStore } from "../store";
 import type { RecentFile } from "../types";
 import type { Tool } from "../uiTypes";
 import { useDropdown } from "../hooks/useDropdown";
-import { FIND_INPUT_ID } from "../hooks/useShortcuts";
+import { FIND_INPUT_ID } from "../actions/commands";
 import { RunControls } from "./RunPanel";
 
 const EDIT_TOOLS: [Tool, string, string][] = [
@@ -76,6 +76,7 @@ function ProjectMenu() {
             disabled: !model,
           })}
           <hr />
+          {item("Command palette…", () => setState({ dialog: "palette" }), { title: "Find and run any command (Ctrl+P)" })}
           {item("Keyboard shortcuts", () => setState({ dialog: "shortcuts" }), { title: "List of the keyboard shortcuts (?)" })}
         </div>
       )}

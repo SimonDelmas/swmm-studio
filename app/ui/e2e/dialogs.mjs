@@ -307,6 +307,28 @@ await step("a delete waiting for its plan is dropped when another model opens me
   return r;
 });
 
+await step("a model reopened with its labels on and its view saved draws its map", async () => {
+  // The labels ask for the extent in view as the map is created, before deck.gl is ready.
+  await S(() => window.swmmStudio.setState({ labels: true, selection: [], pendingDelete: null, dialog: null }));
+  // The labels and the view are saved in the project after a second or so.
+  await page.waitForTimeout(2500);
+  await S((p) => window.swmmStudio.openModel(p), model);
+  await page.waitForFunction(() => window.swmmStudio.getState().busy === null && window.swmmStudio.getState().model, null, { timeout: 30000 });
+  await S(() => window.swmmStudio.setState({ crsDialog: false }));
+  await page.waitForTimeout(2500);
+  const r = await S(() => ({
+    map: !!document.querySelector(".map"),
+    crashed: document.body.innerText.includes("Something went wrong"),
+    labels: window.swmmStudio.getState().labels,
+  }));
+  if (r.crashed || !r.map) fail(`the map is not drawn: ${JSON.stringify(r)}`);
+  if (!r.labels) fail("the labels saved in the project are not shown");
+  // Saved off again: the copy can be tested once more.
+  await S(() => window.swmmStudio.setState({ labels: false }));
+  await page.waitForTimeout(1500);
+  return r;
+});
+
 if (errors.length) fail(`page errors: ${errors.join(" | ")}`);
 console.log("all dialog checks passed");
 await browser.close();

@@ -120,6 +120,8 @@ export function useViewer(container: React.RefObject<HTMLDivElement | null>, spa
     const t = setTimeout(() => {
       if (!viewer.current) return;
       const extent = viewer.current.extent();
+      // No view yet (the viewer is not ready): nothing to remember.
+      if (!extent.every(Number.isFinite)) return;
       const saved = savedView(space);
       if (!saved || !isSavedView(space, saved, extent)) updateProjectUi({ view: { space, extent } }, path);
     }, 1500);

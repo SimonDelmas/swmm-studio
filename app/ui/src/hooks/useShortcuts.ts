@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { focusFind, playPause } from "../actions/commands";
 import { deleteObjects, redo, saveModel, undo } from "../actions/edit";
 import { mapTools } from "../actions/mapTools";
 import { askNewModel, chooseModel } from "../actions/model";
@@ -7,9 +8,6 @@ import { zoomToSelection } from "../actions/selection";
 import { stepBottomTab } from "../actions/views";
 import { getState, setState, type State } from "../store";
 import type { Tool } from "../uiTypes";
-
-/** Id of the toolbar field that finds an object by its ID (Ctrl+F). */
-export const FIND_INPUT_ID = "find-object";
 
 /** Shortcuts that also work while typing in a field. Returns true when the key was one. */
 function fileShortcut(e: KeyboardEvent, s: State, modal: boolean): boolean {
@@ -26,12 +24,16 @@ function fileShortcut(e: KeyboardEvent, s: State, modal: boolean): boolean {
     if (!e.repeat) void (k === "o" ? chooseModel() : askNewModel());
     return true;
   }
+  if (ctrl && k === "p" && !e.altKey) {
+    // The command palette; never the print dialog of the web view, even over a dialog.
+    e.preventDefault();
+    if (!modal && !e.repeat) setState({ dialog: "palette" });
+    return true;
+  }
   if (!ctrl || modal) return false;
   if (k === "f") {
     e.preventDefault();
-    const input = document.getElementById(FIND_INPUT_ID) as HTMLInputElement | null;
-    input?.focus();
-    input?.select();
+    focusFind();
   } else if (k === "," && s.model) {
     e.preventDefault();
     setState({ dialog: "options" });
@@ -49,7 +51,7 @@ function timeShortcut(e: KeyboardEvent, s: State): boolean {
   if (n === 0) return false;
   if (e.key === " ") {
     // Play at the end of the run starts over.
-    setState(!s.playing && s.period >= n - 1 ? { playing: true, period: 0 } : { playing: !s.playing });
+    playPause();
     e.preventDefault();
   } else if (e.key === "ArrowRight") setState({ period: Math.min(n - 1, s.period + s.stride) });
   else if (e.key === "ArrowLeft") setState({ period: Math.max(0, s.period - s.stride) });
