@@ -9,6 +9,7 @@ mod export;
 mod model_views;
 mod observed;
 mod project;
+mod query;
 mod recovery;
 mod runs;
 mod session;
@@ -67,6 +68,7 @@ fn main() {
             commands::model::select_rect,
             commands::model::select_polygon,
             commands::model::find_object,
+            commands::model::select_query,
             commands::model::object_info,
             commands::model::attribute,
             commands::results::open_results,

@@ -25,7 +25,7 @@ use crate::recovery::{Autosave, RecoveryInfo};
 pub(crate) use display::Display;
 pub use display::{GeometryPatch, Space};
 pub use report::{BlockDto, ReportSummary};
-pub(crate) use results::object_kind;
+pub(crate) use results::{element, object_kind};
 pub use results::{element_by_name, LoadedResults, ResultsInfo, VarInfo, VarValue};
 
 pub type Res<T> = Result<T, String>;

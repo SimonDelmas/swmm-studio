@@ -785,6 +785,20 @@ table.grid tr.footer-row td {
 .modal p {
   margin: 0;
 }
+.query-names {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.query-names > .muted {
+  min-width: 90px;
+}
+.query-name {
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+}
 .crs-list {
   overflow: auto;
   min-height: 60px;

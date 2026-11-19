@@ -60,6 +60,9 @@ export const api = {
   selectRect: (a: [number, number], b: [number, number]) => invoke<ObjRef[]>("select_rect", { a, b }),
   selectPolygon: (ring: [number, number][]) => invoke<ObjRef[]>("select_polygon", { ring }),
   findObject: (id: string) => invoke<ObjRef | null>("find_object", { id }),
+  /** Indices of the objects of a layer matching an attribute query (results read at `period`). */
+  selectQuery: async (kind: ObjKind, query: string, period: number | null) =>
+    new Uint32Array(await buffer("select_query", { kind, query, period })),
   objectInfo: (o: ObjRef, period: number | null) =>
     invoke<ObjectInfo>("object_info", { kind: o.kind, index: o.index, period }),
   attribute: async (kind: ObjKind, name: string) => new Float32Array(await buffer("attribute", { kind, name })),

@@ -24,7 +24,8 @@ continuous simulations over many years whose results files reach several gigabyt
 - Open a model and its results in one step; the map, its styles and your view are remembered.
 - Pick the coordinate system by code or name (`2154`, `Lambert-93`, `CC44`…) to place the network
   on the basemap. The model file itself is never changed.
-- Select objects with a click, a box or a lasso, find them by name, and see labels as you zoom in.
+- Select objects with a click, a box or a lasso, by a query (`diameter < 0.3`, `type = outfall`,
+  `max(flow) > 2`), find them by name, and see labels as you zoom in.
 - Colour nodes, links and subcatchments by type, by any input value (diameter, slope, area…) or
   by a simulation result.
 

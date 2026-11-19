@@ -9,6 +9,7 @@ import { NewModelDialog } from "./components/NewModelDialog";
 import { OptionsDialog } from "./components/OptionsDialog";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { RecoveryDialog } from "./components/RecoveryDialog";
+import { QueryDialog } from "./components/QueryDialog";
 import { SectionsDialog } from "./components/SectionsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -118,6 +119,7 @@ export function App() {
       {dialog === "sections" && <SectionsDialog />}
       {dialog === "shortcuts" && <ShortcutsDialog />}
       {dialog === "recovery" && <RecoveryDialog />}
+      {dialog === "query" && <QueryDialog />}
       <TableEditor />
       <DeleteDialog />
     </div>
