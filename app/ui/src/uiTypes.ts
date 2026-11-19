@@ -140,6 +140,8 @@ export type Tool =
 
 export interface RunState {
   running: boolean;
+  /** Folder of the running simulation (known once it started). */
+  dir: string | null;
   progress: number | null;
   elapsed: number;
   log: string[];
@@ -149,8 +151,22 @@ export interface RunState {
 /** "engines" is the options dialog opened on its engine tab. */
 export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | null;
 
-/** Tabs of the bottom panel: fixed views, then time series (`plotView`) and profile (`profileView`) tabs. */
-export type BottomTab = "table" | "issues" | "events" | "compare" | "plot" | "profile";
+/**
+ * Tabs of the bottom panel: fixed views, then time series (`plotView`), profile
+ * (`profileView`) and comparison (`compareView`) tabs.
+ */
+export type BottomTab = "table" | "issues" | "simulation" | "events" | "compare" | "plot" | "profile";
 
-/** Tabs of the simulation side panel. */
-export type SimTab = "run" | "runs" | "report";
+/** A tab of the bottom panel comparing the loaded results with other results (run B). */
+export interface CompareView {
+  id: number;
+  name: string;
+  /** The `.out` compared with the loaded results. */
+  path: string;
+}
+
+/**
+ * What the simulation tab shows: the list of runs (null), the console of the running one,
+ * the report of results loaded from outside the runs (`loaded`), or a run (its folder).
+ */
+export type SimView = null | "running" | "loaded" | (string & {});

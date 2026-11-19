@@ -2,9 +2,9 @@
 // `useStore` in components and `getState` elsewhere, change it with `setState`.
 
 import { useSyncExternalStore } from "react";
-import type { Issue, ProfileDto } from "./analysisTypes";
+import type { Issue, ProfileDto, RunDto } from "./analysisTypes";
 import type { DeletePlan, Geometry, ModelInfo, ObjKind, ObjRef, TableKind } from "./types";
-import { defaultStyle, styleUsable, type BottomTab, type Dialog, type LayerStyle, type PlotView, type ProfileView, type RunState, type SimTab, type StyledKind, type Tool } from "./uiTypes";
+import { defaultStyle, styleUsable, type BottomTab, type CompareView, type Dialog, type LayerStyle, type PlotView, type ProfileView, type RunState, type SimView, type StyledKind, type Tool } from "./uiTypes";
 
 export interface State {
   model: ModelInfo | null;
@@ -27,6 +27,9 @@ export interface State {
   profileViews: ProfileView[];
   /** Id of the open (or last opened) profile view. */
   profileView: number;
+  /** Comparison tabs of the bottom panel. */
+  compareViews: CompareView[];
+  compareView: number;
   /** The bottom panel fills the centre (the map is hidden). */
   bottomMax: boolean;
   /** The timeline strip (overview of a system variable) is shown under the map. */
@@ -60,15 +63,17 @@ export interface State {
   run: RunState;
   /** Engine a run would use (null: none configured). */
   engine: string | null;
-  sideTab: "props" | "style" | "data" | "simulation";
-  simTab: SimTab;
+  sideTab: "props" | "style" | "data";
+  /** Runs of the model, newest first (null: not listed yet). */
+  runs: RunDto[] | null;
+  simView: SimView;
   /** Incremented when a model is opened (the map view is rebuilt). */
   modelSeq: number;
 }
 
 /** No time series or profile tab: they are opened as needed. */
-function noViews(): Pick<State, "plotViews" | "plotView" | "profileViews" | "profileView"> {
-  return { plotViews: [], plotView: 0, profileViews: [], profileView: 0 };
+function noViews(): Pick<State, "plotViews" | "plotView" | "profileViews" | "profileView" | "compareViews" | "compareView"> {
+  return { plotViews: [], plotView: 0, profileViews: [], profileView: 0, compareViews: [], compareView: 0 };
 }
 
 const initial: State = {
@@ -103,10 +108,11 @@ const initial: State = {
   dialog: null,
   tableEditor: null,
   pendingDelete: null,
-  run: { running: false, progress: null, elapsed: 0, log: [], last: null },
+  run: { running: false, dir: null, progress: null, elapsed: 0, log: [], last: null },
   engine: null,
   sideTab: "props",
-  simTab: "run",
+  runs: null,
+  simView: null,
   modelSeq: 0,
 };
 
@@ -149,7 +155,9 @@ export function resetForModel(model: ModelInfo, geometry: Geometry | null) {
     profile: null,
     profileError: null,
     profileStart: null,
-    bottomTab: state.bottomTab === "plot" || state.bottomTab === "profile" ? "table" : state.bottomTab,
+    bottomTab: state.bottomTab === "plot" || state.bottomTab === "profile" || state.bottomTab === "compare" ? "table" : state.bottomTab,
+    runs: null,
+    simView: state.run.running ? state.simView : null,
     issues: null,
     issuesError: null,
     // The map view is rebuilt (modelSeq) and shows the saved view, or the whole model.

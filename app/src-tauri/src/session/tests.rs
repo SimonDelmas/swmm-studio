@@ -64,7 +64,7 @@ fn open_finds_results_and_report() {
     assert_eq!(rep.warnings[0].object, Some(ObjRef { kind: ObjKind::Link, index: 1 }));
     assert_eq!(rep.continuity, vec![("Flow routing".to_string(), -0.081)]);
     let i = rep.blocks.iter().position(|b| b.title == "Node Depth Summary").unwrap();
-    let b = s.report_block(i).unwrap();
+    let b = s.report_block(i, None).unwrap();
     assert_eq!((b.kind, b.rows.len(), b.id_kind), ("table", 2, Some(ObjKind::Node)));
 }
 
@@ -78,7 +78,7 @@ fn frames_follow_network_order() {
     let f = s.frame(ElementKind::Node, 0, 3).unwrap();
     assert_eq!(f[0], (3000 + layout.series(ElementKind::Node, 1, 0)) as f32);
     assert_eq!(f[3], (3000 + layout.series(ElementKind::Node, 0, 0)) as f32);
-    let mm = s.series(ElementKind::Node, 0, 0, 0, 40, 100, false).unwrap();
+    let mm = s.series(ElementKind::Node, 0, 0, 0, 40, 100, false, None).unwrap();
     assert_eq!(mm.len(), 40);
     assert_eq!(mm.max[5], (5000 + layout.series(ElementKind::Node, 1, 0)) as f32);
     assert_eq!(s.time_of_max(ElementKind::Link, 2, 0).unwrap(), 39);
@@ -91,6 +91,32 @@ fn frames_follow_network_order() {
     assert!(!o.groups.iter().any(|g| g.title == "RDII"));
     let j2 = s.object(ObjRef { kind: ObjKind::Node, index: 1 }, None).unwrap();
     assert!(j2.groups.iter().any(|g| g.title == "RDII"));
+}
+
+#[test]
+fn overlays_and_viewed_reports() {
+    let (dir, inp) = fixture();
+    let mut s = Session::open(&inp).unwrap();
+    let other = dir.path().join("other.out");
+    std::fs::copy(inp.with_extension("out"), &other).unwrap();
+    s.set_overlays(std::slice::from_ref(&other)).unwrap();
+    assert_eq!(s.info().overlays.len(), 1);
+    assert!(s.cache_jobs().contains(&other));
+    let a = s.series(ElementKind::Node, 0, 0, 0, 40, 100, false, None).unwrap();
+    let b = s.series(ElementKind::Node, 0, 0, 0, 40, 100, false, Some(&other)).unwrap();
+    assert_eq!(a.max, b.max);
+    assert!(s.series(ElementKind::Node, 0, 0, 0, 40, 100, false, Some(&dir.path().join("x.out"))).is_err());
+    s.set_overlays(&[]).unwrap();
+    assert!(s.info().overlays.is_empty());
+
+    // A report looked at besides the loaded one: its blocks are read by path.
+    let rpt = dir.path().join("other.rpt");
+    std::fs::write(&rpt, RPT).unwrap();
+    let summary = s.view_report(&rpt).unwrap();
+    assert_eq!(summary.path, rpt);
+    let i = summary.blocks.iter().position(|b| b.title == "Node Depth Summary").unwrap();
+    assert_eq!(s.report_block(i, Some(&rpt)).unwrap().rows.len(), 2);
+    assert!(s.report_block(i, Some(&dir.path().join("x.rpt"))).is_err());
 }
 
 #[test]

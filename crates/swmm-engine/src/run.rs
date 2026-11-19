@@ -169,6 +169,9 @@ pub fn run_inp(
         console: console.lines,
     };
     RunRecord::from_outcome(&model, engine, opts.label.clone(), started, &outcome).save(&files.run_dir)?;
+    // The console is kept with the run: its errors explain a run that wrote no report.
+    // Not being able to write it does not fail the run.
+    let _ = crate::history::save_console(&files.run_dir, &outcome.console);
     Ok(outcome)
 }
 

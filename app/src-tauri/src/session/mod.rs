@@ -69,6 +69,8 @@ pub struct ModelInfo {
     pub results: Option<ResultsInfo>,
     /// Results compared with the loaded ones (run B).
     pub compare: Option<ResultsInfo>,
+    /// Results of other runs drawn with each series of the time series graphs.
+    pub overlays: Vec<ResultsInfo>,
     pub report: Option<ReportSummary>,
     /// Messages for the user (results that could not be loaded…).
     pub notes: Vec<String>,
@@ -114,7 +116,11 @@ pub struct Session {
     pub(crate) results: Option<LoadedResults>,
     /// Second results, for comparisons (difference maps, overlaid series).
     pub(crate) compare: Option<LoadedResults>,
+    /// Results of other runs overlaid on the time series graphs.
+    pub(crate) overlays: Vec<LoadedResults>,
     pub(crate) report: Option<(PathBuf, Report)>,
+    /// Report of a run looked at in the simulation panel (not the loaded one).
+    pub(crate) viewed_report: Option<(PathBuf, Report)>,
     notes: Vec<String>,
     pub(crate) history: swmm_model::edit::History,
     /// Incremented on every change of the model (edit, undo, redo).
@@ -153,7 +159,9 @@ impl Session {
             display,
             results: None,
             compare: None,
+            overlays: Vec::new(),
             report: None,
+            viewed_report: None,
             notes,
             history: Default::default(),
             revision: 0,
@@ -229,6 +237,7 @@ impl Session {
             attributes,
             results: self.results_info(),
             compare: self.compare.as_ref().map(LoadedResults::info),
+            overlays: self.overlays.iter().map(LoadedResults::info).collect(),
             report: self.report_summary(),
             notes: self.notes.clone(),
             dirty: self.history.is_dirty(),

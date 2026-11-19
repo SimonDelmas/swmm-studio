@@ -7,7 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { exportTable } from "../exporting";
 import { notify, setState, useStore } from "../store";
-import type { BlockDto, MessageDto } from "../types";
+import type { BlockDto, MessageDto, ReportSummary } from "../types";
 import { latest } from "../latest";
 
 
@@ -113,22 +113,10 @@ function Table({ block }: { block: BlockDto }) {
   );
 }
 
+/** The report of the loaded results, or a button to open one. */
 export function ReportPanel() {
   const report = useStore((s) => s.model?.report ?? null);
   const hasModel = useStore((s) => s.model !== null);
-  const [blockIndex, setBlockIndex] = useState<number>(-1);
-  const [block, setBlock] = useState<BlockDto | null>(null);
-
-  useEffect(() => {
-    setBlockIndex(-1);
-    setBlock(null);
-  }, [report?.path]);
-
-  useEffect(() => {
-    if (blockIndex < 0) return setBlock(null);
-    return latest(() => api.reportBlock(blockIndex), setBlock, (e) => notify(errorText(e), true));
-  }, [blockIndex, report?.path]);
-
   if (!hasModel) return <div className="panel-empty">Open a model first.</div>;
   if (!report) {
     const openRpt = async () => {
@@ -145,6 +133,27 @@ export function ReportPanel() {
       </div>
     );
   }
+  return <ReportView report={report} source={null} />;
+}
+
+/**
+ * A report: summary (continuity, errors and warnings) and its blocks, read from the
+ * loaded report (`source` null) or from the report of a run (its path). `extra`: shown
+ * at the top of the summary.
+ */
+export function ReportView({ report, source, extra }: { report: ReportSummary; source: string | null; extra?: React.ReactNode }) {
+  const [blockIndex, setBlockIndex] = useState<number>(-1);
+  const [block, setBlock] = useState<BlockDto | null>(null);
+
+  useEffect(() => {
+    setBlockIndex(-1);
+    setBlock(null);
+  }, [report.path]);
+
+  useEffect(() => {
+    if (blockIndex < 0) return setBlock(null);
+    return latest(() => api.reportBlock(blockIndex, source), setBlock, (e) => notify(errorText(e), true));
+  }, [blockIndex, report.path, source]);
 
   return (
     <div className="report-panel">
@@ -175,6 +184,7 @@ export function ReportPanel() {
       <div className="report-main">
         {blockIndex === -1 && (
           <div className="report-summary">
+            {extra}
             <h4>Continuity errors</h4>
             {report.continuity.length === 0 && <div className="muted">None reported.</div>}
             <table className="kv">

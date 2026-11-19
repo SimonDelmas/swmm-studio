@@ -1,7 +1,9 @@
-// The time series and profile tabs of the bottom panel: opening, updating and closing them.
+// The time series, profile and comparison tabs of the bottom panel: opening, updating and closing them.
 
-import { getState, setState, type State } from "../store";
-import type { PlotAgg, PlotGraph, PlotSeries, PlotView, ProfileView } from "../uiTypes";
+import { api, errorText } from "../api";
+import { getState, notify, setState, type State } from "../store";
+import type { CompareView, PlotAgg, PlotGraph, PlotSeries, PlotView, ProfileView } from "../uiTypes";
+import { setResultsInfo } from "./model";
 
 let plotIds = 0;
 export const newPlotId = () => ++plotIds;
@@ -81,27 +83,59 @@ export function mapPlotSeries(views: PlotView[], f: (p: PlotSeries) => PlotSerie
   });
 }
 
-/** A time series or profile tab. */
+/** Opens a tab comparing the loaded results with the results `path` (run B). */
+export function openCompareView(path: string, name: string) {
+  setState((s) => {
+    const names = s.compareViews.map((c) => c.name);
+    const v: CompareView = { id: newPlotId(), name: names.includes(name) ? uniqueName(name, names) : name, path };
+    return { compareViews: [...s.compareViews, v], compareView: v.id, bottomTab: "compare" };
+  });
+}
+
+export function updateCompareView(id: number, patch: Partial<CompareView>) {
+  setState((s) => ({ compareViews: s.compareViews.map((v) => (v.id === id ? { ...v, ...patch } : v)) }));
+}
+
+/** Unloads the compared results when no comparison tab shows them any more. */
+function releaseComparison() {
+  const s = getState();
+  const b = s.model?.compare?.path;
+  if (!b || s.compareViews.some((v) => v.path === b)) return;
+  api
+    .closeComparison()
+    .then((m) => setResultsInfo(m, false))
+    .catch((e) => notify(errorText(e), true));
+}
+
+/** A time series, profile or comparison tab. */
 export interface ViewTab {
-  type: "plot" | "profile";
+  type: "plot" | "profile" | "compare";
   id: number;
   name: string;
 }
 
 /** The tabs created as needed, in creation order. */
-export function viewTabs(s: Pick<State, "plotViews" | "profileViews">): ViewTab[] {
+export function viewTabs(s: Pick<State, "plotViews" | "profileViews" | "compareViews">): ViewTab[] {
   return [
     ...s.plotViews.map((v) => ({ type: "plot" as const, id: v.id, name: v.name })),
     ...s.profileViews.map((v) => ({ type: "profile" as const, id: v.id, name: v.name })),
+    ...s.compareViews.map((v) => ({ type: "compare" as const, id: v.id, name: v.name })),
   ].sort((a, b) => a.id - b.id);
 }
 
-export const isViewTabOpen = (s: Pick<State, "bottomTab" | "plotView" | "profileView">, t: ViewTab) =>
-  s.bottomTab === t.type && (t.type === "plot" ? s.plotView : s.profileView) === t.id;
+export const isViewTabOpen = (s: Pick<State, "bottomTab" | "plotView" | "profileView" | "compareView">, t: ViewTab) =>
+  s.bottomTab === t.type && (t.type === "plot" ? s.plotView : t.type === "profile" ? s.profileView : s.compareView) === t.id;
 
 export function openViewTab(t: ViewTab) {
   if (t.type === "plot") setState({ plotView: t.id, bottomTab: "plot" });
+  else if (t.type === "compare") setState({ compareView: t.id, bottomTab: "compare" });
   else selectProfileView(t.id);
+}
+
+export function renameViewTab(t: ViewTab, name: string) {
+  if (t.type === "plot") updatePlotView(t.id, { name });
+  else if (t.type === "compare") updateCompareView(t.id, { name });
+  else updateProfileView(t.id, { name });
 }
 
 /** Closes a tab; when it was open, the next one (or the previous, or the table) opens. */
@@ -111,21 +145,26 @@ export function closeViewTab(t: ViewTab) {
   const i = tabs.findIndex((x) => x.type === t.type && x.id === t.id);
   const wasOpen = isViewTabOpen(s, t);
   if (t.type === "plot") setState({ plotViews: s.plotViews.filter((v) => v.id !== t.id) });
-  else setState({ profileViews: s.profileViews.filter((v) => v.id !== t.id), ...(wasOpen ? { profileNodes: [], profileStart: null } : {}) });
+  else if (t.type === "compare") {
+    setState({ compareViews: s.compareViews.filter((v) => v.id !== t.id) });
+    releaseComparison();
+  } else setState({ profileViews: s.profileViews.filter((v) => v.id !== t.id), ...(wasOpen ? { profileNodes: [], profileStart: null } : {}) });
   if (!wasOpen) return;
   const next = tabs[i + 1] ?? tabs[i - 1];
   if (next) openViewTab(next);
   else setState({ bottomTab: "table" });
 }
 
-/** Closes all the time series and profile tabs. */
+/** Closes all the time series, profile and comparison tabs. */
 export function closeAllViewTabs() {
   const s = getState();
   setState({
     plotViews: [],
     profileViews: [],
+    compareViews: [],
     profileNodes: [],
     profileStart: null,
-    ...(s.bottomTab === "plot" || s.bottomTab === "profile" ? { bottomTab: "table" as const } : {}),
+    ...(s.bottomTab === "plot" || s.bottomTab === "profile" || s.bottomTab === "compare" ? { bottomTab: "table" as const } : {}),
   });
+  releaseComparison();
 }

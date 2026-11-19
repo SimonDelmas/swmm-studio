@@ -63,7 +63,7 @@ pub(super) fn start_cache_job(app: &AppHandle, state: &AppState) {
                 Ok(())
             });
             if let Ok(info) = state.read(|s| Ok(s.info())) {
-                for r in info.results.into_iter().chain(info.compare).filter(|r| r.path == path) {
+                for r in info.results.into_iter().chain(info.compare).chain(info.overlays).filter(|r| r.path == path) {
                     let _ = app.emit("results-changed", r);
                 }
             }

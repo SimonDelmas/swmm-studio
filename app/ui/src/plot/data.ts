@@ -3,6 +3,7 @@
 import uPlot from "uplot";
 import { api, errorText } from "../api";
 import { observedLink } from "../actions/observed";
+import { resultsName } from "../actions/runs";
 import { periodAt, periodMs } from "../format";
 import { getState } from "../store";
 import { makeStat, type PlotAgg, type PlotSeries } from "../uiTypes";
@@ -16,11 +17,30 @@ export interface Built {
   decimated: boolean;
   units: string[];
   stepped: boolean;
-  /** Observed values drawn as points, after the series in `data` (none for aggregates). */
+  /**
+   * The series from the results of other runs (overlays), after the series in `data` and
+   * before the observed values (none for aggregates).
+   */
+  runs: RunPlot[];
+  /** Observed values drawn as points, after the runs in `data` (none for aggregates). */
   obs: ObservedPlot[];
   /** Observed files that could not be read. */
   obsErrors: string[];
+  /** Series of other runs that could not be read (the object is not in the run…). */
+  runErrors: string[];
 }
+
+/** Series `parent` of a graph from the results of another run (same axis and colour, dashed). */
+export interface RunPlot {
+  parent: number;
+  /** Index of the run among the overlays (its dash pattern). */
+  run: number;
+  label: string;
+}
+
+/** Dash patterns of the runs overlaid on the graphs, in order. */
+const RUN_DASHES = [[6, 3], [2, 2], [10, 3, 2, 3], [1, 4], [12, 4]];
+export const runDash = (run: number) => RUN_DASHES[run % RUN_DASHES.length];
 
 /** Observed values of series `parent` of a graph (same axis and colour). */
 export interface ObservedPlot {
@@ -93,7 +113,7 @@ export async function fetchGraph(
       if (a.end_ms !== null && y.length) (x.push(a.end_ms / 1000), y.push(y[y.length - 1]));
       return [x, y] as Table;
     });
-    return { series: plot, data: align(tables), decimated: false, units: all.map((a) => a.unit), stepped: true, obs: [], obsErrors: [] };
+    return { series: plot, data: align(tables), decimated: false, units: all.map((a) => a.unit), stepped: true, runs: [], obs: [], obsErrors: [], runErrors: [] };
   }
   const m = getState().model;
   const observed = fetchObserved(results, plot, [p0, p1], width);
@@ -107,16 +127,65 @@ export async function fetchGraph(
       return table(r, mm, q1);
     }),
   );
+  const runs = await fetchRuns(results, plot, [p0, p1], width);
   const obs = await observed;
   return {
     series: plot,
-    data: align([...all.map((a) => a.t), ...obs.tables]),
-    decimated: all.some((a) => a.decimated),
+    data: align([...all.map((a) => a.t), ...runs.tables, ...obs.tables]),
+    decimated: all.some((a) => a.decimated) || runs.decimated,
     units: plot.map((p) => p.unit),
     stepped: false,
+    runs: runs.series,
     obs: obs.series,
     obsErrors: obs.errors,
+    runErrors: runs.errors,
   };
+}
+
+/**
+ * The plotted series (not run B's) from the results of the runs overlaid on the graphs,
+ * over the times of periods `[p0, p1)` of the loaded results.
+ */
+async function fetchRuns(
+  results: ResultsInfo,
+  plot: PlotSeries[],
+  [p0, p1]: [number, number],
+  width: number,
+): Promise<{ series: RunPlot[]; tables: Table[]; decimated: boolean; errors: string[] }> {
+  const overlays = (getState().model?.overlays ?? []).filter((o) => o.path !== results.path);
+  const wanted = plot.flatMap((s, parent) => {
+    if (s.b) return [];
+    const name = results.variables[s.kind][s.var]?.name;
+    return overlays.flatMap((o, run) => {
+      // The variable by name: the runs may not have the same pollutants.
+      const v = o.variables[s.kind]?.findIndex((x) => x.name === name) ?? -1;
+      return v < 0 ? [] : [{ s, parent, run, o, v, label: `${s.label} [${resultsName(o.path)}]` }];
+    });
+  });
+  const got = await Promise.all(
+    wanted.map(async (w) => {
+      // Same time range in the other run.
+      const [q0, q1] = [periodAt(w.o, periodMs(results, p0)), periodAt(w.o, periodMs(results, p1 - 1)) + 1];
+      try {
+        const mm = await api.series(w.s.kind, w.s.index, w.v, q0, q1, Math.max(100, width), false, w.o.path);
+        return { w, t: table(w.o, mm, q1), e: null };
+      } catch (e) {
+        return { w, t: null, e: `${w.label}: ${errorText(e)}` };
+      }
+    }),
+  );
+  const series: RunPlot[] = [];
+  const tables: Table[] = [];
+  const errors: string[] = [];
+  let decimated = false;
+  for (const { w, t, e } of got) {
+    if (e) errors.push(e);
+    if (!t) continue;
+    series.push({ parent: w.parent, run: w.run, label: w.label });
+    tables.push(t.t);
+    decimated ||= t.decimated;
+  }
+  return { series, tables, decimated, errors };
 }
 
 /**

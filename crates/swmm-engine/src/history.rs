@@ -9,6 +9,23 @@ use crate::run::{RunOutcome, RunStatus};
 use crate::{EngineConfig, EngineError};
 
 pub const RECORD_FILE: &str = "run.json";
+/// Console output of the engine, one line per line.
+pub const CONSOLE_FILE: &str = "console.txt";
+
+/// Writes the console output of a run into its folder.
+pub fn save_console(run_dir: &Path, lines: &[String]) -> Result<(), EngineError> {
+    let p = run_dir.join(CONSOLE_FILE);
+    let mut text = lines.join("\n");
+    text.push('\n');
+    std::fs::write(&p, text).map_err(|e| EngineError::io(&p, e))
+}
+
+/// Console output of a run (empty when it was not kept: runs made before it was).
+pub fn load_console(run_dir: &Path) -> Vec<String> {
+    std::fs::read_to_string(run_dir.join(CONSOLE_FILE))
+        .map(|s| s.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
 
 /// Folder holding the runs of a model: `model.inp` → `model_runs`.
 pub fn runs_dir(model: &Path) -> PathBuf {
@@ -138,6 +155,15 @@ mod tests {
     #[test]
     fn runs_dir_name() {
         assert_eq!(runs_dir(Path::new("C:/m/net.inp")), Path::new("C:/m/net_runs"));
+    }
+
+    #[test]
+    fn console_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(load_console(dir.path()).is_empty());
+        let lines = vec!["o  Retrieving project data".to_string(), "ERROR 200: one or more errors".to_string()];
+        save_console(dir.path(), &lines).unwrap();
+        assert_eq!(load_console(dir.path()), lines);
     }
 
     #[test]

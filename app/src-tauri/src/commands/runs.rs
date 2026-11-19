@@ -7,7 +7,7 @@ use tauri::{AppHandle, State};
 use super::cache::start_cache_job;
 use super::AppState;
 use crate::runs::RunDto;
-use crate::session::{ModelInfo, Res};
+use crate::session::{ModelInfo, ReportSummary, Res};
 
 #[tauri::command(async)]
 pub fn runs(state: State<'_, AppState>) -> Res<Vec<RunDto>> {
@@ -33,6 +33,18 @@ pub fn compare_run(app: AppHandle, state: State<'_, AppState>, dir: PathBuf) -> 
     })?;
     start_cache_job(&app, &state);
     Ok(info)
+}
+
+/// Report of a run (not loaded with its results).
+#[tauri::command(async)]
+pub fn run_report(state: State<'_, AppState>, dir: PathBuf) -> Res<ReportSummary> {
+    state.write(|s| s.run_report(&dir))
+}
+
+/// Console output of a run, as the engine wrote it.
+#[tauri::command(async)]
+pub fn run_console(dir: PathBuf) -> Vec<String> {
+    swmm_engine::history::load_console(&dir)
 }
 
 #[tauri::command(async)]

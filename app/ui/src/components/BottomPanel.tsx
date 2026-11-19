@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { closeAllViewTabs, closeViewTab, isViewTabOpen, newPlotName, newPlotView, openPlotView, openProfileView, openViewTab, updatePlotView, updateProfileView, viewTabs, type ViewTab } from "../actions/views";
+import { closeAllViewTabs, closeViewTab, isViewTabOpen, newPlotName, newPlotView, openPlotView, openProfileView, openViewTab, renameViewTab, viewTabs, type ViewTab } from "../actions/views";
+import { compareWithFile, compareWithRun, refreshRuns, runName } from "../actions/runs";
 import { setState, useStore, type State } from "../store";
 import type { BottomTab } from "../uiTypes";
 import { ComparePanel } from "./ComparePanel";
@@ -10,20 +11,29 @@ import { PlotPanel } from "./PlotPanel";
 import { deleteProfile, loadProfile, savedProfiles } from "../profile/profiles";
 import { useDropdown } from "../hooks/useDropdown";
 import { ProfilePanel } from "./ProfilePanel";
+import { reportErrors, SimulationPanel } from "./SimulationPanel";
 import { TablePanel } from "./TablePanel";
 
 /** Views always there. */
 const FIXED: [BottomTab, string, string][] = [
   ["table", "Table", "Edit the objects of a section in a table"],
   ["issues", "Issues", "Check the model data"],
+  ["simulation", "Simulation", "Run the model; the runs, their console and their reports"],
   ["events", "Events", "Rain and flood events of the results"],
-  ["compare", "Compare", "Compare the results with another run"],
 ];
 
-/** The "+" menu: new time series or profile tab, or one rebuilt from a view or profile saved in the project. */
+const ICONS: Record<ViewTab["type"], string> = { plot: "〜", profile: "⟋", compare: "⇄" };
+const KINDS: Record<ViewTab["type"], string> = { plot: "Time series", profile: "Profile", compare: "Comparison" };
+
+/**
+ * The "+" menu: new time series, profile or comparison tab, or one rebuilt from a view or
+ * profile saved in the project.
+ */
 function AddMenu() {
   const results = useStore((s) => !!s.model?.results);
   const model = useStore((s) => !!s.model);
+  const runs = useStore((s) => s.runs);
+  const comparable = (runs ?? []).filter((r) => r.out && !r.loaded);
   const views = useStore(savedPlotViews);
   const profiles = useStore(savedProfiles);
   const { open, setOpen, ref, run } = useDropdown();
@@ -56,7 +66,7 @@ function AddMenu() {
   };
   return (
     <div className="menu" ref={ref}>
-      <button className={`tab-add${open ? " active" : ""}`} title="New view: time series or profile, or a saved one" onClick={() => setOpen(!open)}>
+      <button className={`tab-add${open ? " active" : ""}`} title="New view: time series, profile or comparison, or a saved one" onClick={() => setOpen(!open)}>
         +
       </button>
       {open && (
@@ -66,6 +76,18 @@ function AddMenu() {
           </button>
           <button disabled={!model} onClick={run(() => openProfileView([]))}>
             Profile
+          </button>
+          <hr />
+          <div className="menu-head">Compare the loaded results with</div>
+          {results && comparable.length === 0 && <div className="menu-none">No other run with results</div>}
+          {results &&
+            comparable.slice(0, 15).map((r) => (
+              <button key={r.dir} title={r.dir} onClick={run(() => compareWithRun(r))}>
+                {runName(r)}
+              </button>
+            ))}
+          <button disabled={!results} title={results ? "Compare with a SWMM results file (.out)" : "Load results first"} onClick={run(compareWithFile)}>
+            Results file…
           </button>
           <hr />
           <div className="menu-head">Saved time series</div>
@@ -83,8 +105,8 @@ function AddMenu() {
   );
 }
 
-/** All the time series and profile tabs, when they do not fit in the tab bar: open or close one, or close them all. */
-function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "plotView" | "profileView"> }) {
+/** All the time series, profile and comparison tabs, when they do not fit in the tab bar: open or close one, or close them all. */
+function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "plotView" | "profileView" | "compareView"> }) {
   const { open, setOpen, ref, run } = useDropdown();
   return (
     <div className="menu" ref={ref}>
@@ -96,7 +118,7 @@ function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "p
           {tabs.map((t) => (
             <div key={`${t.type}:${t.id}`} className={`menu-row${isViewTabOpen(s, t) ? " current" : ""}`}>
               <button title={t.name} onClick={run(() => openViewTab(t))}>
-                <span className="view-tab-icon">{t.type === "plot" ? "〜" : "⟋"}</span>
+                <span className="view-tab-icon">{ICONS[t.type]}</span>
                 {t.name}
               </button>
               <button className="menu-del" title="Close this tab" onClick={() => closeViewTab(t)}>
@@ -105,21 +127,20 @@ function TabList({ tabs, s }: { tabs: ViewTab[]; s: Pick<State, "bottomTab" | "p
             </div>
           ))}
           <hr />
-          <button onClick={run(closeAllViewTabs)}>Close all the time series and profile tabs</button>
+          <button onClick={run(closeAllViewTabs)}>Close all the time series, profile and comparison tabs</button>
         </div>
       )}
     </div>
   );
 }
 
-/** The tab of a time series or profile view: double-click renames it, × or a middle click closes it. */
+/** The tab of a time series, profile or comparison view: double-click renames it, × or a middle click closes it. */
 function ViewTab({ t, active, children }: { t: ViewTab; active: boolean; children?: React.ReactNode }) {
   const [editing, setEditing] = useState(false);
   const rename = (name: string) => {
     setEditing(false);
     if (!name.trim()) return;
-    if (t.type === "plot") updatePlotView(t.id, { name: name.trim() });
-    else updateProfileView(t.id, { name: name.trim() });
+    renameViewTab(t, name.trim());
   };
   if (editing)
     return (
@@ -147,11 +168,11 @@ function ViewTab({ t, active, children }: { t: ViewTab; active: boolean; childre
       }}
     >
       <button
-        title={`${t.type === "plot" ? "Time series" : "Profile"} “${t.name}” – double-click to rename`}
+        title={`${KINDS[t.type]} “${t.name}” – double-click to rename`}
         onClick={() => openViewTab(t)}
         onDoubleClick={() => setEditing(true)}
       >
-        <span className="view-tab-icon">{t.type === "plot" ? "〜" : "⟋"}</span>
+        <span className="view-tab-icon">{ICONS[t.type]}</span>
         <span className="view-tab-name">{t.name}</span>
         {children}
       </button>
@@ -166,15 +187,18 @@ function Body() {
   const tab = useStore((s) => s.bottomTab);
   const plot = useStore((s) => (s.bottomTab === "plot" ? s.plotViews.find((v) => v.id === s.plotView) : undefined));
   const profile = useStore((s) => (s.bottomTab === "profile" ? s.profileViews.find((v) => v.id === s.profileView) : undefined));
+  const compare = useStore((s) => (s.bottomTab === "compare" ? s.compareViews.find((v) => v.id === s.compareView) : undefined));
   switch (tab) {
     case "table":
       return <TablePanel />;
     case "issues":
       return <IssuesPanel />;
+    case "simulation":
+      return <SimulationPanel />;
     case "events":
       return <EventsPanel />;
     case "compare":
-      return <ComparePanel />;
+      return compare ? <ComparePanel key={compare.id} view={compare} /> : <div className="panel-empty">No comparison tab open: “+” creates one.</div>;
     case "plot":
       return plot ? <PlotPanel key={plot.id} view={plot} /> : <div className="panel-empty">No time series tab open: “+” creates one.</div>;
     case "profile":
@@ -182,22 +206,30 @@ function Body() {
   }
 }
 
-/** The views of the bottom panel: fixed tabs, then time series and profile tabs created as needed. */
+/** The views of the bottom panel: fixed tabs, then time series, profile and comparison tabs created as needed. */
 export function BottomPanel() {
   const bottomTab = useStore((x) => x.bottomTab);
   const plotView = useStore((x) => x.plotView);
   const profileView = useStore((x) => x.profileView);
   const plotViews = useStore((x) => x.plotViews);
   const profileViews = useStore((x) => x.profileViews);
+  const compareView = useStore((x) => x.compareView);
+  const compareViews = useStore((x) => x.compareViews);
+  const running = useStore((x) => x.run.running);
+  const runErrors = useStore(reportErrors);
   const bottomMax = useStore((x) => x.bottomMax);
   const modelErrors = useStore((x) => x.issues?.filter((i) => i.severity === "error").length ?? 0);
-  const comparing = useStore((x) => !!x.model?.compare);
-  const s = { bottomTab, plotView, profileView, bottomMax };
-  const tabs = viewTabs({ plotViews, profileViews });
+  // The runs (simulation tab, "+" menu) are listed again when the results shown change.
+  const model = useStore((x) => x.model);
+  useEffect(() => {
+    void refreshRuns();
+  }, [model?.path, model?.results?.path, model?.compare?.path, model?.overlays.length]);
+  const s = { bottomTab, plotView, profileView, compareView, bottomMax };
+  const tabs = viewTabs({ plotViews, profileViews, compareViews });
   // The time series and profile tabs scroll when they do not fit (wheel, or the list).
   const strip = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
-  const tabNames = [...plotViews, ...profileViews].map((v) => v.name).join("\n");
+  const tabNames = [...plotViews, ...profileViews, ...compareViews].map((v) => v.name).join("\n");
   useLayoutEffect(() => {
     const el = strip.current;
     if (!el) return setOverflow(false);
@@ -209,7 +241,8 @@ export function BottomPanel() {
     // Checked again when a tab is renamed: its width changes, not the strip's.
   }, [tabs.length, tabNames]);
   // The open tab is scrolled into view.
-  const activeKey = bottomTab === "plot" ? `plot:${plotView}` : bottomTab === "profile" ? `profile:${profileView}` : "";
+  const activeKey =
+    bottomTab === "plot" ? `plot:${plotView}` : bottomTab === "profile" ? `profile:${profileView}` : bottomTab === "compare" ? `compare:${compareView}` : "";
   useEffect(() => {
     strip.current?.querySelector<HTMLElement>(".view-tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeKey, tabs.length]);
@@ -220,7 +253,8 @@ export function BottomPanel() {
           <button key={t} className={s.bottomTab === t ? "active" : ""} title={title} onClick={() => setState({ bottomTab: t })}>
             {label}
             {t === "issues" && modelErrors > 0 && <span className="badge bad">{modelErrors}</span>}
-            {t === "compare" && comparing && <span className="badge">B</span>}
+            {t === "simulation" && running && <span className="badge warn">…</span>}
+            {t === "simulation" && !running && runErrors > 0 && <span className="badge bad">{runErrors}</span>}
           </button>
         ))}
         {tabs.length > 0 && <span className="tabs-sep" />}

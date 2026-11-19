@@ -81,6 +81,29 @@ impl Session {
 
     pub fn report_summary(&self) -> Option<ReportSummary> {
         let (path, r) = self.report.as_ref()?;
+        Some(self.summary(path, r))
+    }
+
+    /// Reads the report of a run that is not the loaded one, to look at it (it replaces
+    /// the one looked at before).
+    pub fn view_report(&mut self, path: &Path) -> Res<ReportSummary> {
+        if self.report.as_ref().is_some_and(|(p, _)| p == path) {
+            return Ok(self.report_summary().expect("report loaded"));
+        }
+        let report = Report::read(path).map_err(|e| e.to_string())?;
+        let summary = self.summary(path, &report);
+        self.viewed_report = Some((path.to_path_buf(), report));
+        Ok(summary)
+    }
+
+    /// Forgets the report looked at, if it is in `dir` (its run is deleted).
+    pub(crate) fn drop_viewed_report(&mut self, dir: &Path) {
+        if self.viewed_report.as_ref().is_some_and(|(p, _)| p.starts_with(dir)) {
+            self.viewed_report = None;
+        }
+    }
+
+    fn summary(&self, path: &Path, r: &Report) -> ReportSummary {
         let c = r.continuity();
         let continuity = [
             ("Runoff quantity", c.runoff_quantity),
@@ -104,8 +127,8 @@ impl Session {
                 BlockInfo { title: b.title.clone(), kind, rows }
             })
             .collect();
-        Some(ReportSummary {
-            path: path.clone(),
+        ReportSummary {
+            path: path.to_path_buf(),
             version: r.version.clone(),
             errors: r.errors.iter().map(|m| self.message(m)).collect(),
             warnings: r.warnings.iter().map(|m| self.message(m)).collect(),
@@ -114,11 +137,19 @@ impl Session {
             analysis_begun: r.analysis_begun.clone(),
             analysis_ended: r.analysis_ended.clone(),
             elapsed: r.elapsed.clone(),
-        })
+        }
     }
 
-    pub fn report_block(&self, i: usize) -> Res<BlockDto> {
-        let (_, r) = self.report.as_ref().ok_or("no report loaded")?;
+    /// Block `i` of the loaded report, or of the report looked at (`path`).
+    pub fn report_block(&self, i: usize, path: Option<&Path>) -> Res<BlockDto> {
+        let (_, r) = match path {
+            Some(p) => [&self.report, &self.viewed_report]
+                .into_iter()
+                .flatten()
+                .find(|(q, _)| q == p)
+                .ok_or_else(|| format!("the report {} is not open", p.display()))?,
+            None => self.report.as_ref().ok_or("no report loaded")?,
+        };
         let b = r.blocks.get(i).ok_or_else(|| format!("no report block #{i}"))?;
         let mut dto = BlockDto {
             title: b.title.clone(),

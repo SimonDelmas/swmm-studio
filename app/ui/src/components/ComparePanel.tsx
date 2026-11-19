@@ -1,13 +1,13 @@
 import { selectObject } from "../actions/selection";
 import { ObjLink } from "./ObjLink";
 import { useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { setResultsInfo } from "../actions/model";
 import { api, errorText } from "../api";
 import { formatDateTime, formatNumber, parseNumber, periodMs } from "../format";
 import { exportTable } from "../exporting";
 import { getState, notify, startBusy, useStore } from "../store";
-import { makeStat, STATS, type StatName } from "../uiTypes";
+import { makeStat, STATS, type CompareView, type StatName } from "../uiTypes";
+import { closeViewTab } from "../actions/views";
 import { addToPlot } from "../plot/series";
 import { applyStyle } from "../actions/style";
 import { VirtualTable, type CellValue } from "./VirtualTable";
@@ -17,24 +17,34 @@ type Kind = "node" | "link" | "subcatchment";
 
 const num = (v: CellValue) => (typeof v === "number" ? formatNumber(v) : (v ?? ""));
 
-export async function chooseComparison() {
-  const path = await open({ filters: [{ name: "SWMM results", extensions: ["out"] }] });
-  if (typeof path !== "string") return;
+/** Results opened as run B, by path, while they open (a tab shown again opens its B again). */
+const opening = new Set<string>();
+
+/** Makes `path` the compared results (run B). */
+async function openB(path: string) {
+  if (opening.has(path)) return;
+  opening.add(path);
   const done = startBusy("Opening results…");
   try {
     setResultsInfo(await api.openComparison(path), false);
   } catch (e) {
     notify(errorText(e), true);
   } finally {
+    opening.delete(path);
     done();
   }
 }
 
-/** Loaded results (A) against compared results (B): per-object statistics and their differences. */
-export function ComparePanel() {
+/** Loaded results (A) against the results of a comparison tab (B): per-object statistics and their differences. */
+export function ComparePanel({ view }: { view: CompareView }) {
   const model = useStore((s) => s.model);
   const a = model?.results ?? null;
-  const b = model?.compare ?? null;
+  // The backend compares with one run at a time: the tab shown opens its own.
+  const current = model?.compare?.path === view.path;
+  useEffect(() => {
+    if (a && !current) void openB(view.path);
+  }, [view.path, current, !!a]);
+  const b = current ? (model?.compare ?? null) : null;
   const [kind, setKind] = useState<Kind>("node");
   const [v, setV] = useState(0);
   const [stat, setStat] = useState<StatName>("max");
@@ -78,12 +88,7 @@ export function ComparePanel() {
 
   if (!model) return <div className="panel-empty">Open a model first.</div>;
   if (!a) return <div className="panel-empty">Load results first (run A), then compare them with another run.</div>;
-  if (!b)
-    return (
-      <div className="panel-empty">
-        No run to compare with. <button onClick={chooseComparison}>Open results B…</button> or use Compare in the Runs tab.
-      </div>
-    );
+  if (!b) return <div className="panel-empty">Opening {view.path}…</div>;
   const unit = vars[vi]?.unit ?? "";
   const statLabel = STATS.find(([s]) => s === stat)?.[1] ?? stat;
   const headers = ["Object", `A ${statLabel}`, `B ${statLabel}`, "A − B", "A − B (%)"];
@@ -120,16 +125,8 @@ export function ComparePanel() {
           B starts {formatDateTime(periodMs(b, 0))}
           {offset !== 0 ? ` (${offset > 0 ? "+" : ""}${formatNumber(offset / 3600)} h)` : ""}, step {b.step_secs} s
         </span>
-        <button onClick={chooseComparison}>Other B…</button>
-        <button
-          onClick={() =>
-            api
-              .closeComparison()
-              .then((m) => setResultsInfo(m, false))
-              .catch((e) => notify(errorText(e), true))
-          }
-        >
-          Close B
+        <button title="Close this comparison tab" onClick={() => closeViewTab({ type: "compare", id: view.id, name: view.name })}>
+          Close
         </button>
       </div>
       <div className="panel-toolbar">

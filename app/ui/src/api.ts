@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RunDto, SectionInfo, Stat } from "./analysisTypes";
+import type { ReportSummary } from "./types";
 import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
@@ -75,8 +76,10 @@ export const api = {
     p1: number,
     buckets: number,
     b = false,
+    /** An overlaid run's `.out` (instead of the loaded or compared results). */
+    path: string | null = null,
   ): Promise<MinMaxSeries> => {
-    const buf = await buffer("series", { kind, index, var: v, p0, p1, buckets: Math.max(1, Math.round(buckets)), b });
+    const buf = await buffer("series", { kind, index, var: v, p0, p1, buckets: Math.max(1, Math.round(buckets)), b, path });
     const n = new DataView(buf).getUint32(0, true);
     return {
       periods: new Uint32Array(buf.slice(4, 4 + 4 * n)),
@@ -87,7 +90,8 @@ export const api = {
   timeOfMax: (kind: ElementKind, index: number, v: number) => invoke<number>("time_of_max", { kind, index, var: v }),
   nextEvent: (kind: ElementKind, index: number, v: number, from: number, threshold: number) =>
     invoke<number | null>("next_event", { kind, index, var: v, from, threshold }),
-  reportBlock: (index: number) => invoke<BlockDto>("report_block", { index }),
+  /** A block of the loaded report, or of the report at `path` (read with `runReport`). */
+  reportBlock: (index: number, path: string | null = null) => invoke<BlockDto>("report_block", { index, path }),
   rebuildCache: () => invoke<ModelInfo>("rebuild_cache"),
   saveFile: (path: string, data: Uint8Array) =>
     invoke<void>("save_file", data, { headers: { path: encodeURIComponent(path) } }),
@@ -140,6 +144,9 @@ export const api = {
   compareRun: (dir: string) => invoke<ModelInfo>("compare_run", { dir }),
   setRunLabel: (dir: string, label: string | null) => invoke<RunDto[]>("set_run_label", { dir, label }),
   deleteRun: (dir: string) => invoke<ModelInfo>("delete_run", { dir }),
+  runReport: (dir: string) => invoke<ReportSummary>("run_report", { dir }),
+  runConsole: (dir: string) => invoke<string[]>("run_console", { dir }),
+  setOverlays: (paths: string[]) => invoke<ModelInfo>("set_overlays", { paths }),
   launchFile: () => invoke<string | null>("launch_file"),
   exportTable: (path: string, title: string, columns: string[], rows: string[][]) =>
     invoke<void>("export_table", { path, title, columns, rows }),
