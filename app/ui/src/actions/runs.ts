@@ -6,7 +6,7 @@ import type { RunDto } from "../analysisTypes";
 import type { ModelInfo } from "../types";
 import { getState, notify, setState, startBusy } from "../store";
 import { setResultsInfo } from "./model";
-import { openCompareView } from "./views";
+import { closeReportViews, openCompareView, openReportView, renameReportView } from "./views";
 
 /** Start time of a run, in local time. */
 export function runTime(rfc: string) {
@@ -24,6 +24,19 @@ export function resultsName(path: string): string {
   const r = getState().runs?.find((x) => x.out === path);
   return r ? runName(r) : (path.split(/[\\/]/).pop() ?? path);
 }
+
+/** Opens the report of a run in a tab (or shows the tab that has it). */
+export const showRunReport = (r: RunDto) => openReportView(r.dir, runName(r));
+
+/** Opens the report of the run in `dir` once the runs are listed again (a run just finished). */
+export async function showRunReportOf(dir: string) {
+  await refreshRuns();
+  const r = getState().runs?.find((x) => x.dir === dir);
+  openReportView(dir, r ? runName(r) : (dir.split(/[\\/]/).pop() ?? dir));
+}
+
+/** Opens the report of the results loaded from outside the runs in a tab. */
+export const showLoadedReport = () => openReportView(null, "Loaded results");
 
 let listing = 0;
 /** Lists the runs of the model again. */
@@ -74,14 +87,17 @@ export async function deleteRun(r: RunDto) {
   const s = getState();
   // Its comparison tabs go with it.
   if (r.out) setState({ compareViews: s.compareViews.filter((v) => v.path !== r.out), bottomTab: s.bottomTab === "compare" && s.compareViews.find((v) => v.id === s.compareView)?.path === r.out ? "simulation" : s.bottomTab });
-  if (s.simView === r.dir) setState({ simView: null });
+  closeReportViews(r.dir);
   await withResults("Deleting run…", () => api.deleteRun(r.dir), r.loaded, "Run deleted");
 }
 
 export async function setRunLabel(r: RunDto, text: string) {
   if ((r.record.label ?? "") === text.trim()) return;
   try {
-    setState({ runs: await api.setRunLabel(r.dir, text.trim() || null) });
+    const runs = await api.setRunLabel(r.dir, text.trim() || null);
+    setState({ runs });
+    const now = runs.find((x) => x.dir === r.dir);
+    if (now) renameReportView(r.dir, runName(now));
   } catch (e) {
     notify(errorText(e), true);
   }

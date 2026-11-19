@@ -1398,6 +1398,32 @@ body.dragging-series * {
 }
 .view-tab {
   flex: none;
+  position: relative;
+  user-select: none;
+}
+/* A tab dragged to another place: faded, a bar where it would go. */
+.view-tab.tab-dragging {
+  opacity: 0.4;
+}
+.view-tab.tab-drop-before::before,
+.view-tab.tab-drop-after::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.view-tab.tab-drop-before::before {
+  left: -2px;
+}
+.view-tab.tab-drop-after::after {
+  right: -2px;
+}
+body.dragging-tab,
+body.dragging-tab * {
+  cursor: grabbing !important;
 }
 .view-tab-name {
   display: inline-block;

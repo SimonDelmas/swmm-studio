@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { applyCrs, openModel } from "./actions/model";
 import { startRun } from "./actions/run";
+import { showLoadedReport } from "./actions/runs";
 import { validateModel } from "./actions/validate";
 import { api } from "./api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -38,6 +39,7 @@ import "./styles.css";
   redo,
   saveModel,
   startRun,
+  showLoadedReport,
   validateModel,
   observedChooser,
   profileFromSelection,
