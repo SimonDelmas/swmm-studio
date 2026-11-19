@@ -1482,3 +1482,39 @@ body.dragging-tab * {
 .observed-preview th.mapped {
   text-decoration: underline;
 }
+
+/* Keyboard shortcuts dialog */
+.shortcuts-modal {
+  width: min(880px, 92vw);
+}
+.shortcuts {
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 4px 24px;
+}
+.shortcuts h4 {
+  margin: 8px 0 4px;
+}
+.shortcuts dl {
+  margin: 0;
+}
+.shortcuts dl > div {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+.shortcuts dt {
+  flex: 0 0 150px;
+}
+.shortcuts dd {
+  margin: 0;
+}
+.shortcuts kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: inherit;
+  font-size: 0.9em;
+  white-space: nowrap;
+}

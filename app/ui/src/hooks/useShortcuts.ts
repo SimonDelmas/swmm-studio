@@ -3,7 +3,13 @@ import { deleteObjects, redo, saveModel, undo } from "../actions/edit";
 import { mapTools } from "../actions/mapTools";
 import { askNewModel, chooseModel } from "../actions/model";
 import { startRun } from "../actions/run";
+import { zoomToSelection } from "../actions/selection";
+import { stepBottomTab } from "../actions/views";
 import { getState, setState, type State } from "../store";
+import type { Tool } from "../uiTypes";
+
+/** Id of the toolbar field that finds an object by its ID (Ctrl+F). */
+export const FIND_INPUT_ID = "find-object";
 
 /** Shortcuts that also work while typing in a field. Returns true when the key was one. */
 function fileShortcut(e: KeyboardEvent, s: State, modal: boolean): boolean {
@@ -20,7 +26,21 @@ function fileShortcut(e: KeyboardEvent, s: State, modal: boolean): boolean {
     if (!e.repeat) void (k === "o" ? chooseModel() : askNewModel());
     return true;
   }
-  return false;
+  if (!ctrl || modal) return false;
+  if (k === "f") {
+    e.preventDefault();
+    const input = document.getElementById(FIND_INPUT_ID) as HTMLInputElement | null;
+    input?.focus();
+    input?.select();
+  } else if (k === "," && s.model) {
+    e.preventDefault();
+    setState({ dialog: "options" });
+  } else if (e.code === "Quote" || k === "ù") {
+    // The key right of L: ù on an AZERTY keyboard.
+    e.preventDefault();
+    if (!e.repeat) setState({ bottomMax: !s.bottomMax });
+  } else return false;
+  return true;
 }
 
 /** Moving in time through the results: play / pause and steps. Returns true when the key was one. */
@@ -36,6 +56,32 @@ function timeShortcut(e: KeyboardEvent, s: State): boolean {
   else if (e.key === "Home") setState({ period: 0 });
   else if (e.key === "End") setState({ period: n - 1 });
   else return false;
+  return true;
+}
+
+/** Map tools chosen by a single letter. */
+const TOOL_KEYS: Record<string, Tool> = { s: "select", b: "box", l: "lasso", m: "move", v: "vertex" };
+
+/** Single keys (no Ctrl / Alt) acting on the map: tools and view. Returns true when the key was one. */
+function letterShortcut(e: KeyboardEvent, s: State): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (e.key === "?") {
+    setState({ dialog: "shortcuts" });
+    return true;
+  }
+  const k = e.key.toLowerCase();
+  if (k.length !== 1 || !"sblmvputf".includes(k)) return false;
+  if (!s.model || e.repeat) return true;
+  const tool = TOOL_KEYS[k];
+  if (tool) setState({ tool });
+  // Same as the toolbar buttons: P turns the profile tool on or off, U the upstream highlight.
+  else if (k === "p") setState({ tool: s.tool === "profile" ? "select" : "profile" });
+  else if (k === "u") setState({ upstream: !s.upstream });
+  else if (k === "t") setState({ labels: !s.labels });
+  else if (k === "f") {
+    if (!e.shiftKey) setState({ fitExtent: s.fitExtent + 1 });
+    else if (s.selection.length > 0) zoomToSelection();
+  }
   return true;
 }
 
@@ -58,11 +104,6 @@ function editShortcut(e: KeyboardEvent, s: State) {
     if (!e.repeat) deleteObjects(s.selection);
   } else if (e.key === "Backspace" && mapTools.current?.back()) {
     e.preventDefault();
-  } else if (!ctrl && !e.altKey && (k === "p" || k === "u")) {
-    // Same as the toolbar buttons: P turns the profile tool on or off, U the upstream highlight.
-    if (!s.model || e.repeat) return;
-    if (k === "p") setState({ tool: s.tool === "profile" ? "select" : "profile" });
-    else setState({ upstream: !s.upstream });
   } else if (e.key === "Enter") {
     mapTools.current?.finish();
   } else if (e.key === "Escape") {
@@ -74,7 +115,7 @@ function editShortcut(e: KeyboardEvent, s: State) {
   }
 }
 
-/** Keyboard shortcuts of the application. */
+/** Keyboard shortcuts of the application (listed for the user in `ShortcutsDialog`). */
 export function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,7 +125,13 @@ export function useShortcuts() {
       const s = getState();
       const modal = !!(s.dialog || s.tableEditor || s.pendingDelete || s.crsDialog);
       if (fileShortcut(e, s, modal) || typing || modal) return;
-      if (!timeShortcut(e, s)) editShortcut(e, s);
+      // Alt+arrows go through the bottom panel tabs (before the arrows step in time).
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        stepBottomTab(e.key === "ArrowRight" ? 1 : -1);
+        return;
+      }
+      if (!timeShortcut(e, s) && !letterShortcut(e, s)) editShortcut(e, s);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

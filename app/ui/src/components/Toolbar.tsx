@@ -6,17 +6,18 @@ import { redo, saveModel, undo } from "../actions/edit";
 import { getState, notify, setState, useStore } from "../store";
 import type { Tool } from "../uiTypes";
 import { useDropdown } from "../hooks/useDropdown";
+import { FIND_INPUT_ID } from "../hooks/useShortcuts";
 import { RunControls } from "./RunPanel";
 
 const EDIT_TOOLS: [Tool, string, string][] = [
-  ["move", "✥ Move", "Move: drag nodes and gages, or the selected objects"],
-  ["vertex", "⌖ Vertices", "Edit vertices of the selected link or subcatchment, reconnect link ends"],
+  ["move", "✥ Move", "Move: drag nodes and gages, or the selected objects (M)"],
+  ["vertex", "⌖ Vertices", "Edit vertices of the selected link or subcatchment, reconnect link ends (V)"],
 ];
 
 const SELECT_TOOLS: [Tool, string, string][] = [
-  ["select", "↖", "Select: click an object (Shift adds)"],
-  ["box", "▭", "Box selection (Shift adds)"],
-  ["lasso", "✎", "Lasso selection (Shift adds)"],
+  ["select", "↖", "Select: click an object, Shift adds (S)"],
+  ["box", "▭", "Box selection, Shift adds (B)"],
+  ["lasso", "✎", "Lasso selection, Shift adds (L)"],
 ];
 
 /** The "Project" drop-down: closes on an item click, an outside click or Escape. */
@@ -48,6 +49,8 @@ function ProjectMenu() {
             title: "Coordinate system of the model",
             disabled: !model,
           })}
+          <hr />
+          {item("Keyboard shortcuts", () => setState({ dialog: "shortcuts" }), { title: "List of the keyboard shortcuts (?)" })}
         </div>
       )}
     </div>
@@ -117,7 +120,7 @@ export function Toolbar() {
             {label}
           </button>
         ))}
-        <button disabled={!model} title="Zoom to the whole model" onClick={() => setState({ fitExtent: getState().fitExtent + 1 })}>
+        <button disabled={!model} title="Zoom to the whole model (F; Shift+F: the selection)" onClick={() => setState({ fitExtent: getState().fitExtent + 1 })}>
           ⤢ Extent
         </button>
       </div>
@@ -149,7 +152,7 @@ export function Toolbar() {
       <span className="sep" />
       {/* Simulation: run and its settings (more to come) */}
       <div className="tb-group run-group" aria-label="Simulation">
-        <button disabled={!model} onClick={() => setState({ dialog: "options" })} title="Simulation options">
+        <button disabled={!model} onClick={() => setState({ dialog: "options" })} title="Simulation options (Ctrl+,)">
           Options
         </button>
         <RunControls />
@@ -157,10 +160,16 @@ export function Toolbar() {
       <span className="grow" />
       <input
         disabled={!model}
+        id={FIND_INPUT_ID}
+        title="Find an object by its ID (Ctrl+F)"
         placeholder="Find object ID"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && find()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") find();
+          // Back to the map shortcuts.
+          else if (e.key === "Escape") e.currentTarget.blur();
+        }}
       />
     </div>
   );
