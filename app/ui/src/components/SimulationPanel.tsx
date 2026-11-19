@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
 import { cancelRun, startRun } from "../actions/run";
-import { deleteRun, loadRun, refreshRuns, runName, runTime, setRunLabel, toggleOverlay } from "../actions/runs";
+import { deleteRun, loadRun, refreshRuns, runName, runTime, setRunLabel, showLoadedReport, showRunReport, toggleOverlay } from "../actions/runs";
 import { exportTable } from "../exporting";
 import { setState, useStore, type State } from "../store";
-import type { RunDto } from "../analysisTypes";
 import type { ReportSummary } from "../types";
+import type { ReportTabView } from "../uiTypes";
 import { CommitInput } from "./CommitInput";
 import { LinkButton } from "./LinkButton";
 import { Linkified } from "./ObjLink";
-import { ReportPanel, ReportView } from "./ReportPanel";
+import { ReportPanel, reportMemo, ReportView, type ReportMemo } from "./ReportPanel";
 
 /** Number of errors in the report of the loaded results. */
 export const reportErrors = (s: State) => (s.model?.report ? s.model.report.errors.length : 0);
@@ -17,25 +17,30 @@ export const reportErrors = (s: State) => (s.model?.report ? s.model.report.erro
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : `${v.toFixed(2)} %`);
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
-/** Bottom panel tab: the runs of the model, the console of the running one, the report of a finished one. */
+/** Bottom panel tab: the runs of the model, or the console of the running one. A run's report opens in a tab of its own. */
 export function SimulationPanel() {
   const model = useStore((s) => s.model);
   const view = useStore((s) => s.simView);
   if (!model) return <div className="panel-empty">Open a model first.</div>;
-  if (view === null) return <RunList />;
-  const back = <button onClick={() => setState({ simView: null })}>← Simulations</button>;
-  if (view === "running") return <RunConsole back={back} />;
-  if (view === "loaded")
+  if (view === "running") return <RunConsole back={<button onClick={() => setState({ simView: null })}>← Simulations</button>} />;
+  return <RunList />;
+}
+
+/** A report tab: the report of a run, or of the results loaded from outside the runs. */
+export function ReportTab({ view }: { view: ReportTabView }) {
+  const model = useStore((s) => s.model);
+  const memo = reportMemo(view.id);
+  if (!model) return <div className="panel-empty">Open a model first.</div>;
+  if (view.dir === null)
     return (
       <div className="sim-detail">
         <div className="panel-toolbar">
-          {back}
           <b>Loaded results</b>
         </div>
-        <ReportPanel />
+        <ReportPanel memo={memo} />
       </div>
     );
-  return <RunDetail dir={view} back={back} />;
+  return <RunDetail dir={view.dir} memo={memo} />;
 }
 
 /** The runs of the model, the running one first with its progress. */
@@ -68,7 +73,6 @@ function RunList() {
         r.dir,
       ]),
     );
-  const open = (r: RunDto) => setState({ simView: r.dir });
   // Clicks on the controls of a row do not open the run.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
   return (
@@ -94,7 +98,7 @@ function RunList() {
         {model.dirty && !run.running && <span className="muted">The model is run as edited; it does not need to be saved first.</span>}
         <span className="grow" />
         {outside && (
-          <LinkButton onClick={() => setState({ simView: "loaded" })}>
+          <LinkButton onClick={showLoadedReport}>
             Loaded: {model.results ? fileName(model.results.path) : fileName(model.report!.path)}
           </LinkButton>
         )}
@@ -144,7 +148,7 @@ function RunList() {
                 </tr>
               )}
               {runs?.map((r) => (
-                <tr key={r.dir} className={`link-row${r.loaded ? " active-row" : ""}`} title="Show the report" onClick={() => open(r)}>
+                <tr key={r.dir} className={`link-row${r.loaded ? " active-row" : ""}`} title="Show the report (in a tab)" onClick={() => showRunReport(r)}>
                   <td className="check" onClick={stop}>
                     <input
                       type="checkbox"
@@ -248,54 +252,73 @@ function RunConsole({ back }: { back: React.ReactNode }) {
 /** Lines of a console that report an error. */
 const errorLines = (lines: string[]) => lines.filter((l) => /\berror\b/i.test(l));
 
-/** A finished run: its report, with the errors of its console. */
-function RunDetail({ dir, back }: { dir: string; back: React.ReactNode }) {
+/**
+ * A finished run: its report, with the errors of its console. What was read is kept in
+ * `memo`: coming back to the tab shows it at once.
+ */
+function RunDetail({ dir, memo }: { dir: string; memo: ReportMemo }) {
   const model = useStore((s) => s.model)!;
   const runs = useStore((s) => s.runs);
   const last = useStore((s) => s.run.last);
   const r = runs?.find((x) => x.dir === dir);
   // The report of the loaded run is the loaded report.
   const loadedReport = r?.loaded && model.report && r.rpt && model.report.path === r.rpt ? model.report : null;
-  const [report, setReport] = useState<ReportSummary | null>(null);
-  const [reportError, setReportError] = useState<string | null>(null);
-  const [console_, setConsole] = useState<string[] | null>(null);
+  const key = `${r?.rpt}|${r?.record.started}`;
+  const kept = memo.run?.key === key ? memo.run : null;
+  const keep = (p: Partial<NonNullable<ReportMemo["run"]>>) => {
+    const base = memo.run?.key === key ? memo.run : { key, report: null, error: null, console: null };
+    memo.run = { ...base, ...p };
+  };
+  const [report, setReport] = useState<ReportSummary | null>(kept?.report ?? null);
+  const [reportError, setReportError] = useState<string | null>(kept?.error ?? null);
+  const [console_, setConsole] = useState<string[] | null>(kept?.console ?? null);
   useEffect(() => {
+    if (!r?.rpt || loadedReport) return;
+    // Already read (back in the tab).
+    if (memo.run?.key === key && (memo.run.report || memo.run.error)) return;
     setReport(null);
     setReportError(null);
-    if (!r?.rpt || loadedReport) return;
     let live = true;
     api.runReport(dir).then(
-      (x) => live && setReport(x),
-      (e) => live && setReportError(errorText(e)),
+      (x) => {
+        keep({ report: x });
+        if (live) setReport(x);
+      },
+      (e) => {
+        keep({ error: errorText(e) });
+        if (live) setReportError(errorText(e));
+      },
     );
     return () => {
       live = false;
     };
-  }, [dir, r?.rpt, r?.record.started, !!loadedReport]);
+  }, [dir, key, !!loadedReport]);
   // The console of a run that failed or reported errors: kept in its folder, or that of the last run.
   const failed = r && (r.record.status === "failed" || r.record.errors > 0);
   useEffect(() => {
+    if (!failed) return setConsole(null);
+    if (last?.run_dir === dir) {
+      const c = [...(last.message ? [last.message] : []), ...last.console];
+      keep({ console: c });
+      return setConsole(c);
+    }
+    if (memo.run?.key === key && memo.run.console) return;
     setConsole(null);
-    if (!failed) return;
-    if (last?.run_dir === dir) return setConsole([...(last.message ? [last.message] : []), ...last.console]);
     let live = true;
     api.runConsole(dir).then(
-      (x) => live && setConsole(x),
+      (x) => {
+        keep({ console: x });
+        if (live) setConsole(x);
+      },
       () => live && setConsole([]),
     );
     return () => {
       live = false;
     };
-  }, [dir, failed, last]);
+  }, [dir, key, failed, last]);
 
   if (!runs) return <div className="panel-empty">Listing the runs…</div>;
-  if (!r)
-    return (
-      <div className="sim-detail">
-        <div className="panel-toolbar">{back}</div>
-        <div className="panel-empty">This run no longer exists.</div>
-      </div>
-    );
+  if (!r) return <div className="panel-empty">This run no longer exists.</div>;
   const shown = loadedReport ?? report;
   const errs = console_ ? errorLines(console_) : [];
   const consoleBox =
@@ -310,7 +333,6 @@ function RunDetail({ dir, back }: { dir: string; back: React.ReactNode }) {
   return (
     <div className="sim-detail">
       <div className="panel-toolbar">
-        {back}
         <b>{runName(r)}</b>
         <span className={r.record.status === "failed" ? "bad" : r.record.status === "warnings" ? "warn" : "muted"}>{r.record.status}</span>
         <span className="muted">
@@ -329,7 +351,7 @@ function RunDetail({ dir, back }: { dir: string; back: React.ReactNode }) {
         </span>
       </div>
       {shown ? (
-        <ReportView report={shown} source={loadedReport ? null : shown.path} extra={consoleBox} />
+        <ReportView report={shown} source={loadedReport ? null : shown.path} extra={consoleBox} memo={memo} />
       ) : (
         <div className="report-summary">
           {reportError && <div className="panel-error">{reportError}</div>}

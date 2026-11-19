@@ -1,7 +1,7 @@
 import { Linkified, ObjLink } from "./ObjLink";
 import { resolveName, useNameIndex } from "../hooks/useNameIndex";
 import { selectObject } from "../actions/selection";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualRows } from "../hooks/useVirtualRows";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
@@ -31,14 +31,53 @@ function Message({ m, kind }: { m: MessageDto; kind: "error" | "warning" }) {
   );
 }
 
-/** Virtualized, sortable table. */
-function Table({ block }: { block: BlockDto }) {
-  const [sort, setSort] = useState<{ col: number; asc: boolean } | null>(null);
-  const { box, onScroll, toTop, rowsInView } = useVirtualRows();
-  useEffect(() => {
-    setSort(null);
-    toTop();
-  }, [block]);
+type Sort = { col: number; asc: boolean } | null;
+
+/**
+ * What a report tab shows, kept while another tab is open so that coming back finds it as
+ * it was left: the section, the sort and scroll of its table, and the data already read.
+ */
+export interface ReportMemo {
+  /** Report the rest belongs to (another report starts afresh). */
+  path?: string;
+  block: number;
+  /** The data of the section shown. */
+  data: BlockDto | null;
+  sort: Sort;
+  /** Scroll of the section list, of the summary and of the table. */
+  side: number;
+  main: number;
+  table: number;
+  /** A run's report and console, read once. */
+  run?: { key: string; report: ReportSummary | null; error: string | null; console: string[] | null };
+}
+
+const memos = new Map<number, ReportMemo>();
+
+/** The state kept for the report tab `id`. */
+export function reportMemo(id: number): ReportMemo {
+  let m = memos.get(id);
+  if (!m) memos.set(id, (m = { block: -1, data: null, sort: null, side: 0, main: 0, table: 0 }));
+  return m;
+}
+
+/** Forgets what the report tabs no longer open kept. */
+export function pruneReportMemos(open: Set<number>) {
+  for (const id of memos.keys()) if (!open.has(id)) memos.delete(id);
+}
+
+/** Virtualized, sortable table (a new one for each block: sort and scroll start afresh, or from `memo`). */
+function Table({ block, memo }: { block: BlockDto; memo: ReportMemo }) {
+  const [sort, setSortState] = useState<Sort>(memo.sort);
+  const setSort = (s: Sort) => {
+    memo.sort = s;
+    setSortState(s);
+  };
+  const { box, onScroll, scrollTo, rowsInView } = useVirtualRows();
+  // Back in the tab: the table is scrolled where it was.
+  useLayoutEffect(() => {
+    if (memo.table > 0) scrollTo(memo.table);
+  }, []);
   const rows = useMemo(() => {
     if (!sort) return block.rows;
     const num = (s: string | undefined) => {
@@ -70,7 +109,14 @@ function Table({ block }: { block: BlockDto }) {
     return o ? <ObjLink obj={o}>{v}</ObjLink> : v;
   };
   return (
-    <div className="table-box" ref={box} onScroll={onScroll}>
+    <div
+      className="table-box"
+      ref={box}
+      onScroll={(e) => {
+        memo.table = e.currentTarget.scrollTop;
+        onScroll(e);
+      }}
+    >
       <table className="grid">
         <thead>
           <tr>
@@ -114,7 +160,7 @@ function Table({ block }: { block: BlockDto }) {
 }
 
 /** The report of the loaded results, or a button to open one. */
-export function ReportPanel() {
+export function ReportPanel({ memo }: { memo: ReportMemo }) {
   const report = useStore((s) => s.model?.report ?? null);
   const hasModel = useStore((s) => s.model !== null);
   if (!hasModel) return <div className="panel-empty">Open a model first.</div>;
@@ -133,7 +179,7 @@ export function ReportPanel() {
       </div>
     );
   }
-  return <ReportView report={report} source={null} />;
+  return <ReportView report={report} source={null} memo={memo} />;
 }
 
 /**
@@ -141,23 +187,47 @@ export function ReportPanel() {
  * loaded report (`source` null) or from the report of a run (its path). `extra`: shown
  * at the top of the summary.
  */
-export function ReportView({ report, source, extra }: { report: ReportSummary; source: string | null; extra?: React.ReactNode }) {
-  const [blockIndex, setBlockIndex] = useState<number>(-1);
-  const [block, setBlock] = useState<BlockDto | null>(null);
-
+export function ReportView({ report, source, extra, memo }: { report: ReportSummary; source: string | null; extra?: React.ReactNode; memo: ReportMemo }) {
+  // Another report (results loaded again): it starts at its summary.
+  if (memo.path !== report.path) Object.assign(memo, { path: report.path, block: -1, data: null, sort: null, main: 0, table: 0 });
+  const [blockIndex, setBlockState] = useState<number>(memo.block);
+  const [block, setBlockData] = useState<BlockDto | null>(memo.data);
+  const setBlockIndex = (i: number) => {
+    if (i === blockIndex) return;
+    Object.assign(memo, { block: i, data: null, sort: null, main: 0, table: 0 });
+    setBlockData(null);
+    setBlockState(i);
+  };
+  const setBlock = (b: BlockDto | null) => {
+    memo.data = b;
+    setBlockData(b);
+  };
+  const shownPath = useRef(report.path);
   useEffect(() => {
-    setBlockIndex(-1);
-    setBlock(null);
+    if (shownPath.current === report.path) return;
+    shownPath.current = report.path;
+    setBlockState(-1);
+    setBlockData(null);
   }, [report.path]);
 
   useEffect(() => {
     if (blockIndex < 0) return setBlock(null);
+    // Already read (back in the tab).
+    if (memo.data) return;
     return latest(() => api.reportBlock(blockIndex, source), setBlock, (e) => notify(errorText(e), true));
   }, [blockIndex, report.path, source]);
 
+  // Back in the tab: the section list and the summary are scrolled where they were.
+  const side = useRef<HTMLDivElement>(null);
+  const main = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (side.current) side.current.scrollTop = memo.side;
+    if (main.current) main.current.scrollTop = memo.main;
+  }, []);
+
   return (
     <div className="report-panel">
-      <div className="report-side">
+      <div className="report-side" ref={side} onScroll={(e) => (memo.side = e.currentTarget.scrollTop)}>
         <div className="report-head">
           <div className="muted">{report.path}</div>
           {report.version && <div>SWMM {report.version}</div>}
@@ -181,7 +251,7 @@ export function ReportView({ report, source, extra }: { report: ReportSummary; s
           </div>
         ))}
       </div>
-      <div className="report-main">
+      <div className="report-main" ref={main} onScroll={(e) => (memo.main = e.currentTarget.scrollTop)}>
         {blockIndex === -1 && (
           <div className="report-summary">
             {extra}
@@ -232,7 +302,7 @@ export function ReportView({ report, source, extra }: { report: ReportSummary; s
                 <Linkified text={block.notes.join("\n")} />
               </pre>
             )}
-            {(block.kind === "table" || block.kind === "values") && <Table block={block} />}
+            {(block.kind === "table" || block.kind === "values") && <Table key={blockIndex} block={block} memo={memo} />}
           </div>
         )}
       </div>

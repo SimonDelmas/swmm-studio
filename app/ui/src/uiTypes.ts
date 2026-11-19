@@ -153,9 +153,17 @@ export type Dialog = "options" | "engines" | "new" | "climate" | "sections" | nu
 
 /**
  * Tabs of the bottom panel: fixed views, then time series (`plotView`), profile
- * (`profileView`) and comparison (`compareView`) tabs.
+ * (`profileView`), comparison (`compareView`) and report (`reportView`) tabs.
  */
-export type BottomTab = "table" | "issues" | "simulation" | "events" | "compare" | "plot" | "profile";
+export type BottomTab = "table" | "issues" | "simulation" | "events" | "compare" | "plot" | "profile" | "report";
+
+/** A tab of the bottom panel showing the report of a run, or of the loaded results. */
+export interface ReportTabView {
+  id: number;
+  name: string;
+  /** Folder of the run (null: the report of results loaded from outside the runs). */
+  dir: string | null;
+}
 
 /** A tab of the bottom panel comparing the loaded results with other results (run B). */
 export interface CompareView {
@@ -166,7 +174,7 @@ export interface CompareView {
 }
 
 /**
- * What the simulation tab shows: the list of runs (null), the console of the running one,
- * the report of results loaded from outside the runs (`loaded`), or a run (its folder).
+ * What the simulation tab shows: the list of runs (null) or the console of the running one.
+ * Reports open in tabs of their own.
  */
-export type SimView = null | "running" | "loaded" | (string & {});
+export type SimView = null | "running";

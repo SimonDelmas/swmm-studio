@@ -22,16 +22,18 @@ export function useVirtualRows(mounted: unknown = true) {
     return () => ro.disconnect();
   }, [mounted]);
   const onScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => setScroll(e.currentTarget.scrollTop), []);
-  /** Scrolls back to the first row. */
-  const toTop = useCallback(() => {
-    setScroll(0);
-    if (box.current) box.current.scrollTop = 0;
+  /** Scrolls to `y` pixels from the top (the spacers give the box its full height at once). */
+  const scrollTo = useCallback((y: number) => {
+    if (box.current) box.current.scrollTop = y;
+    setScroll(box.current?.scrollTop ?? y);
   }, []);
+  /** Scrolls back to the first row. */
+  const toTop = useCallback(() => scrollTo(0), [scrollTo]);
   /** Rows `[first, last)` to render out of `count`, and the spacer heights around them. */
   const rowsInView = (count: number) => {
     const first = Math.max(0, Math.floor(scroll / ROW_HEIGHT) - MARGIN);
     const last = Math.min(count, first + Math.ceil(height / ROW_HEIGHT) + 2 * MARGIN);
     return { first, last, before: first * ROW_HEIGHT, after: (count - last) * ROW_HEIGHT };
   };
-  return { box, onScroll, toTop, rowsInView, height };
+  return { box, onScroll, toTop, scrollTo, rowsInView, height };
 }

@@ -8,6 +8,11 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Bottom panel: the time series, profile, comparison and report tabs are moved by dragging
+  them, and "Close all tabs" closes them all at once.
+- Reports: clicking a run in Simulation opens its report in a tab of its own (or shows the tab
+  that already has it), as does the report of results loaded from outside the runs. A report
+  tab is found as it was left after another tab was open: the same section, sort and scroll.
 - Upstream: the "Upstream" toolbar button highlights, in blue, the network draining to the
   selected nodes, links and subcatchments (links followed from their to node to their from
   node, subcatchments to their outlet node or subcatchment). Only the objects the map draws are

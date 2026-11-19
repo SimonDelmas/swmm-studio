@@ -4,7 +4,7 @@ import { api, errorText } from "../api";
 import { getState, notify, setState } from "../store";
 import type { RunFinished, RunProgress } from "../types";
 import { setResultsInfo } from "./model";
-import { refreshRuns } from "./runs";
+import { refreshRuns, showRunReportOf } from "./runs";
 
 /** Starts a simulation of the model as it is now (unsaved edits included). */
 export async function startRun(label: string | null = null) {
@@ -42,9 +42,10 @@ export function onOutput(line: string) {
 export function onFinished(f: RunFinished) {
   const watching = getState().simView === "running";
   setState({ run: { ...getState().run, running: false, progress: null, last: f } });
-  void refreshRuns();
-  // The console of the run shown becomes its report.
-  if (watching) setState({ simView: f.run_dir });
+  // The console of the run shown gives way to its report, in a tab; so does a run with errors.
+  if (watching) setState({ simView: null });
+  if (f.run_dir && (watching || f.errors > 0 || f.status === "failed")) void showRunReportOf(f.run_dir);
+  else void refreshRuns();
   // Without results (failed run), layers coloured by a result go back to their default.
   if (f.info) setResultsInfo(f.info, true);
   const what =
@@ -56,5 +57,4 @@ export function onFinished(f: RunFinished) {
           ? "Simulation cancelled"
           : `Simulation failed${f.errors ? ` with ${f.errors} error(s)` : ""}${f.info?.results ? "; partial results loaded" : ""}`;
   notify(`${what} (${f.seconds.toFixed(1)} s)`, f.status === "failed");
-  if ((f.errors > 0 || f.status === "failed") && f.run_dir) setState({ bottomTab: "simulation", simView: f.run_dir });
 }

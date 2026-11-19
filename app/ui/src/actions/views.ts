@@ -1,8 +1,9 @@
-// The time series, profile and comparison tabs of the bottom panel: opening, updating and closing them.
+// The time series, profile, comparison and report tabs of the bottom panel: opening, updating,
+// ordering and closing them.
 
 import { api, errorText } from "../api";
-import { getState, notify, setState, type State } from "../store";
-import type { CompareView, PlotAgg, PlotGraph, PlotSeries, PlotView, ProfileView } from "../uiTypes";
+import { getState, isViewTabType, notify, setState, type State } from "../store";
+import type { CompareView, PlotAgg, PlotGraph, PlotSeries, PlotView, ProfileView, ReportTabView } from "../uiTypes";
 import { setResultsInfo } from "./model";
 
 let plotIds = 0;
@@ -107,34 +108,68 @@ function releaseComparison() {
     .catch((e) => notify(errorText(e), true));
 }
 
-/** A time series, profile or comparison tab. */
+/**
+ * Opens the report of a run (`dir`) or of the loaded results (null) in a tab, or shows
+ * the tab that already has it.
+ */
+export function openReportView(dir: string | null, name: string) {
+  setState((s) => {
+    const open = s.reportViews.find((v) => v.dir === dir);
+    if (open) return { reportView: open.id, bottomTab: "report" };
+    const v: ReportTabView = { id: newPlotId(), name, dir };
+    return { reportViews: [...s.reportViews, v], reportView: v.id, bottomTab: "report" };
+  });
+}
+
+/** Renames the report tab of a run (its label changed). */
+export function renameReportView(dir: string, name: string) {
+  setState((s) => ({ reportViews: s.reportViews.map((v) => (v.dir === dir ? { ...v, name } : v)) }));
+}
+
+/** A time series, profile, comparison or report tab. */
 export interface ViewTab {
-  type: "plot" | "profile" | "compare";
+  type: "plot" | "profile" | "compare" | "report";
   id: number;
   name: string;
 }
 
-/** The tabs created as needed, in creation order. */
-export function viewTabs(s: Pick<State, "plotViews" | "profileViews" | "compareViews">): ViewTab[] {
+export const viewTabKey = (t: Pick<ViewTab, "type" | "id">) => `${t.type}:${t.id}`;
+
+/** The tabs created as needed: in the order they were dragged to, then in creation order. */
+export function viewTabs(s: Pick<State, "plotViews" | "profileViews" | "compareViews" | "reportViews" | "viewOrder">): ViewTab[] {
+  const rank = new Map(s.viewOrder.map((k, i) => [k, i]));
+  const at = (t: ViewTab) => rank.get(viewTabKey(t)) ?? Infinity;
   return [
     ...s.plotViews.map((v) => ({ type: "plot" as const, id: v.id, name: v.name })),
     ...s.profileViews.map((v) => ({ type: "profile" as const, id: v.id, name: v.name })),
     ...s.compareViews.map((v) => ({ type: "compare" as const, id: v.id, name: v.name })),
-  ].sort((a, b) => a.id - b.id);
+    ...s.reportViews.map((v) => ({ type: "report" as const, id: v.id, name: v.name })),
+  ].sort((a, b) => at(a) - at(b) || a.id - b.id);
 }
 
-export const isViewTabOpen = (s: Pick<State, "bottomTab" | "plotView" | "profileView" | "compareView">, t: ViewTab) =>
-  s.bottomTab === t.type && (t.type === "plot" ? s.plotView : t.type === "profile" ? s.profileView : s.compareView) === t.id;
+/** Puts the tabs in this order (keys `type:id`, as dragged). */
+export function orderViewTabs(keys: string[]) {
+  setState({ viewOrder: keys });
+}
+
+type OpenTabs = Pick<State, "bottomTab" | "plotView" | "profileView" | "compareView" | "reportView">;
+
+const openId = (s: OpenTabs, type: ViewTab["type"]) =>
+  type === "plot" ? s.plotView : type === "profile" ? s.profileView : type === "compare" ? s.compareView : s.reportView;
+
+export const isViewTabOpen = (s: OpenTabs, t: ViewTab) => s.bottomTab === t.type && openId(s, t.type) === t.id;
 
 export function openViewTab(t: ViewTab) {
   if (t.type === "plot") setState({ plotView: t.id, bottomTab: "plot" });
   else if (t.type === "compare") setState({ compareView: t.id, bottomTab: "compare" });
+  else if (t.type === "report") setState({ reportView: t.id, bottomTab: "report" });
   else selectProfileView(t.id);
 }
 
 export function renameViewTab(t: ViewTab, name: string) {
   if (t.type === "plot") updatePlotView(t.id, { name });
   else if (t.type === "compare") updateCompareView(t.id, { name });
+  else if (t.type === "report") setState((s) => ({ reportViews: s.reportViews.map((v) => (v.id === t.id ? { ...v, name } : v)) }));
   else updateProfileView(t.id, { name });
 }
 
@@ -148,23 +183,32 @@ export function closeViewTab(t: ViewTab) {
   else if (t.type === "compare") {
     setState({ compareViews: s.compareViews.filter((v) => v.id !== t.id) });
     releaseComparison();
-  } else setState({ profileViews: s.profileViews.filter((v) => v.id !== t.id), ...(wasOpen ? { profileNodes: [], profileStart: null } : {}) });
+  } else if (t.type === "report") setState({ reportViews: s.reportViews.filter((v) => v.id !== t.id) });
+  else setState({ profileViews: s.profileViews.filter((v) => v.id !== t.id), ...(wasOpen ? { profileNodes: [], profileStart: null } : {}) });
+  setState((x) => ({ viewOrder: x.viewOrder.filter((k) => k !== viewTabKey(t)) }));
   if (!wasOpen) return;
   const next = tabs[i + 1] ?? tabs[i - 1];
   if (next) openViewTab(next);
   else setState({ bottomTab: "table" });
 }
 
-/** Closes all the time series, profile and comparison tabs. */
+/** Closes the report tabs of a run (deleted). */
+export function closeReportViews(dir: string) {
+  for (const v of getState().reportViews.filter((x) => x.dir === dir)) closeViewTab({ type: "report", id: v.id, name: v.name });
+}
+
+/** Closes all the time series, profile, comparison and report tabs. */
 export function closeAllViewTabs() {
   const s = getState();
   setState({
     plotViews: [],
     profileViews: [],
     compareViews: [],
+    reportViews: [],
+    viewOrder: [],
     profileNodes: [],
     profileStart: null,
-    ...(s.bottomTab === "plot" || s.bottomTab === "profile" || s.bottomTab === "compare" ? { bottomTab: "table" as const } : {}),
+    ...(isViewTabType(s.bottomTab) ? { bottomTab: "table" as const } : {}),
   });
   releaseComparison();
 }

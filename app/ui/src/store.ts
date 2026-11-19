@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from "react";
 import type { Issue, ProfileDto, RunDto } from "./analysisTypes";
 import type { DeletePlan, Geometry, ModelInfo, ObjKind, ObjRef, TableKind } from "./types";
-import { defaultStyle, styleUsable, type BottomTab, type CompareView, type Dialog, type LayerStyle, type PlotView, type ProfileView, type RunState, type SimView, type StyledKind, type Tool } from "./uiTypes";
+import { defaultStyle, styleUsable, type BottomTab, type CompareView, type Dialog, type LayerStyle, type PlotView, type ProfileView, type ReportTabView, type RunState, type SimView, type StyledKind, type Tool } from "./uiTypes";
 
 export interface State {
   model: ModelInfo | null;
@@ -30,6 +30,14 @@ export interface State {
   /** Comparison tabs of the bottom panel. */
   compareViews: CompareView[];
   compareView: number;
+  /** Report tabs of the bottom panel. */
+  reportViews: ReportTabView[];
+  reportView: number;
+  /**
+   * Order of the tabs created as needed, dragged by the user (keys `type:id`); tabs not
+   * in it come after, in creation order.
+   */
+  viewOrder: string[];
   /** The bottom panel fills the centre (the map is hidden). */
   bottomMax: boolean;
   /** The timeline strip (overview of a system variable) is shown under the map. */
@@ -71,10 +79,16 @@ export interface State {
   modelSeq: number;
 }
 
-/** No time series or profile tab: they are opened as needed. */
-function noViews(): Pick<State, "plotViews" | "plotView" | "profileViews" | "profileView" | "compareViews" | "compareView"> {
-  return { plotViews: [], plotView: 0, profileViews: [], profileView: 0, compareViews: [], compareView: 0 };
+/** No time series, profile, comparison or report tab: they are opened as needed. */
+function noViews(): Pick<
+  State,
+  "plotViews" | "plotView" | "profileViews" | "profileView" | "compareViews" | "compareView" | "reportViews" | "reportView" | "viewOrder"
+> {
+  return { plotViews: [], plotView: 0, profileViews: [], profileView: 0, compareViews: [], compareView: 0, reportViews: [], reportView: 0, viewOrder: [] };
 }
+
+/** Tabs of the bottom panel opened as needed (they go when another model is opened). */
+export const isViewTabType = (t: BottomTab) => t === "plot" || t === "profile" || t === "compare" || t === "report";
 
 const initial: State = {
   model: null,
@@ -155,7 +169,7 @@ export function resetForModel(model: ModelInfo, geometry: Geometry | null) {
     profile: null,
     profileError: null,
     profileStart: null,
-    bottomTab: state.bottomTab === "plot" || state.bottomTab === "profile" || state.bottomTab === "compare" ? "table" : state.bottomTab,
+    bottomTab: isViewTabType(state.bottomTab) ? "table" : state.bottomTab,
     runs: null,
     simView: state.run.running ? state.simView : null,
     issues: null,
