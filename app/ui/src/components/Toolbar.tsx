@@ -1,9 +1,10 @@
 import { selectObject } from "../actions/selection";
-import { useState } from "react";
-import { askNewModel, chooseModel, chooseResults } from "../actions/model";
+import { useEffect, useState } from "react";
+import { askNewModel, chooseModel, chooseResults, openRecent } from "../actions/model";
 import { api, errorText } from "../api";
 import { redo, saveModel, undo } from "../actions/edit";
 import { getState, notify, setState, useStore } from "../store";
+import type { RecentFile } from "../types";
 import type { Tool } from "../uiTypes";
 import { useDropdown } from "../hooks/useDropdown";
 import { FIND_INPUT_ID } from "../hooks/useShortcuts";
@@ -25,9 +26,20 @@ function ProjectMenu() {
   const model = useStore((s) => s.model);
   const busy = useStore((s) => s.busy !== null);
   const { open, setOpen, ref, run } = useDropdown();
+  const [recent, setRecent] = useState<RecentFile[]>([]);
+  // Read again each time the menu opens: another window may have opened a model since.
+  useEffect(() => {
+    if (open) api.recentFiles().then(setRecent).catch(() => {});
+  }, [open]);
+  // The open model is first in the list: the others are worth offering.
+  const others = recent.filter((f) => f.path.toLowerCase() !== model?.path.toLowerCase());
   // Nothing is opened or saved while a model or results are loading.
-  const item = (label: string, action: () => unknown, opts: { title?: string; disabled?: boolean; className?: string } = {}) => (
-    <button className={opts.className} title={opts.title} disabled={opts.disabled || busy} onClick={run(action)}>
+  const item = (
+    label: string,
+    action: () => unknown,
+    opts: { title?: string; disabled?: boolean; className?: string; key?: string } = {},
+  ) => (
+    <button key={opts.key} className={opts.className} title={opts.title} disabled={opts.disabled || busy} onClick={run(action)}>
       {label}
     </button>
   );
@@ -42,6 +54,20 @@ function ProjectMenu() {
           {item("Open…", chooseModel, { title: "Open a model (Ctrl+O)" })}
           {item("Save", () => saveModel(), { title: "Save (Ctrl+S)", disabled: !model, className: model?.dirty ? "dirty" : "" })}
           {item("Save as…", () => saveModel(true), { title: "Save as (Ctrl+Shift+S)", disabled: !model })}
+          {others.length > 0 && (
+            <>
+              <hr />
+              <div className="menu-head">Recent</div>
+              {others.map((f) =>
+                item(f.name, () => openRecent(f.path), {
+                  title: f.exists ? f.path : `${f.path} (not found)`,
+                  disabled: !f.exists,
+                  className: "menu-path",
+                  key: f.path,
+                }),
+              )}
+            </>
+          )}
           <hr />
           {item("Open results…", chooseResults, { disabled: !model })}
           <hr />

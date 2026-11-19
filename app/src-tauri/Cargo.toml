@@ -39,6 +39,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+xxhash-rust.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

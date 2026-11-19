@@ -194,3 +194,50 @@ fn new_model_from_template() {
     let again = Session::open(&p).unwrap();
     assert_eq!(again.net.nodes.len(), 1);
 }
+
+#[test]
+fn autosave_restore_and_save() {
+    let (dir, mut s) = open();
+    let rec = dir.path().join("recovery");
+    s.start_autosave(&rec);
+    let file = s.autosave.as_ref().unwrap().file();
+    // Clean: nothing written.
+    s.autosave().unwrap();
+    assert!(!file.exists());
+    let j1 = node(&s, "J1");
+    let edit =
+        EditRequest::SetField { section: "JUNCTIONS".into(), key: vec!["J1".into()], field: 1, value: "100.5".into() };
+    s.edit(edit, &[j1]).unwrap();
+    s.autosave().unwrap();
+    assert!(std::fs::read_to_string(&file).unwrap().contains("100.5"));
+    // Back to the saved state: the recovery file goes.
+    s.undo(&[]).unwrap();
+    s.autosave().unwrap();
+    assert!(!file.exists());
+    s.redo(&[]).unwrap();
+    s.autosave().unwrap();
+    let left = std::fs::read(&file).unwrap();
+    let json = file.with_extension("json");
+    let info = std::fs::read(&json).unwrap();
+    let inp = s.inp_path.clone();
+    drop(s);
+    assert!(!file.exists(), "closing gives the changes up");
+
+    // As a crash leaves them: the next session offers them.
+    std::fs::write(&file, &left).unwrap();
+    std::fs::write(&json, &info).unwrap();
+    let mut s = Session::open(&inp).unwrap();
+    s.start_autosave(&rec);
+    assert!(s.info().recovery.is_some());
+    assert!(!s.info().dirty);
+    s.restore_recovery().unwrap();
+    let i = s.info();
+    assert!(i.recovery.is_none() && i.dirty);
+    assert!(s.inp.to_string_lossy().contains("100.5"));
+    // Undo cannot make it match the file on disk.
+    assert!(i.undo.is_none());
+    s.save(None).unwrap();
+    assert!(!s.info().dirty);
+    assert!(!file.exists());
+    assert!(std::fs::read_to_string(&inp).unwrap().contains("100.5"));
+}

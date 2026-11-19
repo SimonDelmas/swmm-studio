@@ -20,6 +20,7 @@ use swmm_model::{Network, ObjKind, ObjRef, PropertyGroup};
 use swmm_rpt::Report;
 
 use crate::project::{Basemap, Project};
+use crate::recovery::{Autosave, RecoveryInfo};
 
 pub(crate) use display::Display;
 pub use display::{GeometryPatch, Space};
@@ -81,6 +82,8 @@ pub struct ModelInfo {
     pub redo: Option<String>,
     /// Changes on every edit, undo or redo.
     pub revision: u64,
+    /// Unsaved changes left by a session that ended without saving, to restore or discard.
+    pub recovery: Option<RecoveryInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -127,6 +130,9 @@ pub struct Session {
     pub(crate) revision: u64,
     /// Observed series read from their files.
     pub(crate) observed_cache: crate::observed::Cache,
+    /// Autosave of unsaved changes to a recovery file (none until started, or when another
+    /// app has the model open).
+    pub(crate) autosave: Option<Autosave>,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -166,6 +172,7 @@ impl Session {
             history: Default::default(),
             revision: 0,
             observed_cache: Default::default(),
+            autosave: None,
         };
         let (out, rpt) = s.find_results();
         if let Some(out) = out {
@@ -244,6 +251,57 @@ impl Session {
             undo: self.history.undo_label().map(str::to_string),
             redo: self.history.redo_label().map(str::to_string),
             revision: self.revision,
+            recovery: self.autosave.as_ref().and_then(Autosave::pending).cloned(),
+        }
+    }
+
+    /// Starts autosaving the model to a recovery file in `dir`. Unsaved changes left there
+    /// by an earlier session are then offered in [`ModelInfo::recovery`].
+    pub fn start_autosave(&mut self, dir: &Path) {
+        // Releases the lock first when started again.
+        self.autosave = None;
+        match Autosave::claim(dir, &self.inp_path) {
+            Ok(a) => self.autosave = a,
+            Err(e) => self.notes.push(format!("Autosave is off: {e}")),
+        }
+    }
+
+    /// Writes unsaved changes to the recovery file, or removes it when there are none.
+    pub fn autosave(&self) -> Res<()> {
+        let Some(a) = &self.autosave else { return Ok(()) };
+        if self.history.is_dirty() {
+            a.write(self.revision, || self.inp.to_bytes().map_err(err))?;
+        } else {
+            a.clear();
+        }
+        Ok(())
+    }
+
+    /// Replaces the model by the unsaved changes an earlier session left; they are unsaved
+    /// changes of this one (saving writes them to the model).
+    pub fn restore_recovery(&mut self) -> Res<()> {
+        let a = self.autosave.as_ref().filter(|a| a.pending().is_some()).ok_or("no unsaved changes to restore")?;
+        let inp = InpFile::read(a.file()).map_err(err)?;
+        self.inp = inp;
+        self.net = Network::from_inp(&self.inp);
+        self.display = Display::build(&self.net, self.crs.as_ref(), None);
+        for lr in [&mut self.results, &mut self.compare].into_iter().flatten().chain(&mut self.overlays) {
+            lr.remap(&self.net);
+        }
+        self.history = Default::default();
+        self.history.mark_unsaved();
+        self.revision += 1;
+        let revision = self.revision;
+        if let Some(a) = &mut self.autosave {
+            a.restored(revision);
+        }
+        Ok(())
+    }
+
+    /// Gives up the unsaved changes an earlier session left.
+    pub fn discard_recovery(&mut self) {
+        if let Some(a) = &mut self.autosave {
+            a.discard();
         }
     }
 

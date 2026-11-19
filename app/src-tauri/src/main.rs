@@ -9,10 +9,11 @@ mod export;
 mod model_views;
 mod observed;
 mod project;
+mod recovery;
 mod runs;
 mod session;
 
-use tauri::State;
+use tauri::{Manager, State};
 
 struct LaunchFile(Option<String>);
 
@@ -44,6 +45,12 @@ fn main() {
                     env!("CARGO_PKG_VERSION")
                 ))
                 .build()?;
+            // Autosave of the open model's unsaved changes (F-FILE-5).
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(recovery::INTERVAL);
+                handle.state::<commands::AppState>().autosave();
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -116,7 +123,18 @@ fn main() {
             commands::observed::inspect_observed,
             commands::observed::set_observed,
             commands::observed::observed_series,
+            commands::recent::recent_files,
+            commands::recent::forget_recent_file,
+            commands::recent::recoveries,
+            commands::recent::restore_recovery,
+            commands::recent::discard_recovery,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running SWMM Studio");
+        .build(tauri::generate_context!())
+        .expect("error while building SWMM Studio")
+        .run(|app, event| {
+            // Quitting (the user was asked about unsaved changes): no recovery file is left.
+            if let tauri::RunEvent::Exit = event {
+                app.state::<commands::AppState>().close();
+            }
+        });
 }

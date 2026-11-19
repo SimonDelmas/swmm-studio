@@ -1518,3 +1518,53 @@ body.dragging-tab * {
   font-size: 0.9em;
   white-space: nowrap;
 }
+
+/* The window without a model: open, recover, recent files. */
+.welcome {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+}
+.welcome-box {
+  width: min(560px, calc(100% - 32px));
+  padding: 16px 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.welcome-box h4 {
+  margin: 16px 0 4px;
+}
+.welcome-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.welcome-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.welcome-list .path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.welcome-list .menu-del {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 6px;
+}
+.menu-items .menu-path {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -128,6 +128,22 @@ export interface ModelInfo {
   undo: string | null;
   redo: string | null;
   revision: number;
+  /** Unsaved changes left by a session that ended without saving, to restore or discard. */
+  recovery: RecoveryInfo | null;
+}
+
+/** Unsaved changes of a model, autosaved by a session that ended without saving. */
+export interface RecoveryInfo {
+  model: string;
+  /** Local time, `YYYY-MM-DD HH:MM:SS`. */
+  saved_at: string;
+}
+
+/** A model opened or saved lately. */
+export interface RecentFile {
+  path: string;
+  name: string;
+  exists: boolean;
 }
 
 export type RefKind =
