@@ -7,7 +7,7 @@ use serde::Serialize;
 use swmm_inp::{InpFile, SectionKind};
 
 use crate::schema::{self, Context, FieldType, RefKind};
-use crate::{attribute, refs, LinkType, Network, NodeType, ObjKind, ObjRef};
+use crate::{attribute, controls, refs, LinkType, Network, NodeType, ObjKind, ObjRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -27,6 +27,9 @@ pub struct Issue {
     /// Section and first token of the line, when the issue is about a line.
     pub section: Option<String>,
     pub id: Option<String>,
+    /// Line in the section (1 = the first line after the header), for issues about a line
+    /// of a section that is edited as text, such as `[CONTROLS]`.
+    pub line: Option<usize>,
 }
 
 struct Out<'a> {
@@ -52,6 +55,7 @@ impl Out<'_> {
             object,
             section: Some(section.name().to_string()),
             id: Some(id.to_string()),
+            line: None,
         });
     }
 }
@@ -102,6 +106,7 @@ pub fn validate(inp: &InpFile, net: &Network) -> Vec<Issue> {
     check_links(inp, net, &mut out);
     check_subcatchments(inp, net, &mut out);
     check_connectivity(net, &mut out);
+    check_controls(inp, &mut out);
     out.issues.sort_by_key(|a| a.severity);
     out.issues
 }
@@ -400,6 +405,21 @@ fn check_connectivity(net: &Network, out: &mut Out) {
     }
 }
 
+/// Control rules: syntax and the objects they name.
+fn check_controls(inp: &InpFile, out: &mut Out) {
+    for r in controls::check(inp) {
+        out.issues.push(Issue {
+            severity: r.severity,
+            code: r.code,
+            message: format!("line {}: {}", r.line + 1, r.message),
+            object: None,
+            section: Some(SectionKind::Controls.name().to_string()),
+            id: r.rule,
+            line: Some(r.line + 1),
+        });
+    }
+}
+
 /// Fields that must name an object (a `*` there is an error).
 fn needs_target(kind: &SectionKind, key: &str) -> bool {
     matches!(
@@ -455,6 +475,10 @@ J2 UH9 1
 J1 0 0
 [SYMBOLS]
 RG1 0 0
+[CONTROLS]
+RULE R1
+IF NODE J9 DEPTH > 1
+THEN CONDUIT C1 STATUS = CLOSED
 ";
 
     #[test]
@@ -482,5 +506,8 @@ RG1 0 0
         assert!(issues[first_warning..].iter().all(|i| i.severity == Severity::Warning));
         let c1 = issues.iter().find(|i| i.code == "adverse_slope").unwrap();
         assert_eq!(c1.object, Some(ObjRef { kind: ObjKind::Link, index: 0 }));
+        let rule = issues.iter().find(|i| i.code == "unknown_rule_object").unwrap();
+        assert_eq!((rule.line, rule.id.as_deref(), rule.section.as_deref()), (Some(2), Some("R1"), Some("CONTROLS")));
+        assert_eq!(rule.message, "line 2: rule R1: node J9 does not exist");
     }
 }

@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use swmm_inp::SectionKind;
-use swmm_model::{climate::Climate, grid::Grid, validate::Issue};
+use swmm_model::{climate::Climate, controls::RuleIssue, grid::Grid, validate::Issue};
 
 use crate::session::{Res, Session};
 
@@ -45,5 +45,12 @@ impl Session {
 
     pub fn section_text(&self, section: &str) -> String {
         swmm_model::grid::section_text(&self.inp, &SectionKind::from_name(section)).unwrap_or_default()
+    }
+
+    pub fn check_section_text(&self, section: &str, text: &str) -> Vec<RuleIssue> {
+        match SectionKind::from_name(section) {
+            SectionKind::Controls => swmm_model::controls::check_text(text, &self.inp),
+            _ => Vec::new(),
+        }
     }
 }

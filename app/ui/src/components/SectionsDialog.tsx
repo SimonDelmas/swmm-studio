@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorText } from "../api";
 import { tryEdit } from "../actions/edit";
-import { setState } from "../store";
-import type { SectionInfo } from "../analysisTypes";
+import { getState, setState } from "../store";
+import type { RuleIssue, SectionInfo } from "../analysisTypes";
 import { Modal } from "./Modal";
+import { RulesEditor, type RulesEditorHandle } from "./RulesEditor";
 import { latest } from "../latest";
 
 /** Sections whose lines define the network: editing them as text rebuilds it. */
@@ -12,22 +13,30 @@ const NETWORK = new Set(["JUNCTIONS", "OUTFALLS", "DIVIDERS", "STORAGE", "CONDUI
 
 /** Raw text of any section, editable (water quality, LID, groundwater… have no other editor). */
 export function SectionsDialog() {
+  // Opened from the Issues tab: at a section and line.
+  const [at] = useState(() => getState().sectionsAt);
   const [sections, setSections] = useState<SectionInfo[]>([]);
-  const [name, setName] = useState<string>("POLLUTANTS");
+  const [name, setName] = useState<string>(at?.section ?? "POLLUTANTS");
   const [text, setText] = useState<string | null>(null);
   const [orig, setOrig] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState(false);
+  const [problems, setProblems] = useState<RuleIssue[]>([]);
+  const editor = useRef<RulesEditorHandle>(null);
+  const pendingLine = useRef<number | null>(at ? at.line - 1 : null);
+  const rules = name === "CONTROLS";
   useEffect(() => {
+    setState({ sectionsAt: null });
     api.sections().then(
       (s) => {
         setSections(s);
+        if (at) return;
         const firstQuality = s.find((x) => x.present && ["POLLUTANTS", "LANDUSES", "LID_CONTROLS", "AQUIFERS"].includes(x.name));
         setName(firstQuality?.name ?? s.find((x) => x.present)?.name ?? "TITLE");
       },
       (e) => setError(errorText(e)),
     );
-  }, []);
+  }, [at]);
   useEffect(() => {
     setText(null);
     // The text of another section, answered late, must not be shown (and saved) under this name.
@@ -37,6 +46,26 @@ export function SectionsDialog() {
       (e) => setError(errorText(e)),
     );
   }, [name]);
+  // Control rules are checked as they are typed (against the names of the model).
+  useEffect(() => {
+    if (!rules || text === null) {
+      setProblems([]);
+      return;
+    }
+    return latest(
+      () => api.checkSectionText(name, text),
+      setProblems,
+      () => setProblems([]),
+      250,
+    );
+  }, [rules, name, text]);
+  // Once the text is shown, go to the line asked for.
+  useEffect(() => {
+    if (text !== null && pendingLine.current !== null) {
+      editor.current?.goTo(pendingLine.current);
+      pendingLine.current = null;
+    }
+  }, [text]);
   const close = () => setState({ dialog: null });
   const changed = text !== null && text !== orig;
   const discard = async () => !changed || (await ask("Discard the changes to this section?", { title: "SWMM Studio", kind: "warning" }));
@@ -58,7 +87,8 @@ export function SectionsDialog() {
   const leave = async () => {
     if (await discard()) close();
   };
-  const list = sections.filter((s) => all || s.present);
+  const list = sections.filter((s) => all || s.present || s.name === name);
+  const errors = problems.filter((p) => p.severity === "error").length;
   return (
     <Modal title="Sections as text" className="wide-modal sections-modal">
         <div className="sections-body">
@@ -74,7 +104,29 @@ export function SectionsDialog() {
           </div>
           <div className="sections-text">
             {NETWORK.has(name) && <div className="warn">This section defines the network: invalid lines are ignored by the map. Prefer the editors.</div>}
-            <textarea spellCheck={false} value={text ?? ""} disabled={text === null} onChange={(e) => setText(e.target.value)} />
+            {rules ? (
+              <>
+                <RulesEditor ref={editor} text={text ?? ""} issues={problems} disabled={text === null} onChange={setText} />
+                <div className="rules-problems">
+                  {problems.length === 0 ? (
+                    <span className="muted">{text?.trim() ? "No problem found in the rules." : "RULE name / IF condition / THEN action / ELSE action / PRIORITY value"}</span>
+                  ) : (
+                    <>
+                      <div className="muted">
+                        {errors} error(s), {problems.length - errors} warning(s)
+                      </div>
+                      {problems.map((p, k) => (
+                        <div key={k} className="summary-item" onClick={() => editor.current?.goTo(p.line)}>
+                          <span className={p.severity === "error" ? "bad" : "warn"}>{p.severity === "error" ? "●" : "▲"}</span> line {p.line + 1}: {p.message}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              <textarea spellCheck={false} value={text ?? ""} disabled={text === null} onChange={(e) => setText(e.target.value)} />
+            )}
           </div>
         </div>
         {error && <div className="panel-error">{error}</div>}

@@ -16,6 +16,7 @@
 
 mod attributes;
 pub mod climate;
+pub mod controls;
 pub mod edit;
 pub mod expr;
 pub mod grid;
