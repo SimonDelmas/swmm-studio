@@ -137,7 +137,7 @@ export const COMMANDS: Command[] = [
   {
     id: "bottom.closeAll",
     group: "Panels",
-    label: "Close all the time series, profile, comparison and report tabs",
+    label: "Close all the time series, X-Y, profile, comparison and report tabs",
     when: (s) => viewTabs(s).length > 0,
     run: closeAllViewTabs,
   },

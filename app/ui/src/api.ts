@@ -90,6 +90,9 @@ export const api = {
       max: new Float32Array(buf.slice(4 + 8 * n, 4 + 12 * n)),
     };
   },
+  /** Values of a series of the loaded results at periods `p0, p0 + stride, …` before `p1` (not reduced). */
+  seriesValues: async (kind: ElementKind, index: number, v: number, p0: number, p1: number, stride: number) =>
+    new Float32Array(await buffer("series_values", { kind, index, var: v, p0, p1, stride: Math.max(1, Math.round(stride)) })),
   timeOfMax: (kind: ElementKind, index: number, v: number) => invoke<number>("time_of_max", { kind, index, var: v }),
   nextEvent: (kind: ElementKind, index: number, v: number, from: number, threshold: number) =>
     invoke<number | null>("next_event", { kind, index, var: v, from, threshold }),

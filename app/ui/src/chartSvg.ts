@@ -26,20 +26,39 @@ export interface SvgSeries {
   stepped?: boolean;
   /** Drawn as points (observed values), not as a line. */
   points?: boolean;
+  /** Points also joined by a line. */
+  joined?: boolean;
   /** Dash pattern of the line (dash and gap lengths). */
   dash?: number[];
 }
 
 /** Line chart as a standalone SVG document; one y axis per unit (left, then right). */
-export function chartSvg(series: SvgSeries[], opts: { width: number; height: number; xLabel: (x: number) => string; title?: string }): string {
+export function chartSvg(
+  series: SvgSeries[],
+  opts: {
+    width: number;
+    height: number;
+    xLabel: (x: number) => string;
+    title?: string;
+    /** Title under the x axis. */
+    xTitle?: string;
+    /** Ranges shown (default: the values, the y ones padded); what is out of them is clipped. */
+    xRange?: [number, number];
+    yRange?: [number, number];
+    /** The legend says the unit of each series (default). */
+    legendUnits?: boolean;
+  },
+): string {
   const { width: W, height: H } = opts;
   const units = Array.from(new Set(series.map((s) => s.unit)));
-  const m = { l: 64, r: units.length > 1 ? 64 : 16, t: opts.title ? 28 : 12, b: 40 + 16 * Math.ceil(series.length / 3) };
+  const xt0 = opts.xTitle ? 14 : 0;
+  const m = { l: 64, r: units.length > 1 ? 64 : 16, t: opts.title ? 28 : 12, b: 40 + xt0 + 16 * Math.ceil(series.length / 3) };
   const pw = W - m.l - m.r;
   const ph = H - m.t - m.b;
   let x0 = Infinity;
   let x1 = -Infinity;
   for (const s of series) for (const x of s.x) ((x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)));
+  if (opts.xRange) [x0, x1] = opts.xRange;
   const range: Record<string, [number, number]> = {};
   for (const u of units) {
     let lo = Infinity;
@@ -48,7 +67,7 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
     if (!Number.isFinite(lo)) [lo, hi] = [0, 1];
     if (hi === lo) [lo, hi] = [lo - 1, hi + 1];
     const pad = (hi - lo) * 0.05;
-    range[u] = [lo - pad, hi + pad];
+    range[u] = opts.yRange ?? [lo - pad, hi + pad];
   }
   const X = (x: number) => m.l + ((x - x0) / (x1 - x0 || 1)) * pw;
   const Y = (u: string, y: number) => m.t + ph - ((y - range[u][0]) / (range[u][1] - range[u][0])) * ph;
@@ -73,7 +92,9 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
     parts.push(`<text transform="translate(${lx},${m.t + ph / 2}) rotate(-90)" text-anchor="middle" font-size="11">${esc(u)}</text>`);
   });
   parts.push(`<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="none" stroke="#888"/>`);
-  // Series.
+  if (opts.xTitle) parts.push(`<text x="${m.l + pw / 2}" y="${m.t + ph + 30}" text-anchor="middle" font-size="11">${esc(opts.xTitle)}</text>`);
+  // Series, clipped to the plot area.
+  parts.push(`<clipPath id="plot-area"><rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}"/></clipPath><g clip-path="url(#plot-area)">`);
   for (const s of series) {
     if (s.points) {
       const dots: string[] = [];
@@ -82,7 +103,7 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
         if (y !== null && y !== undefined && Number.isFinite(y)) dots.push(`<circle cx="${X(x).toFixed(1)}" cy="${Y(s.unit, y).toFixed(1)}" r="2"/>`);
       });
       parts.push(`<g fill="${s.color}">${dots.join("")}</g>`);
-      continue;
+      if (!s.joined) continue;
     }
     let d = "";
     let pen = false;
@@ -102,18 +123,19 @@ export function chartSvg(series: SvgSeries[], opts: { width: number; height: num
       pen = true;
     }
     const dash = s.dash ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
-    parts.push(`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.3"${dash}/>`);
+    parts.push(`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.joined ? 0.8 : 1.3}"${dash}/>`);
   }
+  parts.push("</g>");
   // Legend.
   series.forEach((s, i) => {
     const lx = m.l + (i % 3) * (pw / 3);
-    const ly = m.t + ph + 30 + 16 * Math.floor(i / 3);
+    const ly = m.t + ph + 30 + xt0 + 16 * Math.floor(i / 3);
     parts.push(
       s.points
         ? `<circle cx="${lx + 9}" cy="${ly - 4}" r="2.5" fill="${s.color}"/>`
         : `<line x1="${lx}" x2="${lx + 18}" y1="${ly - 4}" y2="${ly - 4}" stroke="${s.color}" stroke-width="2"${s.dash ? ` stroke-dasharray="${s.dash.join(" ")}"` : ""}/>`,
     );
-    parts.push(`<text x="${lx + 22}" y="${ly}" font-size="10">${esc(`${s.label} (${s.unit})`)}</text>`);
+    parts.push(`<text x="${lx + 22}" y="${ly}" font-size="10">${esc(opts.legendUnits === false ? s.label : `${s.label} (${s.unit})`)}</text>`);
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Segoe UI, Arial, sans-serif">${parts.join("")}</svg>`;
 }

@@ -63,6 +63,8 @@ continuous simulations over many years whose results files reach several gigabyt
   threshold, over the whole run or per day, month or year.
 - **Time series** of any length for any objects and variables, instantly, even over many years;
   also as daily, monthly or yearly statistics.
+- **X-Y plots**: one variable against another (depth vs flow, rainfall vs runoff), for an object
+  or across objects, with the current time marked.
 - **Longitudinal profiles** between nodes, with the ground, the conduits and the water line moving
   with the timeline, plus the maximum water line of the run.
 - **Event statistics** for long-term studies: how often and how long an outfall overflows, with
