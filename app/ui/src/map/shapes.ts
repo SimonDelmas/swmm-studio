@@ -1,7 +1,7 @@
 // Symbols of the node and link types, drawn on the map (icon atlas) and in the legend (SVG).
 // Paths are in a 64 × 64 cell centred on (32, 32); link symbols point along +x (downstream).
 
-export type Shape = "circle" | "triangle" | "diamond" | "square" | "arrow" | "bar" | "bowtie" | "chevron";
+export type Shape = "circle" | "triangle" | "diamond" | "square" | "arrow" | "bar" | "bowtie" | "chevron" | "flow";
 
 export const SHAPE_PATHS: Record<Shape, string> = {
   circle: "M4 32 A28 28 0 1 0 60 32 A28 28 0 1 0 4 32 Z",
@@ -12,6 +12,8 @@ export const SHAPE_PATHS: Record<Shape, string> = {
   bar: "M23 2 H41 V62 H23 Z",
   bowtie: "M4 6 L32 32 L4 58 Z M60 6 L32 32 L60 58 Z",
   chevron: "M8 4 L36 32 L8 60 H24 L52 32 L24 4 Z",
+  /** Flow direction (notched arrowhead). */
+  flow: "M12 8 L58 32 L12 56 L24 32 Z",
 };
 
 /** Junction, outfall, divider, storage. */

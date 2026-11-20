@@ -33,6 +33,7 @@ const GROUPS: [string, [string, string][]][] = [
       ["Q", "Select by query"],
       ["M", "Move"],
       ["V", "Edit vertices"],
+      ["D", "Measure a distance or an area"],
       ["P", "Longitudinal profile (on / off)"],
       ["U", "Upstream highlight (on / off)"],
     ],

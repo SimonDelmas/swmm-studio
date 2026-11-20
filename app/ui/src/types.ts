@@ -25,6 +25,8 @@ export interface Basemap {
   attribution: string;
   opacity: number;
   visible: boolean;
+  /** Tiles in shades of grey. */
+  greyscale: boolean;
 }
 
 export interface Project {

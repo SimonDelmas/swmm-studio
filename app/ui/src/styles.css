@@ -876,8 +876,40 @@ select.active {
 .map.tool-add .maplibregl-canvas-container,
 .map.tool-add canvas,
 .map.tool-profile .maplibregl-canvas-container,
-.map.tool-profile canvas {
+.map.tool-profile canvas,
+.map.tool-measure .maplibregl-canvas-container,
+.map.tool-measure canvas {
   cursor: crosshair !important;
+}
+/* Object under the pointer. */
+.map-tooltip {
+  position: absolute;
+  z-index: 4;
+  max-width: 280px;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: rgba(255, 255, 255, 0.95);
+  color: #222;
+  border: 1px solid #c8ccd2;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* Result of the measure tool. */
+.map-measure {
+  position: absolute;
+  z-index: 3;
+  left: 6px;
+  bottom: 40px;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #222;
+  border: 1px solid rgba(230, 90, 0, 0.6);
+  border-radius: 4px;
+  pointer-events: none;
 }
 .map.tool-move .maplibregl-canvas-container,
 .map.tool-move canvas {

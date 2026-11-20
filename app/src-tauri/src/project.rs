@@ -17,11 +17,19 @@ pub struct Basemap {
     pub attribution: String,
     pub opacity: f64,
     pub visible: bool,
+    /// Tiles drawn in shades of grey, so that coloured map styles stand out.
+    pub greyscale: bool,
 }
 
 impl Default for Basemap {
     fn default() -> Self {
-        Basemap { url: OSM_TILES.into(), attribution: OSM_ATTRIBUTION.into(), opacity: 1.0, visible: true }
+        Basemap {
+            url: OSM_TILES.into(),
+            attribution: OSM_ATTRIBUTION.into(),
+            opacity: 1.0,
+            visible: true,
+            greyscale: false,
+        }
     }
 }
 
@@ -168,5 +176,13 @@ mod tests {
         let (r, err) = Project::load(&inp);
         assert_eq!(r, Project::default());
         assert!(err.is_some());
+    }
+
+    #[test]
+    fn basemap_of_older_projects_is_in_colour() {
+        let b: Basemap =
+            serde_json::from_str(r#"{ "url": "x", "attribution": "a", "opacity": 0.5, "visible": true }"#).unwrap();
+        assert!(!b.greyscale);
+        assert_eq!(b.opacity, 0.5);
     }
 }

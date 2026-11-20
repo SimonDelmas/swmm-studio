@@ -20,7 +20,7 @@ type Styled = ReturnType<typeof styleObjects>;
  * Symbols tinted per object over a white halo. Sizes are icon heights in pixels (0: not drawn,
  * as for hidden types, whose colour is also transparent); angles in degrees, counter-clockwise.
  */
-function shapeLayers(
+export function shapeLayers(
   id: string,
   common: object,
   length: number,

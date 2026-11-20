@@ -80,7 +80,7 @@ export function createMapViewer(container: HTMLDivElement, bm: Basemap, onView: 
           id: "basemap",
           type: "raster",
           source: "basemap",
-          paint: { "raster-opacity": bm.opacity },
+          paint: { "raster-opacity": bm.opacity, "raster-saturation": bm.greyscale ? -1 : 0 },
           layout: { visibility: bm.visible ? "visible" : "none" },
         },
       ],
@@ -140,6 +140,7 @@ export function createMapViewer(container: HTMLDivElement, bm: Basemap, onView: 
         if (!map.getLayer("basemap")) return;
         map.setLayoutProperty("basemap", "visibility", next.visible ? "visible" : "none");
         map.setPaintProperty("basemap", "raster-opacity", next.opacity);
+        map.setPaintProperty("basemap", "raster-saturation", next.greyscale ? -1 : 0);
         const source = map.getSource("basemap") as maplibregl.RasterTileSource | undefined;
         if (source && source.tiles?.[0] !== next.url) source.setTiles([next.url]);
       };

@@ -3,6 +3,7 @@ const HINTS: Partial<Record<string, string>> = {
   vertex: "Select a link or subcatchment: drag a vertex, drag a midpoint to add one, Alt+click to delete one. Drag a link end onto a node to reconnect it.",
   "add-subcatchment": "Click the outline points; click the first point or press Enter to finish. Backspace removes the last point.",
   "add-gage": "Click to place a rain gage.",
+  measure: "Click points: distance along them, and area from three points. Double-click or Enter ends; Backspace removes the last point.",
 };
 
 /** One-line help for the active editing tool. */

@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { COORDINATE_SYSTEM, type Layer } from "@deck.gl/core";
 import { ensureIds } from "../actions/ids";
 import { useStore } from "../store";
+import { defaultStyle, type LayerStyle } from "../uiTypes";
+import { arrowGeometry, flowArrowLayers, flowVariable } from "./arrows";
 import { styleObjects } from "./colors";
 import { baseLayers, staticGeometry } from "./layers";
 import { outletSegments } from "./outlets";
@@ -14,7 +16,7 @@ import { useLayerValues } from "./useLayerValues";
 import type { Viewer } from "./viewers";
 
 /** Rendering measurements, read by the UI tests. */
-export const mapPerf = { steps: [] as { period: number; ms: number }[] };
+export const mapPerf = { steps: [] as { period: number; ms: number }[], layers: [] as Layer[] };
 
 /**
  * Keeps the layers of the viewer in step with the state. `modelKey` changes with the
@@ -40,6 +42,14 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
   const nodeValues = useLayerValues("node", styles.node, period, resultsKey, valuesKey, compareKey);
   const linkValues = useLayerValues("link", styles.link, period, resultsKey, valuesKey, compareKey);
   const subValues = useLayerValues("subcatchment", styles.subcatchment, period, resultsKey, valuesKey, compareKey);
+  // Flows at the current time, for the arrows (none asked when they are off or without results).
+  const flowVar = flowVariable(model?.results?.variables.link);
+  const arrowsOn = styles.link.visible && styles.link.flowArrows;
+  const flowStyle = useMemo(
+    (): LayerStyle => ({ ...defaultStyle("link"), ...(arrowsOn && flowVar >= 0 ? { source: "result", field: String(flowVar) } : {}) }),
+    [arrowsOn, flowVar],
+  );
+  const flows = useLayerValues("link", flowStyle, period, resultsKey, valuesKey);
 
   // Labels need the IDs, also when an edit dropped them (they are then asked again).
   useEffect(() => {
@@ -72,6 +82,14 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
     () => (g && geo && nodeStyled && linkStyled && subStyled ? baseLayers(g, geo, outlets, nodeStyled, linkStyled, subStyled, visible, coordSystem) : []),
     [g, geo, outlets, nodeStyled, linkStyled, subStyled, visible, coordSystem],
   );
+  const arrowGeo = useMemo(() => (g && arrowsOn ? arrowGeometry(g) : null), [g, arrowsOn]);
+  // Without results, the direction the links are drawn in; with results, once the flows are loaded.
+  const withFlows = flowStyle.source === "result" && !!resultsKey;
+  const arrowed = useMemo(
+    () =>
+      g && arrowGeo && linkStyled && (!withFlows || flows) ? flowArrowLayers(g, arrowGeo, linkStyled, withFlows ? flows : null, coordSystem) : [],
+    [g, arrowGeo, linkStyled, withFlows, flows, coordSystem],
+  );
   const selected = useMemo(
     () => (g ? selectionLayers(g, selection, coordSystem, styles.link.size, styles.node.size) : []),
     [g, selection, coordSystem, styles.link.size, styles.node.size],
@@ -98,7 +116,9 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
   }, [period]);
 
   useEffect(() => {
-    viewer.current?.setLayers([...base, ...upstreamed, ...profiled, ...selected, ...(labelled ? [labelled] : []), ...toolLayers]);
+    const layers = [...base, ...arrowed, ...upstreamed, ...profiled, ...selected, ...(labelled ? [labelled] : []), ...toolLayers];
+    viewer.current?.setLayers(layers);
+    mapPerf.layers = layers;
     const s = stepStart.current;
     if (s) {
       requestAnimationFrame(() => {
@@ -106,5 +126,7 @@ export function useMapLayers(viewer: React.RefObject<Viewer | null>, modelKey: s
         if (mapPerf.steps.length > 500) mapPerf.steps.shift();
       });
     }
-  }, [base, upstreamed, profiled, selected, labelled, toolLayers]);
+  }, [base, arrowed, upstreamed, profiled, selected, labelled, toolLayers]);
+
+  return useMemo(() => ({ node: nodeValues, link: linkValues, subcatchment: subValues }), [nodeValues, linkValues, subValues]);
 }

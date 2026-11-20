@@ -49,6 +49,8 @@ export interface LayerStyle {
   scope: Scope;
   /** Subcatchments: lines from each subcatchment to its outlet. */
   outletLinks: boolean;
+  /** Links: arrows in the direction of the flow at the current time (as drawn without results). */
+  flowArrows: boolean;
   /** Nodes and links: types not drawn (indices into the type names). */
   hiddenTypes: number[];
 }
@@ -67,6 +69,7 @@ export const defaultStyle = (kind: StyledKind): LayerStyle => ({
   threshold: 0,
   scope: "run",
   outletLinks: false,
+  flowArrows: false,
   hiddenTypes: [],
 });
 
@@ -155,6 +158,8 @@ export type Tool =
   | "vertex"
   /** Click a start and an end node to draw their longitudinal profile. */
   | "profile"
+  /** Click points to measure the distance along them and the area they enclose. */
+  | "measure"
   | `add-${NodeType}`
   | `add-${LinkType}`
   | "add-subcatchment"

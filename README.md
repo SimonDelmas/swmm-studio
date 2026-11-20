@@ -27,7 +27,8 @@ continuous simulations over many years whose results files reach several gigabyt
 - Select objects with a click, a box or a lasso, by a query (`diameter < 0.3`, `type = outfall`,
   `max(flow) > 2`), find them by name, and see labels as you zoom in.
 - Colour nodes, links and subcatchments by type, by any input value (diameter, slope, area…) or
-  by a simulation result.
+  by a simulation result; show the flow direction on the links, hover an object for its name
+  and values, measure distances and areas, grey the basemap so the colours stand out.
 
 ### Edit the model
 
