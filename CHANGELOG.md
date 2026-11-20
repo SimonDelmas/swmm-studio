@@ -16,6 +16,17 @@ All notable changes to SWMM Studio are recorded here. The format follows
   marked and listed (a click goes to the line). The same checks are in the Issues tab, with
   the line; a click opens the rules at that line.
 
+- Map extras (#38):
+  - Flow direction arrows ("arrows" in the Links style): an arrow on each link points the way
+    the flow goes at the current time (turned round where it is negative, none where there is
+    no flow); without results, the direction the link is drawn in.
+  - Measure tool (⟷ Measure, D): click points for the distance along them and, from three
+    points, the area they enclose (on the sphere over the basemap, in model units in the
+    cartesian view). Double-click or Enter ends a measure, Backspace removes the last point.
+  - Tooltips: hovering an object shows its ID, its type, the value its layer is coloured by and
+    its result at the current time.
+  - Greyscale basemap ("grey" in the Basemap style), saved in the project.
+
 - Time series: a click on a legend entry hides its line (and greys its chip) until it is clicked
   again; the y axes rescale to the lines shown, the hidden lines stay hidden when the graph is
   redrawn and are left out of the SVG and data exports. Not saved with the view.

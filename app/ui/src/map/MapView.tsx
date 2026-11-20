@@ -5,6 +5,8 @@ import { ToolHint } from "./ToolHint";
 import { useEditTools } from "./useEditTools";
 import { useMapLayers } from "./useMapLayers";
 import { useMapSelection } from "./useMapSelection";
+import { useMeasureTool } from "./useMeasureTool";
+import { useTooltip } from "./useTooltip";
 import { useViewer } from "./useViewer";
 
 /** The map: the network on a basemap or on a plain plane, with the selection and drawing tools. `empty`: shown without a model. */
@@ -23,12 +25,16 @@ export function MapView({ empty }: { empty?: ReactNode }) {
   const modelKey = hasModel ? `${modelSeq}:${crs}` : null;
   const space = g?.space;
   const { viewer, viewTick } = useViewer(container, space, modelKey);
-  const tools = useEditTools(viewer, container, g, tool, selection);
+  const editTools = useEditTools(viewer, container, g, tool, selection);
+  const measure = useMeasureTool(viewer, g, tool);
+  const tools = tool === "measure" ? measure : editTools;
   mapTools.current = tools;
-  useMapLayers(viewer, modelKey, viewTick, tools.layers);
+  const values = useMapLayers(viewer, modelKey, viewTick, tools.layers);
   const select = useMapSelection(viewer, container, tool, tools);
+  const tooltip = useTooltip(viewer, values);
 
-  const drawingTool = tool.startsWith("add-");
+  // Double-click zoom gets in the way of the tools that click points.
+  const drawingTool = tool.startsWith("add-") || tool === "measure";
   // Block body: an effect must return nothing or a cleanup function.
   useEffect(() => {
     viewer.current?.setDoubleClickZoom(!drawingTool);
@@ -44,6 +50,8 @@ export function MapView({ empty }: { empty?: ReactNode }) {
     if (!v || !g) return;
     const p = select.relative(e);
     tools.onMove(p);
+    // No tooltip while a button is pressed (panning, dragging) or a shape is being drawn.
+    tooltip.move(e.buttons === 0 && !tools.busy && !drawingTool ? p : null);
     const [x, y] = v.unproject(p);
     setCursor(g.space === "lonlat" ? `${y.toFixed(6)}°, ${x.toFixed(6)}°` : `X ${(x + g.origin[0]).toFixed(2)}  Y ${(y + g.origin[1]).toFixed(2)}`);
   };
@@ -55,6 +63,8 @@ export function MapView({ empty }: { empty?: ReactNode }) {
         className={`map tool-${drawingTool ? "add" : tool}`}
         {...select.map}
         onPointerMove={onPointerMove}
+        onPointerLeave={() => tooltip.move(null)}
+        onWheel={() => tooltip.move(null)}
         onContextMenu={(e) => e.preventDefault()}
       />
       {(tool === "box" || tool === "lasso") && (
@@ -73,6 +83,8 @@ export function MapView({ empty }: { empty?: ReactNode }) {
       {hasModel && !g && <div className="map-note">The map of this model cannot be drawn (see the status bar); open it again to retry.</div>}
       {g && space !== "lonlat" && <div className="map-note">Local coordinates (no coordinate system)</div>}
       {cursor && <div className="map-cursor">{cursor}</div>}
+      {tooltip.node}
+      {measure.panel}
       {hasModel && <ToolHint tool={tool} sketching={tools.busy || (tool === "profile" && profileStart !== null)} />}
       {!hasModel && (empty ?? <div className="map-empty">Open a SWMM model (.inp) to start.</div>)}
     </div>

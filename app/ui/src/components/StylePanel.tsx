@@ -68,6 +68,12 @@ function LayerSection({ kind }: { kind: StyledKind }) {
             outlet links
           </label>
         )}
+        {kind === "link" && (
+          <label title="Arrows in the direction of the flow at the current time (the direction the links are drawn in, without results)">
+            <input type="checkbox" checked={style.flowArrows} onChange={(e) => setStyle(kind, { flowArrows: e.target.checked })} />
+            arrows
+          </label>
+        )}
         {kind !== "subcatchment" && (
           <label title="Size in pixels">
             size

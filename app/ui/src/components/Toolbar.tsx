@@ -172,6 +172,14 @@ export function Toolbar() {
         </button>
         <button
           disabled={!model}
+          className={tool === "measure" ? "active" : ""}
+          onClick={() => setState({ tool: tool === "measure" ? "select" : "measure" })}
+          title="Measure: click points for the distance along them and the area they enclose (D)"
+        >
+          ⟷ Measure
+        </button>
+        <button
+          disabled={!model}
           className={upstream ? "active" : ""}
           onClick={() => setState({ upstream: !upstream })}
           title="Upstream: highlight the network draining to the selected nodes, links and subcatchments (U)"

@@ -62,7 +62,7 @@ function timeShortcut(e: KeyboardEvent, s: State): boolean {
 }
 
 /** Map tools chosen by a single letter. */
-const TOOL_KEYS: Record<string, Tool> = { s: "select", b: "box", l: "lasso", m: "move", v: "vertex" };
+const TOOL_KEYS: Record<string, Tool> = { s: "select", b: "box", l: "lasso", m: "move", v: "vertex", d: "measure" };
 
 /** Single keys (no Ctrl / Alt) acting on the map: tools and view. Returns true when the key was one. */
 function letterShortcut(e: KeyboardEvent, s: State): boolean {
@@ -72,7 +72,7 @@ function letterShortcut(e: KeyboardEvent, s: State): boolean {
     return true;
   }
   const k = e.key.toLowerCase();
-  if (k.length !== 1 || !"sblmvputfq".includes(k)) return false;
+  if (k.length !== 1 || !"sblmvdputfq".includes(k)) return false;
   if (!s.model || e.repeat) return true;
   const tool = TOOL_KEYS[k];
   if (tool) setState({ tool });

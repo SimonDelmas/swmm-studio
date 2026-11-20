@@ -1,4 +1,4 @@
-// Basemap settings of the project: tiles, opacity, visibility.
+// Basemap settings of the project: tiles, opacity, visibility, greyscale.
 
 import { api, errorText } from "../../api";
 import { getState, notify, setState } from "../../store";
@@ -20,6 +20,10 @@ export function BasemapSection({ basemap: bm }: { basemap: Basemap }) {
         <label title="Basemap (OpenStreetMap)">
           <input type="checkbox" checked={bm.visible} onChange={(e) => setBasemap({ visible: e.target.checked })} />
           <b>Basemap</b>
+        </label>
+        <label title="Basemap in shades of grey, so that the colours of the network stand out">
+          <input type="checkbox" checked={bm.greyscale} onChange={(e) => setBasemap({ greyscale: e.target.checked })} />
+          grey
         </label>
         <label title="Basemap opacity">
           opacity

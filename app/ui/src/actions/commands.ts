@@ -104,6 +104,7 @@ export const COMMANDS: Command[] = [
   tool("lasso", "Lasso selection tool", "L"),
   tool("move", "Move tool", "M"),
   tool("vertex", "Edit vertices tool", "V"),
+  tool("measure", "Measure distance and area tool", "D"),
   {
     id: "tool.profile",
     group: "Map tools",
