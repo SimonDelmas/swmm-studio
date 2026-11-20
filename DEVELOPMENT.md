@@ -128,6 +128,7 @@ Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`
 Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
 Select by query test (Q, replace / add / intersect / remove, names inserted from the dialog, errors): `node app/ui/e2e/query.mjs copy/tiny.inp shots`.
 X-Y plot test (runs the model, "+" → X-Y, depth vs flow, fixed x, system pair, joined points, box zoom, hover and click on a point, values against the results, rename and close): `node app/ui/e2e/xy.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)unswmm.exe" shots`.
+Time series legend test (hide a line from the legend, kept when the chart is made again, shown again): `node app/ui/e2e/legend.mjs copy/tiny.inp "C:Program FilesEPA SWMM 5.2.4 (64-bit)unswmm.exe" shots`.
 Command palette test (Ctrl+P, filtering, arrows, recent commands, Escape): `node app/ui/e2e/palette.mjs copy/tiny.inp`.
 Dialog keyboard, name link and edit-queue test (Escape, Tab, object names loaded once, no edit sent to a model opened since, map drawn when a model is reopened with its labels on): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
 Observed data test (link a file to a link through the dialog, proposed mapping, saved in the project, drawn on the plot), on a model with results and a file with columns such as `C1 Débit (l/s)`, `C1 Hauteur (m)`: `node app/ui/e2e/observed.mjs copy/tiny.inp mesures.csv C1 shots`.

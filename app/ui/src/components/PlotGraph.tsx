@@ -38,6 +38,10 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
   periodRef.current = period;
   const viewRef = useRef(view);
   viewRef.current = view;
+  // Lines hidden from the legend, until the graph is closed (not saved with the view).
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
   const n = results?.n_periods ?? 0;
   const active = view.target === graph.id;
   const name = `${view.name} – graph ${number}`;
@@ -93,7 +97,19 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
     chart.current?.destroy();
     chart.current = null;
     if (!wrap.current || !built || built.series.length === 0 || size.h < 50) return;
-    const live = { view: () => viewRef.current, period: () => periodRef.current };
+    const live = {
+      view: () => viewRef.current,
+      period: () => periodRef.current,
+      hidden: () => hiddenRef.current,
+      toggled: (id: string, show: boolean) =>
+        setHidden((h) => {
+          if (h.has(id) !== show) return h;
+          const next = new Set(h);
+          if (show) next.delete(id);
+          else next.add(id);
+          return next;
+        }),
+    };
     const opts = chartOptions(built, units, size, `plot-view-${view.id}`, live);
     const u = new uPlot(opts, built.data, wrap.current);
     chart.current = u;
@@ -134,7 +150,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
 
   const exportData = () => {
     if (!built) return;
-    const { head, rows } = graphTable(built, agg);
+    const { head, rows } = graphTable(built, agg, hidden);
     exportTable(agg ? `series_${agg.unit}` : "series", name, head, rows);
   };
   const setSeries = (series: PlotSeries[]) =>
@@ -156,7 +172,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
           {number}
         </button>
         {plot.map((p, i) => (
-          <span key={p.key} className="chip" style={{ borderColor: COLORS[i % COLORS.length], borderStyle: p.b ? "dashed" : undefined }}>
+          <span key={p.key} className={`chip${hidden.has(p.key) ? " off" : ""}`} style={{ borderColor: COLORS[i % COLORS.length], borderStyle: p.b ? "dashed" : undefined }}>
             {p.kind !== "system" && p.id && p.label.startsWith(p.id) ? (
               <>
                 <ObjLink obj={{ kind: p.kind, index: p.index }}>{p.id}</ObjLink>
@@ -173,7 +189,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
         <button disabled={!built} onClick={exportData} title="Export the plotted values (CSV or Excel)">
           Data
         </button>
-        <button disabled={!built} onClick={() => built && saveSvg("plot", graphSvg(built, agg, size))}>
+        <button disabled={!built} onClick={() => built && saveSvg("plot", graphSvg(built, agg, size, hidden))}>
           SVG
         </button>
         <button disabled={!built} onClick={() => chart.current && savePng("plot", chart.current.ctx.canvas)}>

@@ -545,6 +545,9 @@ body.dragging-series .plot-new-graph {
   border-radius: 10px;
   padding: 0 0 0 7px;
 }
+.chip.off {
+  opacity: 0.45;
+}
 .chip button {
   border: none;
   background: none;
@@ -847,6 +850,11 @@ table.grid tr.footer-row td {
 .u-legend {
   font-size: 12px;
   color: var(--fg);
+}
+/* A click on an entry hides or shows its line. */
+.u-legend .u-series:not(:first-child) {
+  cursor: pointer;
+  user-select: none;
 }
 
 /* Editing */

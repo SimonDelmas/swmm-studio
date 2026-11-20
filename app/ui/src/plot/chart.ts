@@ -6,7 +6,7 @@ import { formatDateTime, periodMs } from "../format";
 import { cssVar } from "../hooks/useSize";
 import { getState } from "../store";
 import type { PlotView } from "../uiTypes";
-import { runDash, zoomPeriods, type Built } from "./data";
+import { drawnIds, runDash, zoomPeriods, type Built } from "./data";
 import { COLORS } from "./series";
 
 /** Time axis labels in the model clock (UTC), 24 h. */
@@ -27,6 +27,10 @@ export interface LiveChart {
   view(): PlotView;
   /** The current period, shown as a vertical line. */
   period(): number;
+  /** Ids (`drawnIds`) of the lines hidden from the legend. */
+  hidden(): ReadonlySet<string>;
+  /** A line was shown or hidden from the legend. */
+  toggled(id: string, show: boolean): void;
 }
 
 /**
@@ -37,6 +41,8 @@ export interface LiveChart {
 export function chartOptions(built: Built, units: string[], size: { w: number; h: number }, syncKey: string, live: LiveChart): uPlot.Options {
   const fg = cssVar("--fg", "#222");
   const stepped = built.stepped ? uPlot.paths.stepped!({ align: 1 }) : undefined;
+  const ids = drawnIds(built);
+  const hidden = live.hidden();
   const opts: uPlot.Options = {
     width: size.w,
     height: size.h - 34,
@@ -60,40 +66,50 @@ export function chartOptions(built: Built, units: string[], size: { w: number; h
     ] as uPlot.Axis[],
     series: [
       { value: (_u, v) => (v == null ? "" : formatDateTime(v * 1000)) },
-      ...built.series.map((p, i) => ({
-        label: p.label,
-        scale: built.units[i],
-        stroke: COLORS[i % COLORS.length],
-        width: 1.25,
-        dash: p.b ? [6, 3] : undefined,
-        points: { show: false },
-        spanGaps: false,
-        paths: stepped,
-      })),
-      // Other runs: dashed, with the colour of their series.
-      ...built.runs.map((r) => ({
-        label: r.label,
-        scale: built.units[r.parent],
-        stroke: COLORS[r.parent % COLORS.length],
-        width: 1.25,
-        dash: runDash(r.run),
-        points: { show: false },
-        spanGaps: false,
-      })),
-      // Observed values: points only, with the colour of their series.
-      ...built.obs.map((o) => {
-        const color = COLORS[o.parent % COLORS.length];
-        return {
-          label: o.label,
-          scale: built.units[o.parent],
-          stroke: color,
-          width: 1,
-          paths: () => null,
-          points: { show: true, size: 4, width: 1, stroke: color, fill: color },
-        };
-      }),
+      ...(
+        [
+          ...built.series.map((p, i) => ({
+            label: p.label,
+            scale: built.units[i],
+            stroke: COLORS[i % COLORS.length],
+            width: 1.25,
+            dash: p.b ? [6, 3] : undefined,
+            points: { show: false },
+            spanGaps: false,
+            paths: stepped,
+          })),
+          // Other runs: dashed, with the colour of their series.
+          ...built.runs.map((r) => ({
+            label: r.label,
+            scale: built.units[r.parent],
+            stroke: COLORS[r.parent % COLORS.length],
+            width: 1.25,
+            dash: runDash(r.run),
+            points: { show: false },
+            spanGaps: false,
+          })),
+          // Observed values: points only, with the colour of their series.
+          ...built.obs.map((o) => {
+            const color = COLORS[o.parent % COLORS.length];
+            return {
+              label: o.label,
+              scale: built.units[o.parent],
+              stroke: color,
+              width: 1,
+              paths: () => null,
+              points: { show: true, size: 4, width: 1, stroke: color, fill: color },
+            };
+          }),
+        ] as uPlot.Series[]
+      ).map((s, i) => ({ ...s, show: !hidden.has(ids[i]) })),
     ],
     hooks: {
+      // A click on a legend entry hides or shows its line.
+      setSeries: [
+        (u, i) => {
+          if (i !== null && i > 0) live.toggled(ids[i - 1], u.series[i].show !== false);
+        },
+      ],
       draw: [
         (u) => {
           const r = getState().model?.results;

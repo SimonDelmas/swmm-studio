@@ -38,6 +38,16 @@ export interface RunPlot {
   label: string;
 }
 
+/**
+ * Identity of each drawn line, in the order of `data` after x (series, other runs, observed
+ * values): what the legend hides, kept when the chart is made again.
+ */
+export const drawnIds = (b: Built): string[] => [
+  ...b.series.map((p) => p.key),
+  ...b.runs.map((r) => `run:${b.series[r.parent]?.key}:${r.run}`),
+  ...b.obs.map((o) => `obs:${b.series[o.parent]?.key}:${o.label}`),
+];
+
 /** Dash patterns of the runs overlaid on the graphs, in order. */
 const RUN_DASHES = [[6, 3], [2, 2], [10, 3, 2, 3], [1, 4], [12, 4]];
 export const runDash = (run: number) => RUN_DASHES[run % RUN_DASHES.length];
