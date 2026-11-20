@@ -67,6 +67,8 @@ export interface State {
   busy: string | null;
   crsDialog: boolean;
   dialog: Dialog;
+  /** Section and line (1 = the first after the header) the sections dialog opens at. */
+  sectionsAt: { section: string; line: number } | null;
   /** Table open in the editor. */
   tableEditor: { kind: TableKind; name: string } | null;
   /** Deletion waiting for confirmation. */
@@ -123,6 +125,7 @@ const initial: State = {
   busy: null,
   crsDialog: false,
   dialog: null,
+  sectionsAt: null,
   tableEditor: null,
   pendingDelete: null,
   run: { running: false, dir: null, progress: null, elapsed: 0, log: [], last: null },

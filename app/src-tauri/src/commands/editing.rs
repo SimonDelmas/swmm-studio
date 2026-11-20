@@ -1,5 +1,6 @@
 //! Edits, undo / redo, and the views of the model the editors read.
 
+use swmm_model::controls::RuleIssue;
 use swmm_model::ops::DeletePlan;
 use swmm_model::schema::RefKind;
 use swmm_model::tables::Table;
@@ -69,4 +70,10 @@ pub fn sections(state: State<'_, AppState>) -> Res<Vec<SectionInfo>> {
 #[tauri::command(async)]
 pub fn section_text(state: State<'_, AppState>, section: String) -> Res<String> {
     state.read(|s| Ok(s.section_text(&section)))
+}
+
+/// Problems in the text of a section being edited (only control rules are checked).
+#[tauri::command(async)]
+pub fn check_section_text(state: State<'_, AppState>, section: String, text: String) -> Res<Vec<RuleIssue>> {
+    state.read(|s| Ok(s.check_section_text(&section, &text)))
 }

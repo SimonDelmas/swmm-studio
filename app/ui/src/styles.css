@@ -1258,6 +1258,115 @@ label.month input {
   white-space: pre;
   resize: none;
 }
+/* Control rules: highlighted text drawn under a transparent text area */
+.rules-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  --rules-font: 12px/1.35 Consolas, "Cascadia Mono", monospace;
+}
+.rules-gutter {
+  overflow: hidden;
+  padding: 4px 6px 24px 4px;
+  min-width: 3ch;
+  text-align: right;
+  font: var(--rules-font);
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+.rules-gutter .rk-mark-error {
+  color: var(--bad);
+  font-weight: 600;
+}
+.rules-gutter .rk-mark-warning {
+  color: var(--warn);
+  font-weight: 600;
+}
+.rules-code {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.rules-code pre,
+.rules-code textarea {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 4px 6px;
+  border: none;
+  font: var(--rules-font);
+  white-space: pre;
+  tab-size: 8;
+  box-sizing: border-box;
+}
+.rules-code pre {
+  overflow: hidden;
+  /* Room for the scroll bars of the text area, so both scroll as far. */
+  padding-bottom: 24px;
+  padding-right: 24px;
+  color: var(--fg);
+  pointer-events: none;
+}
+.rules-code textarea {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--fg);
+  outline: none;
+}
+.rules-code textarea::selection {
+  /* See-through: the highlighted text is drawn under the text area. */
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: transparent;
+}
+.rk-line-error {
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+.rk-line-warning {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+.rk-clause {
+  color: var(--accent);
+  font-weight: 700;
+}
+.rk-object {
+  color: #8250df;
+}
+.rk-name {
+  color: #0a7d55;
+}
+.rk-relation {
+  color: var(--warn);
+}
+.rk-number {
+  color: #b35900;
+}
+.rk-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+@media (prefers-color-scheme: dark) {
+  .rk-object {
+    color: #c297ff;
+  }
+  .rk-name {
+    color: #56d39b;
+  }
+  .rk-number {
+    color: #ffa657;
+  }
+}
+.rules-problems {
+  max-height: 25%;
+  overflow: auto;
+  font-size: 12px;
+}
 textarea.grid-keys {
   position: sticky;
   top: 0;

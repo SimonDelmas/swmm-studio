@@ -114,6 +114,7 @@ fn main() {
             commands::editing::climate,
             commands::editing::sections,
             commands::editing::section_text,
+            commands::editing::check_section_text,
             commands::runs::runs,
             commands::runs::open_run,
             commands::runs::compare_run,
