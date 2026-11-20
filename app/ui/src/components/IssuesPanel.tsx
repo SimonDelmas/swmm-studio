@@ -3,7 +3,7 @@ import { Linkified } from "./ObjLink";
 import { useMemo, useState } from "react";
 import { validateModel } from "../actions/validate";
 import { exportTable } from "../exporting";
-import { useStore } from "../store";
+import { setState, useStore } from "../store";
 import { VirtualTable, type CellValue } from "./VirtualTable";
 
 /** Model validation: errors SWMM would stop on and suspicious data, linked to the objects. */
@@ -18,14 +18,16 @@ export function IssuesPanel() {
     const f = filter.trim().toLowerCase();
     return (issues ?? []).filter((i) => (show === "all" || i.severity === show) && (!f || `${i.code} ${i.message} ${i.section ?? ""}`.toLowerCase().includes(f)));
   }, [issues, show, filter]);
-  const rows: CellValue[][] = shown.map((i) => [i.severity, i.code.replace(/_/g, " "), i.message, i.section ?? ""]);
+  const rows: CellValue[][] = shown.map((i) => [i.severity, i.code.replace(/_/g, " "), i.message, i.section ?? "", i.line]);
 
   if (!model) return <div className="panel-empty">Open a model first.</div>;
   const errors = issues?.filter((i) => i.severity === "error").length ?? 0;
   const warnings = (issues?.length ?? 0) - errors;
   const pick = (k: number) => {
-    const o = shown[k].object;
-    if (o) selectObject(o);
+    const { object, section, line } = shown[k];
+    if (object) selectObject(object);
+    // A line of a section edited as text (control rules): opened in the editor, at the line.
+    else if (section && line) setState({ dialog: "sections", sectionsAt: { section, line } });
   };
   return (
     <div className="events-panel">
@@ -40,7 +42,7 @@ export function IssuesPanel() {
         <input placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <button onClick={() => void validateModel().catch(() => {})}>Check again</button>
         <span className="grow" />
-        <button disabled={rows.length === 0} onClick={() => exportTable("issues", "Issues", ["Severity", "Check", "Message", "Section"], rows)}>
+        <button disabled={rows.length === 0} onClick={() => exportTable("issues", "Issues", ["Severity", "Check", "Message", "Section", "Line"], rows)}>
           Export
         </button>
       </div>
@@ -53,11 +55,12 @@ export function IssuesPanel() {
             { title: "Check" },
             { title: "Message", format: (v, k) => <Linkified text={String(v ?? "")} hint={shown[k].object} /> },
             { title: "Section" },
+            { title: "Line" },
           ]}
           rows={rows}
           onRow={pick}
           resetKey={model.path}
-          rowClass={(k) => (shown[k].object ? undefined : "no-object")}
+          rowClass={(k) => (shown[k].object || shown[k].line ? undefined : "no-object")}
         />
       )}
     </div>

@@ -91,6 +91,18 @@ export interface Issue {
   object: ObjRef | null;
   section: string | null;
   id: string | null;
+  /** Line in the section (1 = the first after the header), for sections edited as text. */
+  line: number | null;
+}
+
+/** A problem on a line of control rules being edited. */
+export interface RuleIssue {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  /** Index of the line in the text (0 = the first). */
+  line: number;
+  rule: string | null;
 }
 
 export type GridColumn = FieldType & { key: string; name: string; unit: string };

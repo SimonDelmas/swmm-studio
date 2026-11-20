@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RunDto, SectionInfo, Stat } from "./analysisTypes";
+import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RuleIssue, RunDto, SectionInfo, Stat } from "./analysisTypes";
 import type { ReportSummary } from "./types";
 import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RecentFile, RecoveryInfo, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
 
@@ -145,6 +145,7 @@ export const api = {
   climate: () => invoke<Climate>("climate"),
   sections: () => invoke<SectionInfo[]>("sections"),
   sectionText: (section: string) => invoke<string>("section_text", { section }),
+  checkSectionText: (section: string, text: string) => invoke<RuleIssue[]>("check_section_text", { section, text }),
   runs: () => invoke<RunDto[]>("runs"),
   openRun: (dir: string) => invoke<ModelInfo>("open_run", { dir }),
   compareRun: (dir: string) => invoke<ModelInfo>("compare_run", { dir }),
