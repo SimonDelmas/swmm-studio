@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Aggregated, Calendar, EventDto, EventTable, Grid, Issue, ProfileDto, RuleIssue, RunDto, SectionInfo, Stat } from "./analysisTypes";
 import type { ReportSummary } from "./types";
-import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RecentFile, RecoveryInfo, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
+import type { Basemap, BlockDto, Climate, CrsEntry, DateOrder, DeletePlan, EditOutcome, EditRequest, ElementKind, EnginesDto, FileChange, Geometry, MinMaxSeries, ModelInfo, ObjectInfo, ObjKind, ObjRef, ObservedFile, ObservedLink, ObservedSeries, OptionsDto, RecentFile, RecoveryInfo, RefKind, ResultsInfo, RunFinished, RunProgress, Table, TableKind } from "./types";
 
 async function buffer(cmd: string, args?: Record<string, unknown>): Promise<ArrayBuffer> {
   const r = await invoke<ArrayBuffer | number[]>(cmd, args);
@@ -159,6 +159,8 @@ export const api = {
   /** Removes a model from the recent files (null: all of them). */
   forgetRecentFile: (path: string | null) => invoke<RecentFile[]>("forget_recent_file", { path }),
   recoveries: () => invoke<RecoveryInfo[]>("recoveries"),
+  /** Keeps the model or the loaded results as they are after another program changed their file. */
+  ignoreFileChange: (kind: FileChange["kind"]) => invoke<void>("ignore_file_change", { kind }),
   restoreRecovery: () => invoke<ModelInfo>("restore_recovery"),
   /** Gives up the changes left for `model` (null: the open model's, whose info is returned). */
   discardRecovery: (model: string | null) => invoke<ModelInfo | null>("discard_recovery", { model }),
@@ -193,6 +195,10 @@ export function onCacheProgress(f: (p: { path: string; progress: number }) => vo
 
 export function onResultsChanged(f: (r: ResultsInfo) => void): Promise<UnlistenFn> {
   return listen<ResultsInfo>("results-changed", (e) => f(e.payload));
+}
+
+export function onFileChanged(f: (c: FileChange) => void): Promise<UnlistenFn> {
+  return listen<FileChange>("file-changed", (e) => f(e.payload));
 }
 
 export function errorText(e: unknown): string {

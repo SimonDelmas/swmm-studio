@@ -207,3 +207,36 @@ fn queries_read_results() {
     assert!(q("median(flow) > 0", None).unwrap_err().contains("unknown statistic"));
     assert!(q("max(rainfall) > 0", None).unwrap_err().contains("no rainfall"));
 }
+
+#[test]
+fn files_changed_by_other_programs() {
+    let (_dir, inp) = fixture();
+    let mut s = Session::open(&inp).unwrap();
+    let poll_twice = |s: &mut Session| {
+        // A change is reported once the file stays the same between two looks.
+        let first = s.poll_files();
+        assert!(first.is_empty());
+        s.poll_files()
+    };
+    assert!(poll_twice(&mut s).is_empty());
+    // Saved by the app: not a change.
+    s.save(None).unwrap();
+    assert!(poll_twice(&mut s).is_empty());
+    // Changed by another program.
+    std::fs::write(&inp, format!("{TINY}\n; edited elsewhere\n")).unwrap();
+    let out = inp.with_extension("out");
+    let mut bytes = std::fs::read(&out).unwrap();
+    bytes.extend_from_slice(&[0; 4]);
+    // The loaded results are memory-mapped: the system may refuse to write over them.
+    let out_written = std::fs::write(&out, &bytes).is_ok();
+    let changes = poll_twice(&mut s);
+    assert!(changes.contains(&FileChange { kind: "model", path: inp.clone(), exists: true }), "{changes:?}");
+    let results = FileChange { kind: "results", path: out.clone(), exists: true };
+    assert_eq!(changes.contains(&results), out_written, "{changes:?}");
+    // Reported once; kept as it is, not reported again.
+    assert!(s.poll_files().is_empty());
+    s.ignore_file_change("model").unwrap();
+    s.ignore_file_change("results").unwrap();
+    assert!(poll_twice(&mut s).is_empty());
+    assert!(s.ignore_file_change("rpt").is_err());
+}

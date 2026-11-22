@@ -13,8 +13,9 @@ mod query;
 mod recovery;
 mod runs;
 mod session;
+mod watch;
 
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 struct LaunchFile(Option<String>);
 
@@ -52,6 +53,14 @@ fn main() {
                 std::thread::sleep(recovery::INTERVAL);
                 handle.state::<commands::AppState>().autosave();
             });
+            // Model and results changed by other programs (F-FILE-6).
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(watch::INTERVAL);
+                for change in handle.state::<commands::AppState>().poll_files() {
+                    let _ = handle.emit("file-changed", change);
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -82,6 +91,7 @@ fn main() {
             commands::cache::rebuild_cache,
             commands::results::envelope,
             commands::files::save_file,
+            commands::files::ignore_file_change,
             commands::editing::edit,
             commands::editing::undo,
             commands::editing::redo,

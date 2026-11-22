@@ -127,10 +127,13 @@ Edit latency on a large model: `node app/ui/e2e/edit-perf.mjs big.inp EPSG:2154`
 
 Profile test (profile tool, saved profiles): `node app/ui/e2e/profile.mjs copy/tiny.inp shots`.
 Select by query test (Q, replace / add / intersect / remove, names inserted from the dialog, errors): `node app/ui/e2e/query.mjs copy/tiny.inp shots`.
-X-Y plot test (runs the model, "+" → X-Y, depth vs flow, fixed x, system pair, joined points, box zoom, hover and click on a point, values against the results, rename and close): `node app/ui/e2e/xy.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)unswmm.exe" shots`.
-Time series legend test (hide a line from the legend, kept when the chart is made again, shown again): `node app/ui/e2e/legend.mjs copy/tiny.inp "C:Program FilesEPA SWMM 5.2.4 (64-bit)unswmm.exe" shots`.
+X-Y plot test (runs the model, "+" → X-Y, depth vs flow, fixed x, system pair, joined points, box zoom, hover and click on a point, values against the results, rename and close): `node app/ui/e2e/xy.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)
+unswmm.exe" shots`.
+Time series legend test (hide a line from the legend, kept when the chart is made again, shown again): `node app/ui/e2e/legend.mjs copy/tiny.inp "C:Program FilesEPA SWMM 5.2.4 (64-bit)
+unswmm.exe" shots`.
 Control rules test (adds rules to the model, issue with its line in the Issues tab, opened at the line, highlighting, checked while typing, fixed): `node app/ui/e2e/controls.mjs copy/tiny.inp shots`.
 Map extras test (runs the model; flow arrows against the flows, greyscale basemap saved in the project, tooltips of a node and a link, measure tool with Enter, Backspace, Escape and a double-click): `node app/ui/e2e/map-extras.mjs copy/tiny.inp "C:\Program Files\EPA SWMM 5.2.4 (64-bit)\runswmm.exe" shots`.
+External changes test (the model changed by another program offered, kept, offered again, reloaded; the unsaved-changes warning; saving from the app not reported; the results reloaded where the system lets the loaded `.out` be written over): `node app/ui/e2e/files.mjs m.inp`, on a model with results such as `swmm-cli out synth m.out --nodes 20 --links 20 --subcatchments 5 --periods 50 --inp m.inp`.
 Command palette test (Ctrl+P, filtering, arrows, recent commands, Escape): `node app/ui/e2e/palette.mjs copy/tiny.inp`.
 Dialog keyboard, name link and edit-queue test (Escape, Tab, object names loaded once, no edit sent to a model opened since, map drawn when a model is reopened with its labels on): `node app/ui/e2e/dialogs.mjs copy/tiny.inp`.
 Observed data test (link a file to a link through the dialog, proposed mapping, saved in the project, drawn on the plot), on a model with results and a file with columns such as `C1 Débit (l/s)`, `C1 Hauteur (m)`: `node app/ui/e2e/observed.mjs copy/tiny.inp mesures.csv C1 shots`.

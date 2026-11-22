@@ -1,8 +1,18 @@
-//! Files written for the user: exported figures and tables.
+//! Files written for the user (exported figures and tables), and files changed by other programs.
 
 use std::path::PathBuf;
 
+use tauri::State;
+
+use super::AppState;
 use crate::session::Res;
+
+/// Keeps the model (`model`) or the loaded results (`results`) as they are after another
+/// program changed their file: that change is no longer reported.
+#[tauri::command(async)]
+pub fn ignore_file_change(state: State<'_, AppState>, kind: String) -> Res<()> {
+    state.write(|s| s.ignore_file_change(&kind))
+}
 
 /// Writes the raw request body to the file named by the `path` header (exports).
 #[tauri::command(async)]

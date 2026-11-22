@@ -6,7 +6,7 @@ import { afterEdits, confirmDiscard, readGeometry } from "./edit";
 import { getState, notify, resetForModel, setState, startBusy } from "../store";
 import { defaultStyle, styleUsable, type StyledKind } from "../uiTypes";
 import { mapPlotSeries } from "./views";
-import type { ModelInfo } from "../types";
+import type { FileChange, ModelInfo } from "../types";
 
 /** Offers a coordinate system for a model opened without one, when one can be suggested. */
 function askCrs(model: ModelInfo) {
@@ -149,6 +149,58 @@ export async function applyCrs(id: string | null) {
     // The saved view belongs to the previous coordinate space.
     setState({ model, geometry, crsDialog: false, fitExtent: getState().fitExtent + 1 });
     if (error) notify(error, true);
+  } finally {
+    done();
+  }
+}
+
+/** A file of the model changed by another program: offered to be reloaded (the newest change of each kind). */
+export function fileChanged(c: FileChange) {
+  const m = getState().model;
+  const current = c.kind === "model" ? m?.path : m?.results?.path;
+  if (current !== c.path) return;
+  setState((s) => ({ fileChanges: [...s.fileChanges.filter((f) => f.kind !== c.kind), c] }));
+}
+
+function dropFileChange(kind: FileChange["kind"]) {
+  setState((s) => ({ fileChanges: s.fileChanges.filter((f) => f.kind !== kind) }));
+}
+
+/** Keeps the model or the results as they are in the app: that change is not offered again. */
+export async function keepFile(kind: FileChange["kind"]) {
+  dropFileChange(kind);
+  try {
+    await api.ignoreFileChange(kind);
+  } catch (e) {
+    notify(errorText(e), true);
+  }
+}
+
+/** Reads the model again from its file (its unsaved changes are lost: the dialog said so). */
+export async function reloadModel() {
+  const m = getState().model;
+  if (!m) return;
+  // The results changed with it are read with the model.
+  setState({ fileChanges: [] });
+  await openModel(m.path);
+}
+
+/** Reads the loaded results again from their file (and the report beside them). */
+export async function reloadResults() {
+  const path = getState().model?.results?.path;
+  dropFileChange("results");
+  if (!path) return;
+  const done = startBusy("Reloading results…");
+  setState({ playing: false });
+  try {
+    const model = await api.openResults(path);
+    setResultsInfo(model, false);
+    // The time shown stays, when the results still reach it.
+    const n = model.results?.n_periods ?? 0;
+    if (getState().period >= n) setState({ period: Math.max(0, n - 1) });
+    notify(`Reloaded the results ${model.results?.path ?? path}`);
+  } catch (e) {
+    notify(errorText(e), true);
   } finally {
     done();
   }
