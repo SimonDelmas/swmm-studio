@@ -1,14 +1,14 @@
 import { useEffect } from "react";
 import { confirmDiscard } from "../actions/edit";
 import { refreshEngine } from "../actions/engines";
-import { openModel } from "../actions/model";
+import { fileChanged, openModel } from "../actions/model";
 import { onFinished, onOutput, onProgress } from "../actions/run";
-import { api, onCacheProgress, onResultsChanged, onRunFinished, onRunOutput, onRunProgress } from "../api";
+import { api, onCacheProgress, onFileChanged, onResultsChanged, onRunFinished, onRunOutput, onRunProgress } from "../api";
 import { getState, setState } from "../store";
 
 let launchFileOpened = false;
 
-/** Follows what the backend reports: cache builds, results that changed on disk, the run. */
+/** Follows what the backend reports: cache builds, results that changed on disk, the run, files changed by other programs. */
 function useResultsAndRunEvents() {
   useEffect(() => {
     const un = [
@@ -33,6 +33,7 @@ function useResultsAndRunEvents() {
       onRunProgress(onProgress),
       onRunOutput(onOutput),
       onRunFinished(onFinished),
+      onFileChanged(fileChanged),
     ];
     refreshEngine();
     return () => un.forEach((p) => p.then((f) => f()));
