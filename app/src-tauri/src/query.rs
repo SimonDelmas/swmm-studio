@@ -8,10 +8,13 @@
 //! - a result variable of the loaded results (`flow`, `depth`…) at the current period;
 //! - a statistic of a result variable over the whole run: `max(flow)`, `min(…)`, `mean(…)`,
 //!   `total(…)`.
+//!
+//! Bulk edits (`diameter = diameter * 1.2 where slope < 0.005`) also name the fields of
+//! the objects by key (`n`, `off1`, `geom2`, `shape`…), see [`swmm_model::ops::field_key`].
 
 use swmm_analysis::Stat;
 use swmm_model::expr::{self, Column, Columns};
-use swmm_model::{LinkType, NodeType, ObjKind};
+use swmm_model::{ops, LinkType, NodeType, ObjKind, ObjRef};
 
 use crate::session::{element, Res, Session};
 
@@ -89,7 +92,128 @@ impl Columns for SessionColumns<'_> {
     }
 }
 
+/// Names of a bulk edit: the fields of the objects by key (`n`, `off1`, `shape`…) and their
+/// aliases (`diameter`, `roughness`…), then everything a query names.
+struct EditColumns<'s> {
+    query: SessionColumns<'s>,
+}
+
+impl Columns for EditColumns<'_> {
+    fn column(&mut self, func: Option<&str>, name: &str) -> Result<Option<Column>, String> {
+        let (s, kind) = (self.query.s, self.query.kind);
+        // `id` and `type` are the object's name and type, as in queries.
+        if func.is_none() && !["id", "type"].iter().any(|n| n.eq_ignore_ascii_case(name)) {
+            if let Some(c) = ops::field_column(&s.inp, &s.net, kind, &ops::field_key(kind, name)) {
+                return Ok(Some(c));
+            }
+        }
+        self.query.column(func, name)
+    }
+}
+
+/// The values a bulk edit writes.
+pub struct BulkPlan {
+    pub kind: ObjKind,
+    /// The name set, as written, and its field key.
+    pub target: String,
+    pub key: String,
+    /// `(id, value)` of the objects that change.
+    pub values: Vec<(String, String)>,
+    /// Objects of the selection.
+    pub objects: usize,
+    /// Objects left out by `where`.
+    pub filtered: usize,
+    /// Objects for which the value cannot be computed (a value they do not have, a division by zero).
+    pub missing: usize,
+}
+
 impl Session {
+    /// What `target = value [where condition]` writes on the objects (all of one kind);
+    /// result variables are read at `period`.
+    pub fn bulk_plan(&self, objects: &[ObjRef], statement: &str, period: Option<usize>) -> Res<BulkPlan> {
+        let kind = objects.first().ok_or("select the objects to edit first")?.kind;
+        if objects.iter().any(|o| o.kind != kind) {
+            return Err("the objects to edit must all be of one kind".into());
+        }
+        let n = self.net.len(kind);
+        let indices: Vec<usize> = objects.iter().map(|o| o.index as usize).filter(|&i| i < n).collect();
+        let ids: Vec<String> =
+            indices.iter().map(|&i| self.net.id(ObjRef { kind, index: i as u32 }).to_string()).collect();
+
+        let a = expr::parse_assignment(statement).map_err(|e| e.to_string())?;
+        let key = ops::field_key(kind, &a.target);
+        let keys = ops::field_keys(&self.inp, kind, &ids);
+        if !keys.contains(&key.as_str()) {
+            let what = if key == "id" {
+                "rename an object to change its name".to_string()
+            } else {
+                format!("the selected {}s have no field {}; they have: {}", kind.name(), a.target, keys.join(", "))
+            };
+            return Err(what);
+        }
+
+        let mut cols = EditColumns { query: SessionColumns { s: self, kind, period } };
+        // A text (`'CIRCULAR'`, or a bare word that names no value: `shape = CIRCULAR`) is
+        // written as it is.
+        let text = match &a.value {
+            expr::Expr::Text(t) => Some(t.clone()),
+            expr::Expr::Name(w) if cols.column(None, w)?.is_none() => Some(w.clone()),
+            _ => None,
+        };
+        let program = match &text {
+            Some(_) => None,
+            None => {
+                let p = expr::compile(&a.value, &mut cols, n).map_err(|e| e.to_string())?;
+                if p.ty() != expr::Type::Num {
+                    return Err(format!(
+                        "the new value of {} must be a number (like {} * 1.2) or a text",
+                        a.target, a.target
+                    ));
+                }
+                Some(p)
+            }
+        };
+        let filter = match &a.filter {
+            Some(f) => {
+                let p = expr::compile(f, &mut cols, n).map_err(|e| e.to_string())?;
+                if p.ty() != expr::Type::Bool {
+                    return Err("where takes a condition, like slope < 0.005".into());
+                }
+                Some(p)
+            }
+            None => None,
+        };
+
+        let mut plan = BulkPlan {
+            kind,
+            target: a.target.clone(),
+            key,
+            values: Vec::new(),
+            objects: indices.len(),
+            filtered: 0,
+            missing: 0,
+        };
+        for (&i, id) in indices.iter().zip(ids) {
+            if filter.as_ref().is_some_and(|f| !f.matches(i)) {
+                plan.filtered += 1;
+                continue;
+            }
+            let value = match (&text, &program) {
+                (Some(t), _) => t.clone(),
+                (None, Some(p)) => match p.value(i) {
+                    x if x.is_finite() => ops::format_number(x),
+                    _ => {
+                        plan.missing += 1;
+                        continue;
+                    }
+                },
+                (None, None) => unreachable!("a text or a program"),
+            };
+            plan.values.push((id, value));
+        }
+        Ok(plan)
+    }
+
     /// Objects of a layer matching a query; `period` is the time step result variables are
     /// read at.
     pub fn select_query(&self, kind: ObjKind, query: &str, period: Option<usize>) -> Res<Vec<u32>> {
@@ -137,6 +261,64 @@ mod tests {
         assert!(err.contains("needs results"), "{err}");
         let err = s.select_query(ObjKind::Link, "flow > 1", None).unwrap_err();
         assert!(err.contains("unknown name"), "{err}");
+    }
+
+    #[test]
+    fn bulk_expressions() {
+        use crate::editing::EditRequest;
+        let (_d, mut s) = session(TINY);
+        let links: Vec<ObjRef> = (0..3).map(|index| ObjRef { kind: ObjKind::Link, index }).collect();
+        let run = |s: &mut Session, objects: &[ObjRef], statement: &str| {
+            let req =
+                EditRequest::BulkExpression { objects: objects.to_vec(), statement: statement.into(), period: None };
+            s.edit(req, objects)
+        };
+        let text = |s: &Session| s.inp.to_string_lossy();
+        // Slopes: C1 0.0067, C2 0.0047, C3 0.0078.
+        let o = run(&mut s, &links, "diameter = diameter * 1.2 where slope < 0.005").unwrap();
+        assert_eq!(o.message.as_deref(), Some("1 of 3 links changed; 2 not matching where"));
+        assert_eq!(o.label, "Set diameter on 1 links");
+        assert!(text(&s).contains("C2               CIRCULAR     0.6 "), "{}", text(&s));
+        assert!(text(&s).contains("C1               CIRCULAR     0.4 "));
+        // Fields by key, a text, a condition on a field of another section.
+        let o = run(&mut s, &links, "n = n + 0.002 where shape = circular and geom1 >= 0.6").unwrap();
+        assert_eq!(o.message.as_deref(), Some("2 of 3 links changed; 1 not matching where"));
+        assert!(
+            text(&s).contains("C3               J3               Out1             90         0.015 "),
+            "{}",
+            text(&s)
+        );
+        run(&mut s, &links[..1], "shape = RECT_CLOSED").unwrap();
+        assert!(text(&s).contains("C1               RECT_CLOSED "));
+        let o = run(&mut s, &links[1..], "barrels = 1").unwrap();
+        assert_eq!(o.message.as_deref(), Some("0 of 2 links changed; 2 already at that value"));
+
+        // Undone as one edit each.
+        for _ in 0..3 {
+            s.undo(&links).unwrap();
+        }
+        assert_eq!(text(&s), TINY);
+
+        let nodes = [ObjRef { kind: ObjKind::Node, index: 0 }];
+        let err = |s: &mut Session, objects: &[ObjRef], q: &str| {
+            let req = EditRequest::BulkExpression { objects: objects.to_vec(), statement: q.into(), period: None };
+            match s.edit(req, objects) {
+                Ok(_) => panic!("{q} should fail"),
+                Err(e) => e,
+            }
+        };
+        assert!(err(&mut s, &links, "diametre = 1").contains("no field diametre"));
+        assert!(err(&mut s, &links, "diameter = 0 - 1").starts_with("C1:"));
+        assert!(err(&mut s, &links, "diameter = slope > 1").contains("must be a number"));
+        assert!(err(&mut s, &links, "diameter = 1 where length").contains("condition"));
+        assert!(err(&mut s, &links, "id = X").contains("rename"));
+        assert!(err(&mut s, &[], "diameter = 1").contains("select"));
+        assert!(err(&mut s, &[links[0], nodes[0]], "diameter = 1").contains("one kind"));
+        let o = run(&mut s, &nodes, "max_depth = max_depth / 0").unwrap();
+        assert_eq!(o.message.as_deref(), Some("0 of 1 nodes changed; 1 without a value to compute"));
+        run(&mut s, &nodes, "invert_elevation = invert_elevation - 0.25").unwrap();
+        assert!(text(&s).contains("J1               99.75 "));
+        assert_eq!(text(&s).matches("99.75").count(), 1);
     }
 
     /// A model of `n` conduits in a line, every tenth one of diameter 0.2.

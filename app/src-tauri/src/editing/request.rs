@@ -25,6 +25,13 @@ pub enum EditRequest {
         field: String,
         value: String,
     },
+    /// Sets a field of many objects (of one kind) from an expression:
+    /// `diameter = diameter * 1.2 where slope < 0.005`. Result variables are read at `period`.
+    BulkExpression {
+        objects: Vec<ObjRef>,
+        statement: String,
+        period: Option<usize>,
+    },
     AddLine {
         section: String,
         key: Vec<String>,

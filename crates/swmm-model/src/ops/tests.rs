@@ -85,6 +85,52 @@ fn field_edits_keep_spacing() {
 }
 
 #[test]
+fn bulk_field_values() {
+    use crate::expr::Column;
+    let mut inp = InpFile::parse_str(SRC);
+    let net = Network::from_inp(&inp);
+    let mut h = History::default();
+    assert_eq!(field_key(ObjKind::Link, "Diameter"), "geom1");
+    assert_eq!(field_key(ObjKind::Node, "invert_elevation"), "elev");
+    assert_eq!(field_key(ObjKind::Link, "off1"), "off1");
+    // Fields of other sections ([XSECTIONS], [SUBAREAS]) by key; omitted fields at their default.
+    assert_eq!(field_column(&inp, &net, ObjKind::Link, "geom1"), Some(Column::Num(vec![0.4, 0.5])));
+    assert_eq!(field_column(&inp, &net, ObjKind::Node, "elev"), Some(Column::Num(vec![100.0, 99.0, 97.0])));
+    let Some(Column::Num(apond)) = field_column(&inp, &net, ObjKind::Node, "apond") else { panic!() };
+    assert_eq!(&apond[..2], &[0.0, 0.0]);
+    assert!(apond[2].is_nan());
+    assert_eq!(
+        field_column(&inp, &net, ObjKind::Link, "shape"),
+        Some(Column::Text(vec!["CIRCULAR".into(), "CIRCULAR".into()]))
+    );
+    assert_eq!(field_column(&inp, &net, ObjKind::Subcatchment, "nimp"), Some(Column::Num(vec![0.013])));
+    assert_eq!(field_column(&inp, &net, ObjKind::Link, "nope"), None);
+    let keys = field_keys(&inp, ObjKind::Link, &["C1".into()]);
+    assert!(keys.contains(&"n") && keys.contains(&"geom1") && !keys.contains(&"id"), "{keys:?}");
+
+    let values = [("C1", "0.48"), ("C2", "0.5"), ("X", "1")].map(|(a, b)| (a.to_string(), b.to_string()));
+    let count = run(&mut inp, &mut h, |tx| set_field_values(tx, ObjKind::Link, "geom1", &values)).unwrap();
+    assert_eq!(count, BulkCount { changed: 1, unchanged: 1, without_field: 1 });
+    assert!(inp.to_string_lossy().contains("C1 CIRCULAR 0.48 0 0 0 1\n"));
+    let bad = [("C2".to_string(), "-1".to_string()), ("C1".to_string(), "0.3".to_string())];
+    let err = run(&mut inp, &mut h, |tx| set_field_values(tx, ObjKind::Link, "geom1", &bad)).unwrap_err();
+    assert!(err.starts_with("C2:"), "{err}");
+    // Nothing was written by the failed edit.
+    assert!(inp.to_string_lossy().contains("C1 CIRCULAR 0.48 0 0 0 1\n"));
+    let id = [("C1".to_string(), "C9".to_string())];
+    assert!(run(&mut inp, &mut h, |tx| set_field_values(tx, ObjKind::Link, "id", &id)).is_err());
+    h.undo(&mut inp).unwrap();
+    assert_eq!(inp.to_string_lossy(), SRC);
+
+    assert_eq!(format_number(0.3f32 as f64 * 1.2), "0.36");
+    assert_eq!(format_number(-0.0), "0");
+    assert_eq!(format_number(120.0), "120");
+    assert_eq!(format_number(0.013f32 as f64 + 0.002), "0.015");
+    assert_eq!(format_number(1e-9), "0.000000001");
+    assert_eq!(format_number(-97.8f32 as f64), "-97.8");
+}
+
+#[test]
 fn rename_updates_references() {
     let mut inp = InpFile::parse_str(SRC);
     let mut h = History::default();

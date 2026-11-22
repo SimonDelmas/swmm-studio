@@ -287,6 +287,7 @@ export interface Climate {
 export type EditRequest =
   | { op: "set_field"; section: string; key: string[]; field: number; value: string }
   | { op: "set_field_bulk"; objects: ObjRef[]; section: string; field: string; value: string }
+  | { op: "bulk_expression"; objects: ObjRef[]; statement: string; period: number | null }
   | { op: "add_line"; section: string; key: string[] }
   | { op: "remove_line"; section: string; key: string[] }
   | { op: "rename"; kind: RefKind; old: string; new: string }

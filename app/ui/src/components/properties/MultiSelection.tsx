@@ -6,6 +6,7 @@ import { deleteObjects } from "../../actions/edit";
 import { setState, useStore } from "../../store";
 import type { ObjKind, ObjRef } from "../../types";
 import { BulkEditor, KIND_LABEL } from "./BulkEditor";
+import { BulkExpression } from "./BulkExpression";
 import { RdiiAssign } from "./RdiiAssign";
 
 
@@ -35,6 +36,7 @@ export function MultiSelection({ selection }: { selection: ObjRef[] }) {
         </button>
       </div>
       <BulkEditor selection={selection} />
+      <BulkExpression selection={selection} />
       {nodes.length > 0 && <RdiiAssign nodes={nodes} />}
       <h4>Objects</h4>
       <div className="id-list">

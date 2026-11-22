@@ -286,6 +286,9 @@ impl Session {
             EditRequest::SetFieldBulk { objects, section: s, field, value } => {
                 self.set_field_bulk(&objects, &s, &field, &value)
             }
+            EditRequest::BulkExpression { objects, statement, period } => {
+                self.bulk_expression(&objects, &statement, period)
+            }
             EditRequest::AddLine { section: s, key } => self.add_line(&s, &key),
             EditRequest::RemoveLine { section: s, key } => self.remove_line(&s, &key),
             EditRequest::Rename { kind, old, new } => self.rename(kind, &old, new.trim(), &keep),
