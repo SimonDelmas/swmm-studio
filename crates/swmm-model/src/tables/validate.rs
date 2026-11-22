@@ -2,7 +2,21 @@
 
 use super::{Table, CURVE_TYPES, MONTHS, RESPONSES};
 use crate::edit::EditResult;
-use crate::schema::check_id;
+use crate::schema::{check_id, table_fields, FieldDef, RefKind};
+
+/// Checks parameters against their fields (count, numbers, smallest values, names).
+fn check_values(what: &str, defs: &[FieldDef], values: &[&String]) -> EditResult<()> {
+    if values.len() != defs.len() {
+        return Err(format!("{what}: {} values expected, not {}", defs.len(), values.len()));
+    }
+    for (d, v) in defs.iter().zip(values) {
+        if v.trim().is_empty() && !d.required {
+            continue;
+        }
+        crate::schema::validate(d, v).map_err(|e| format!("{what}: {e}"))?;
+    }
+    Ok(())
+}
 
 fn num_check(label: &str, v: &str) -> EditResult<()> {
     if v.trim().parse::<f64>().map(f64::is_finite).unwrap_or(false) {
@@ -78,6 +92,23 @@ pub fn validate(t: &Table) -> EditResult<()> {
                     }
                 }
             }
+        }
+        Table::Aquifer(a) => {
+            let defs = table_fields(RefKind::Aquifer, "");
+            let values: Vec<&String> = a.values.iter().chain([&a.pattern]).collect();
+            check_values("aquifer", &defs, &values)?;
+        }
+        Table::Snowpack(p) => {
+            for (label, surface, values) in [
+                ("plowable area", "PLOWABLE", &p.plowable),
+                ("impervious area", "IMPERVIOUS", &p.impervious),
+                ("pervious area", "PERVIOUS", &p.pervious),
+            ] {
+                let v: Vec<&String> = values.iter().collect();
+                check_values(label, &table_fields(RefKind::Snowpack, surface), &v)?;
+            }
+            let v: Vec<&String> = p.removal.iter().chain([&p.subcatchment]).collect();
+            check_values("snow removal", &table_fields(RefKind::Snowpack, "REMOVAL"), &v)?;
         }
         Table::Transect(t) => {
             for (label, v) in [

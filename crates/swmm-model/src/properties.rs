@@ -67,6 +67,7 @@ fn sections_of(inp: &InpFile, net: &Network, r: ObjRef) -> Vec<SectionKind> {
             SectionKind::Infiltration,
             SectionKind::LidUsage,
             SectionKind::Groundwater,
+            SectionKind::Gwf,
             SectionKind::Coverages,
         ],
         ObjKind::Gage => vec![SectionKind::Raingages, SectionKind::Symbols],
@@ -76,13 +77,27 @@ fn sections_of(inp: &InpFile, net: &Network, r: ObjRef) -> Vec<SectionKind> {
 fn removable(kind: &SectionKind) -> bool {
     matches!(
         kind,
-        SectionKind::Inflows | SectionKind::Dwf | SectionKind::Rdii | SectionKind::Losses | SectionKind::Tags
+        SectionKind::Inflows
+            | SectionKind::Dwf
+            | SectionKind::Rdii
+            | SectionKind::Losses
+            | SectionKind::Tags
+            | SectionKind::Groundwater
+            | SectionKind::Gwf
     )
 }
 
 /// Fields of one line: its tokens named by the schema, then the optional fields it
 /// does not have.
 pub fn fields_of(kind: &SectionKind, tokens: &[&str], inp: &InpFile) -> (Vec<Field>, bool) {
+    // A groundwater flow expression is one field, however many tokens it has.
+    let joined;
+    let tokens = if *kind == SectionKind::Gwf && tokens.len() > 3 {
+        joined = tokens[2..].join(" ");
+        &[tokens[0], tokens[1], joined.as_str()][..]
+    } else {
+        tokens
+    };
     let flow = inp.flow_units();
     let ctx = Context::of(inp);
     let Some(defs) = schema::layout(kind, tokens, &ctx) else {
@@ -181,7 +196,7 @@ pub fn properties(inp: &InpFile, net: &Network, r: ObjRef) -> Vec<PropertyGroup>
             let tokens: Vec<&str> = l.tokens().collect();
             let (fields, editable) = fields_of(kind, &tokens, inp);
             let mut title = kind.name().to_string();
-            if matches!(kind, SectionKind::Inflows | SectionKind::Dwf) {
+            if matches!(kind, SectionKind::Inflows | SectionKind::Dwf | SectionKind::Gwf) {
                 title = format!("{title} ({})", tokens.get(1).unwrap_or(&""));
             }
             out.push(PropertyGroup {
@@ -264,6 +279,16 @@ pub fn addable(inp: &InpFile, net: &Network, r: ObjRef) -> Vec<Addable> {
             }
             if !has(&SectionKind::Infiltration, &[&id]) {
                 add("Infiltration", SectionKind::Infiltration, vec![id.clone()]);
+            }
+            if !has(&SectionKind::Groundwater, &[&id]) {
+                add("Groundwater", SectionKind::Groundwater, vec![id.clone()]);
+            } else {
+                // Custom flow equations replace the standard ones of a subcatchment with groundwater.
+                for (ty, title) in [("LATERAL", "Lateral flow equation"), ("DEEP", "Deep flow equation")] {
+                    if !has(&SectionKind::Gwf, &[&id, ty]) {
+                        add(title, SectionKind::Gwf, vec![id.clone(), ty.into()]);
+                    }
+                }
             }
         }
         ObjKind::Gage => {}
@@ -357,5 +382,79 @@ mod tests {
         let n = field_names(&SectionKind::Infiltration, &["S1", "3", "0.5", "4", "7", "0", "HORTON"], "GREEN_AMPT");
         assert_eq!(n[1], "Max infiltration rate");
         assert_eq!(n[6], "Method");
+    }
+}
+
+#[cfg(test)]
+mod groundwater_tests {
+    use super::*;
+    use crate::edit::History;
+
+    const SRC: &str = "\
+[OPTIONS]
+FLOW_UNITS CMS
+[SUBCATCHMENTS]
+S1 * J1 1 50 100 1 0
+S2 * J1 1 50 100 1 0
+[JUNCTIONS]
+J1 1
+[AQUIFERS]
+A1 0.5 0.15 0.3 5 10 15 0.35 14 0.002 0 10 0.3
+[GROUNDWATER]
+S1 A1 J1 10 0.001 2 0 0 0 0
+[GWF]
+S1 LATERAL 0.001 * (Hgw - Hcb) ^ 1.5
+";
+
+    #[test]
+    fn groundwater_properties_and_edits() {
+        let mut inp = InpFile::parse_str(SRC);
+        let net = Network::from_inp(&inp);
+        let s1 = ObjRef { kind: ObjKind::Subcatchment, index: 0 };
+        let g = properties(&inp, &net, s1);
+        let gw = g.iter().find(|x| x.section == "GROUNDWATER").unwrap();
+        assert!(gw.editable && gw.removable);
+        assert_eq!((gw.fields[1].name.as_str(), gw.fields[1].value.as_str()), ("Aquifer", "A1"));
+        assert_eq!(gw.fields[3].unit, "m");
+        assert!(!gw.fields[10].present);
+        let gwf = g.iter().find(|x| x.section == "GWF").unwrap();
+        assert_eq!(gwf.title, "GWF (LATERAL)");
+        assert_eq!(gwf.key, ["S1", "LATERAL"]);
+        assert_eq!(gwf.fields.len(), 3);
+        assert_eq!(gwf.fields[2].value, "0.001 * (Hgw - Hcb) ^ 1.5");
+        let add: Vec<String> =
+            addable(&inp, &net, s1).into_iter().filter(|a| a.section == "GWF").map(|a| a.key.join(" ")).collect();
+        assert_eq!(add, ["S1 DEEP"]);
+        let add: Vec<String> = addable(&inp, &net, ObjRef { kind: ObjKind::Subcatchment, index: 1 })
+            .into_iter()
+            .map(|a| a.section)
+            .collect();
+        assert_eq!(add, ["SUBAREAS", "INFILTRATION", "GROUNDWATER"]);
+
+        let mut h = History::default();
+        let key = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        h.edit(&mut inp, "e", |tx| {
+            crate::ops::set_field(tx, &SectionKind::Gwf, &key(&["S1", "LATERAL"]), 2, "0.002*Hgw")
+        })
+        .unwrap();
+        // The optional values after the fixed depth are written as `*` up to the one set.
+        h.edit(&mut inp, "e", |tx| crate::ops::set_field(tx, &SectionKind::Groundwater, &key(&["S1"]), 12, "6"))
+            .unwrap();
+        h.edit(&mut inp, "e", |tx| crate::ops::add_line(tx, &SectionKind::Gwf, &key(&["S1", "DEEP"]))).unwrap();
+        h.edit(&mut inp, "e", |tx| crate::ops::add_line(tx, &SectionKind::Groundwater, &key(&["S2"]))).unwrap();
+        let text = inp.to_string_lossy();
+        assert!(text.contains("S1               LATERAL    0.002*Hgw\n"), "{text}");
+        let line = |t: &str| text.lines().any(|l| l.split_whitespace().eq(t.split(' ')));
+        assert!(line("S1 A1 J1 10 0.001 2 0 0 0 0 * * 6"), "{text}");
+        assert!(line("S1 DEEP 0"), "{text}");
+        assert!(line("S2 * * 0 0 0 0 0 0 0"), "{text}");
+        assert!(h
+            .edit(&mut inp, "e", |tx| crate::ops::set_field(tx, &SectionKind::Groundwater, &key(&["S1"]), 4, "*"))
+            .is_err());
+        // An aquifer and a node are required.
+        let issues = crate::validate::validate(&inp, &Network::from_inp(&inp));
+        let missing: Vec<&str> =
+            issues.iter().filter(|i| i.code == "missing_reference").map(|i| i.message.as_str()).collect();
+        assert_eq!(missing.len(), 2, "{missing:?}");
     }
 }

@@ -112,3 +112,68 @@ fn delete_refuses_used_objects() {
     h.edit(&mut inp, "d", |tx| delete(tx, RefKind::Curve, "PC1")).unwrap();
     assert!(read(&inp, RefKind::Curve, "PC1").is_none());
 }
+
+const SNOW: &str = "\
+[SUBCATCHMENTS]
+S1 * J1 1 50 100 1 0 SP1
+S2 * J1 1 50 100 1 0
+
+[AQUIFERS]
+A1 0.5 0.15 0.3 5 10 15 0.35 14 0.002 0 10 0.3
+A2 0.4 0.1 0.2 1 10 15 0.35 14 0.002 0 10
+
+[SNOWPACKS]
+SP1 PLOWABLE 0.001 0.001 32 0.1 0 0 0.5
+SP1 IMPERVIOUS 0.001 0.001 32 0.1 0 0 1
+SP1 PERVIOUS 0.001 0.001 32 0.1 0 0 2
+SP1 REMOVAL 1 0 0 0 0.5 0.5 S2
+
+[GROUNDWATER]
+S1 A1 J1 10 0.001 2 0 0 0 0
+";
+
+#[test]
+fn aquifers_and_snowpacks() {
+    let mut inp = InpFile::parse_str(SNOW);
+    let mut h = History::default();
+    let Some(Table::Aquifer(a)) = read(&inp, RefKind::Aquifer, "a1") else { panic!() };
+    assert_eq!((a.values.len(), a.values[3].as_str(), a.pattern.as_str()), (12, "5", ""));
+    // A short line is read with the missing values at their defaults.
+    let Some(Table::Aquifer(a2)) = read(&inp, RefKind::Aquifer, "A2") else { panic!() };
+    assert_eq!(a2.values[11], "0.30");
+    let Some(Table::Snowpack(mut p)) = read(&inp, RefKind::Snowpack, "SP1") else { panic!() };
+    assert_eq!((p.plowable[6].as_str(), p.pervious[6].as_str()), ("0.5", "2"));
+    assert_eq!((p.removal[5].as_str(), p.subcatchment.as_str()), ("0.5", "S2"));
+    // Same content: nothing changes.
+    h.edit(&mut inp, "same", |tx| write(tx, &Table::Snowpack(p.clone()))).unwrap();
+    h.edit(&mut inp, "same", |tx| write(tx, &Table::Aquifer(a.clone()))).unwrap();
+    assert!(h.undo_label().is_none());
+    p.impervious[2] = "30".into();
+    h.edit(&mut inp, "sp", |tx| write(tx, &Table::Snowpack(p.clone()))).unwrap();
+    let text = inp.to_string_lossy();
+    assert!(text.contains("SP1 PLOWABLE 0.001 0.001 32 0.1 0 0 0.5\nSP1              IMPERVIOUS 0.001"), "{text}");
+    assert!(text.contains("SP1 PERVIOUS 0.001 0.001 32 0.1 0 0 2\n"), "{text}");
+    let mut bad = p.clone();
+    bad.removal[1] = "x".into();
+    assert!(h.edit(&mut inp, "bad", |tx| write(tx, &Table::Snowpack(bad))).unwrap_err().contains("snow removal"));
+    let mut bad = a.clone();
+    bad.values[0] = "-1".into();
+    assert!(h.edit(&mut inp, "bad", |tx| write(tx, &Table::Aquifer(bad))).is_err());
+    // A new aquifer and a new snow pack with every line.
+    h.edit(&mut inp, "new", |tx| write(tx, &Table::empty(RefKind::Aquifer, "A3").unwrap())).unwrap();
+    h.edit(&mut inp, "new", |tx| write(tx, &Table::empty(RefKind::Snowpack, "SP2").unwrap())).unwrap();
+    let text = inp.to_string_lossy();
+    assert!(text.contains("A3               0.5        0.15"), "{text}");
+    assert_eq!(text.matches("SP2 ").count(), 4, "{text}");
+    // Used ones cannot be deleted; renaming follows them.
+    assert!(h.edit(&mut inp, "d", |tx| delete(tx, RefKind::Aquifer, "A1")).unwrap_err().contains("S1 [GROUNDWATER]"));
+    assert!(h.edit(&mut inp, "d", |tx| delete(tx, RefKind::Snowpack, "SP1")).is_err());
+    h.edit(&mut inp, "d", |tx| delete(tx, RefKind::Aquifer, "A2")).unwrap();
+    assert!(read(&inp, RefKind::Aquifer, "A2").is_none());
+    h.edit(&mut inp, "r", |tx| crate::ops::rename(tx, RefKind::Aquifer, "A1", "Deep")).unwrap();
+    h.edit(&mut inp, "r", |tx| crate::ops::rename(tx, RefKind::Subcatchment, "S2", "East")).unwrap();
+    let text = inp.to_string_lossy();
+    assert!(text.contains("S1 Deep J1 10"), "{text}");
+    assert!(text.contains("0.5 0.5 East"), "{text}");
+    assert_eq!(refs::names(&inp, RefKind::Aquifer), ["Deep", "A3"]);
+}

@@ -21,6 +21,20 @@ All notable changes to SWMM Studio are recorded here. The format follows
   the others did not (not matching where, already at the value, no value to compute, no such
   field).
 
+- Snow pack and groundwater editors (#45):
+  - Aquifers and snow packs are in the Data panel, next to the curves and transects: add,
+    edit, rename (every subcatchment that uses one follows) and delete (refused while one is
+    used). An aquifer has its twelve parameters and an evaporation pattern; a snow pack has
+    the melt parameters of its plowable, impervious and pervious surfaces in one grid, and
+    its snow removal, with the subcatchment that receives plowed snow. Units follow the
+    model's (°F or °C, in or mm).
+  - A subcatchment's properties show and edit its `[GROUNDWATER]` line (aquifer, receiving
+    node, surface elevation, flow coefficients, and the optional values that override the
+    aquifer's, `*` to keep them), and its lateral and deep flow equations (`[GWF]`), each
+    added with a button and removable.
+  - Model checks: groundwater without an aquifer or a receiving node, an aquifer, node or
+    receiving subcatchment that does not exist.
+
 - Files changed by other programs (#52): when the open model (`.inp`) or the loaded results
   (`.out`) change on disk, the app offers to reload them, once per change. Reloading the model
   says when it would discard unsaved changes; kept, a change is not offered again. Saving from

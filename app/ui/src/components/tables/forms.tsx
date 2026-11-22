@@ -1,8 +1,9 @@
-// One form per kind of table: curve, time series, time pattern, unit hydrograph, transect.
+// One form per kind of table: curve, time series, time pattern, unit hydrograph, transect, aquifer, snow pack.
 
 import { useMemo, useState } from "react";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
-import type { Curve, Hydrograph, Pattern, Timeseries, Transect, UhRow } from "../../types";
+import type { Aquifer, Curve, Hydrograph, Pattern, Snowpack, Timeseries, Transect, UhRow } from "../../types";
+import { useStore } from "../../store";
 import { useNames } from "../../hooks/useNames";
 import { Grid, Preview, hours, num } from "./Grid";
 
@@ -242,6 +243,139 @@ export function TransectForm({ t, set }: { t: Transect; set: (t: Transect) => vo
         <Grid columns={["Station", "Elevation"]} rows={t.points} onChange={(rows) => set({ ...t, points: rows as [string, string][] })} />
       </div>
       <Preview pts={t.points.map((p) => [num(p[0]), num(p[1])])} xLabel="Station" yLabel="Elevation" />
+    </div>
+  );
+}
+
+const METRIC = ["CMS", "LPS", "MLD"];
+
+/** Unit labels of the model: US customary or SI, after its flow units. */
+function useUnits() {
+  const si = METRIC.includes((useStore((s) => s.model?.flow_units) ?? "CFS").toUpperCase());
+  return {
+    length: si ? "m" : "ft",
+    depth: si ? "mm" : "in",
+    rate: si ? "mm/hr" : "in/hr",
+    temp: si ? "°C" : "°F",
+    melt: si ? "mm/hr/°C" : "in/hr/°F",
+  };
+}
+
+interface Param {
+  label: string;
+  unit?: string;
+  value: string;
+  set: (v: string) => void;
+  list?: string;
+  placeholder?: string;
+}
+
+/** Named parameters as label, input and unit rows. */
+function Params({ rows }: { rows: Param[] }) {
+  return (
+    <table className="kv edit">
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label}>
+            <td>{r.label}</td>
+            <td>
+              <input className="value" value={r.value} list={r.list} placeholder={r.placeholder} spellCheck={false} onChange={(e) => r.set(e.target.value)} />
+            </td>
+            <td className="muted unit">{r.unit ?? ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Rows of parameters edited in place in a list of values. */
+function paramRows(labels: [string, string][], values: string[], set: (values: string[]) => void): Param[] {
+  return labels.map(([label, unit], i) => ({
+    label,
+    unit,
+    value: values[i] ?? "",
+    set: (v: string) => set(values.map((x, j) => (j === i ? v : x))),
+  }));
+}
+
+export function AquiferForm({ t, set }: { t: Aquifer; set: (t: Aquifer) => void }) {
+  const u = useUnits();
+  const patterns = useNames("pattern");
+  const labels: [string, string][] = [
+    ["Porosity", "fraction"],
+    ["Wilting point", "fraction"],
+    ["Field capacity", "fraction"],
+    ["Conductivity", u.rate],
+    ["Conductivity slope", ""],
+    ["Tension slope", ""],
+    ["Upper evaporation fraction", "fraction"],
+    ["Lower evaporation depth", u.length],
+    ["Lower groundwater loss rate", u.rate],
+    ["Bottom elevation", u.length],
+    ["Water table elevation", u.length],
+    ["Unsaturated zone moisture", "fraction"],
+  ];
+  return (
+    <div className="table-form column">
+      <Params
+        rows={[
+          ...paramRows(labels, t.values, (values) => set({ ...t, values })),
+          { label: "Evaporation pattern", value: t.pattern, list: "aquifer-patterns", placeholder: "none", set: (v) => set({ ...t, pattern: v }) },
+        ]}
+      />
+      <datalist id="aquifer-patterns">
+        {patterns.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
+      <span className="muted">The water table and the moisture are initial values; the groundwater of a subcatchment can override them.</span>
+    </div>
+  );
+}
+
+const SURFACES: ["plowable" | "impervious" | "pervious", string][] = [
+  ["plowable", "Plowable"],
+  ["impervious", "Impervious"],
+  ["pervious", "Pervious"],
+];
+
+export function SnowpackForm({ t, set }: { t: Snowpack; set: (t: Snowpack) => void }) {
+  const u = useUnits();
+  const params = [
+    `Min melt coefficient (${u.melt})`,
+    `Max melt coefficient (${u.melt})`,
+    `Base temperature (${u.temp})`,
+    "Free water capacity (fraction)",
+    `Initial snow depth (${u.depth} water eq.)`,
+    `Initial free water (${u.depth})`,
+    `Plowable fraction of imperv. area / depth for 100% cover (${u.depth})`,
+  ];
+  const grid = params.map((_, i) => SURFACES.map(([k]) => t[k][i] ?? ""));
+  const setGrid = (rows: string[][]) => {
+    const next = { ...t };
+    SURFACES.forEach(([k], c) => (next[k] = rows.map((r) => r[c])));
+    set(next);
+  };
+  const removal: [string, string][] = [
+    ["Depth at which removal begins", u.depth],
+    ["Fraction moved out of the watershed", "fraction"],
+    ["Fraction moved to the impervious area", "fraction"],
+    ["Fraction moved to the pervious area", "fraction"],
+    ["Fraction converted to melt", "fraction"],
+    ["Fraction moved to another subcatchment", "fraction"],
+  ];
+  return (
+    <div className="table-form column">
+      <Grid columns={SURFACES.map(([, l]) => l)} rowLabels={params} rows={grid} fixedRows onChange={setGrid} />
+      <span className="muted">Last row: the plowable fraction of the impervious area for the plowable surface, the depth of full cover for the others.</span>
+      <h4>Snow removal from the plowable area</h4>
+      <Params
+        rows={[
+          ...paramRows(removal, t.removal, (r) => set({ ...t, removal: r })),
+          { label: "Receiving subcatchment", value: t.subcatchment, placeholder: "none", set: (v) => set({ ...t, subcatchment: v }) },
+        ]}
+      />
     </div>
   );
 }

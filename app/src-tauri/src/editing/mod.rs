@@ -57,6 +57,8 @@ fn table_word(k: RefKind) -> &'static str {
         RefKind::Pattern => "pattern",
         RefKind::Hydrograph => "unit hydrograph",
         RefKind::Transect => "transect",
+        RefKind::Aquifer => "aquifer",
+        RefKind::Snowpack => "snow pack",
         _ => "object",
     }
 }
@@ -68,6 +70,8 @@ fn table_prefix(k: RefKind) -> &'static str {
         RefKind::Pattern => "Pat",
         RefKind::Hydrograph => "UH",
         RefKind::Transect => "Tr",
+        RefKind::Aquifer => "Aquifer",
+        RefKind::Snowpack => "Snow",
         _ => "X",
     }
 }

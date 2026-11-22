@@ -2,7 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::schema::RefKind;
+use crate::schema::{table_fields, RefKind};
+
+/// Default values of the parameters of an aquifer or of a snow pack surface.
+pub(crate) fn defaults(kind: RefKind, surface: &str) -> Vec<String> {
+    table_fields(kind, surface).iter().map(|d| d.default.to_string()).collect()
+}
 
 pub const CURVE_TYPES: &[&str] = &[
     "STORAGE",
@@ -95,6 +100,33 @@ pub struct Transect {
     pub points: Vec<[String; 2]>,
 }
 
+/// An aquifer (`[AQUIFERS]`): its twelve parameters in file order (porosity, wilting
+/// point, field capacity, conductivity, conductivity slope, tension slope, upper
+/// evaporation fraction, lower evaporation depth, loss rate, bottom elevation, water
+/// table elevation, unsaturated zone moisture) and an optional evaporation pattern.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Aquifer {
+    pub name: String,
+    pub values: Vec<String>,
+    pub pattern: String,
+}
+
+/// A snow pack (`[SNOWPACKS]`): the seven parameters of each surface (melt coefficients,
+/// base temperature, free water capacity, initial depths, then the plowable fraction or
+/// the depth for full cover), and the snow removal parameters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Snowpack {
+    pub name: String,
+    pub plowable: Vec<String>,
+    pub impervious: Vec<String>,
+    pub pervious: Vec<String>,
+    /// Depth at which removal begins, then the fractions moved out of the watershed, to the
+    /// impervious area, to the pervious area, converted to melt, moved to a subcatchment.
+    pub removal: Vec<String>,
+    /// Subcatchment receiving plowed snow (may be empty).
+    pub subcatchment: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Table {
@@ -103,6 +135,8 @@ pub enum Table {
     Pattern(Pattern),
     Hydrograph(Hydrograph),
     Transect(Transect),
+    Aquifer(Aquifer),
+    Snowpack(Snowpack),
 }
 
 impl Table {
@@ -113,6 +147,8 @@ impl Table {
             Table::Pattern(p) => &p.name,
             Table::Hydrograph(h) => &h.name,
             Table::Transect(t) => &t.name,
+            Table::Aquifer(a) => &a.name,
+            Table::Snowpack(s) => &s.name,
         }
     }
 
@@ -123,6 +159,8 @@ impl Table {
             Table::Pattern(_) => RefKind::Pattern,
             Table::Hydrograph(_) => RefKind::Hydrograph,
             Table::Transect(_) => RefKind::Transect,
+            Table::Aquifer(_) => RefKind::Aquifer,
+            Table::Snowpack(_) => RefKind::Snowpack,
         }
     }
 
@@ -163,6 +201,19 @@ impl Table {
                 wfactor: "0".into(),
                 eoffset: "0".into(),
                 points: Vec::new(),
+            }),
+            RefKind::Aquifer => Table::Aquifer(Aquifer {
+                name: n,
+                values: defaults(RefKind::Aquifer, "").into_iter().take(12).collect(),
+                pattern: String::new(),
+            }),
+            RefKind::Snowpack => Table::Snowpack(Snowpack {
+                name: n,
+                plowable: defaults(RefKind::Snowpack, "PLOWABLE"),
+                impervious: defaults(RefKind::Snowpack, "IMPERVIOUS"),
+                pervious: defaults(RefKind::Snowpack, "PERVIOUS"),
+                removal: defaults(RefKind::Snowpack, "REMOVAL").into_iter().take(6).collect(),
+                subcatchment: String::new(),
             }),
             _ => return None,
         })
