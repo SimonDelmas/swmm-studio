@@ -135,6 +135,14 @@ export interface ModelInfo {
 }
 
 /** Unsaved changes of a model, autosaved by a session that ended without saving. */
+/** The model or the loaded results changed on disk by another program. */
+export interface FileChange {
+  kind: "model" | "results";
+  path: string;
+  /** False: the file was deleted or renamed. */
+  exists: boolean;
+}
+
 export interface RecoveryInfo {
   model: string;
   /** Local time, `YYYY-MM-DD HH:MM:SS`. */

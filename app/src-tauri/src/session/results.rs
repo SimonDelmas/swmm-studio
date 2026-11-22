@@ -31,6 +31,8 @@ pub struct LoadedResults {
     to_out: [Vec<u32>; 3],
     matched: [usize; 3],
     pub cache: CacheState,
+    /// The file as it was opened, to see it changed by another program.
+    pub(crate) watch: crate::watch::Watch,
 }
 
 /// Kind of the network objects an element kind of the results stands for (none for the system).
@@ -308,6 +310,7 @@ fn match_results(meta: &swmm_out::OutMeta, net: &Network) -> ([Vec<u32>; 3], [us
 impl LoadedResults {
     /// Opens a results file and matches its objects with the network.
     pub(crate) fn open(path: &Path, net: &Network) -> Res<LoadedResults> {
+        let watch = crate::watch::Watch::new(path);
         let results = Results::open(path).map_err(err)?;
         let meta = results.meta();
         let (to_out, matched) = match_results(meta, net);
@@ -319,7 +322,7 @@ impl LoadedResults {
         // Without a cache the caller starts the background build (of the periods written,
         // for a run that did not finish).
         let cache = if results.cache().is_some() { CacheState::Ready } else { CacheState::Building { progress: 0.0 } };
-        Ok(LoadedResults { path: path.to_path_buf(), results, to_out, matched, cache })
+        Ok(LoadedResults { path: path.to_path_buf(), results, to_out, matched, cache, watch })
     }
 
     pub(crate) fn info(&self) -> ResultsInfo {

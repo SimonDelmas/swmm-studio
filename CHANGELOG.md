@@ -21,6 +21,11 @@ All notable changes to SWMM Studio are recorded here. The format follows
   the others did not (not matching where, already at the value, no value to compute, no such
   field).
 
+- Files changed by other programs (#52): when the open model (`.inp`) or the loaded results
+  (`.out`) change on disk, the app offers to reload them, once per change. Reloading the model
+  says when it would discard unsaved changes; kept, a change is not offered again. Saving from
+  the app is not taken for a change. A deleted or renamed file is reported too.
+
 - Control rules editor (#35): in "Sections as text", `[CONTROLS]` is shown with line numbers
   and its syntax highlighted (RULE / IF / AND / OR / THEN / ELSE / PRIORITY, object types,
   names, comparisons, values, comments). The rules are checked as they are typed: clauses out
