@@ -32,7 +32,7 @@ A Windows desktop application with a Rust core and a web front-end (Tauri) to **
 
 ### Non-goals (v1)
 - Reimplementing the SWMM solver.
-- Editors for water quality (pollutants, land uses, buildup/washoff, treatment), LID, snowmelt and groundwater. These sections are **preserved** on save and visible as raw text. Snowmelt and groundwater editors are planned after v1.
+- Editors for water quality (pollutants, land uses, buildup/washoff, treatment), LID. These sections are **preserved** on save and visible as raw text. (Snow pack and groundwater editors came after v1, F-EDIT-5b.)
 - Full GIS application, 3D, multi-user, macOS/Linux.
 
 ---

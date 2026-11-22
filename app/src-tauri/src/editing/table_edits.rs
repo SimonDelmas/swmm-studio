@@ -1,4 +1,5 @@
-//! Edits of curves, time series, patterns, unit hydrographs, transects and RDII.
+//! Edits of curves, time series, patterns, unit hydrographs, transects, aquifers, snow
+//! packs and RDII.
 
 use swmm_model::ops;
 use swmm_model::schema::RefKind;
@@ -31,7 +32,15 @@ impl Session {
             .map(|n| format!("{prefix}{n}"))
             .find(|n| !used.contains(&n.to_ascii_uppercase()))
             .expect("an unbounded range of names");
-        let table = Table::empty(kind, &name).ok_or("not a table")?;
+        let mut table = Table::empty(kind, &name).ok_or("not a table")?;
+        // Snow melts from 0 °C (the default of 32 is in °F).
+        if let Table::Snowpack(p) = &mut table {
+            if self.inp.flow_units().is_metric() {
+                for v in [&mut p.plowable, &mut p.impervious, &mut p.pervious] {
+                    v[2] = "0.0".into();
+                }
+            }
+        }
         let label = format!("Add {} {name}", table_word(kind));
         let a = self.history.edit(&mut self.inp, label, |tx| tables::write(tx, &table))?;
         Ok(Effect::from(a).created(name))

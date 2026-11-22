@@ -160,7 +160,8 @@ export type RefKind =
   | "hydrograph"
   | "transect"
   | "street"
-  | "snowpack";
+  | "snowpack"
+  | "aquifer";
 
 export type FieldType =
   | { type: "id" }
@@ -331,7 +332,7 @@ export interface DeletePlan {
   rules: number;
 }
 
-export type TableKind = "curve" | "timeseries" | "pattern" | "hydrograph" | "transect";
+export type TableKind = "curve" | "timeseries" | "pattern" | "hydrograph" | "transect" | "aquifer" | "snowpack";
 
 export interface Curve {
   kind: "curve";
@@ -385,7 +386,24 @@ export interface Transect {
   eoffset: string;
   points: [string, string][];
 }
-export type Table = Curve | Timeseries | Pattern | Hydrograph | Transect;
+/** Twelve parameters in file order, and an optional evaporation pattern. */
+export interface Aquifer {
+  kind: "aquifer";
+  name: string;
+  values: string[];
+  pattern: string;
+}
+/** Seven parameters per surface, six snow removal values and a receiving subcatchment. */
+export interface Snowpack {
+  kind: "snowpack";
+  name: string;
+  plowable: string[];
+  impervious: string[];
+  pervious: string[];
+  removal: string[];
+  subcatchment: string;
+}
+export type Table = Curve | Timeseries | Pattern | Hydrograph | Transect | Aquifer | Snowpack;
 
 export interface OptionsDto {
   values: [string, string][];

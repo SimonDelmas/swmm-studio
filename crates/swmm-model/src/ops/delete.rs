@@ -129,8 +129,11 @@ pub fn delete(tx: &mut Tx, net: &Network, objects: &[ObjRef]) -> EditResult<Dele
         let mut tokens: Vec<Option<String>> = line.tokens().map(|t| Some(t.to_string())).collect();
         for r in &rs {
             let last = r.token + 1 == tokens.len();
-            let optional_tail =
-                last && matches!(kind, SectionKind::Outfalls | SectionKind::Labels | SectionKind::Groundwater);
+            let optional_tail = last
+                && matches!(
+                    kind,
+                    SectionKind::Outfalls | SectionKind::Labels | SectionKind::Groundwater | SectionKind::Snowpacks
+                );
             if r.role == Role::List || optional_tail {
                 tokens[r.token] = None;
             } else {

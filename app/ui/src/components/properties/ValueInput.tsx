@@ -6,7 +6,7 @@ import type { Field, ObjKind, RefKind } from "../../types";
 import { useNames } from "../../hooks/useNames";
 
 /** Kinds whose names are offered in a list (the network kinds can be far too many). */
-export const LISTED: RefKind[] = ["gage", "curve", "timeseries", "pattern", "hydrograph", "transect", "street", "snowpack"];
+export const LISTED: RefKind[] = ["gage", "curve", "timeseries", "pattern", "hydrograph", "transect", "street", "snowpack", "aquifer"];
 
 /** Reference kinds naming objects of the network (an outlet is a node or a subcatchment). */
 export const OBJECT_REF: Partial<Record<RefKind, ObjKind | null>> = { node: "node", link: "link", subcatchment: "subcatchment", gage: "gage", outlet: null };

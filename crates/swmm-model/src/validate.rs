@@ -75,7 +75,9 @@ fn owner(kind: &SectionKind) -> Option<ObjKind> {
         S::Conduits | S::Pumps | S::Orifices | S::Weirs | S::Outlets | S::Xsections | S::Losses | S::Vertices => {
             Some(ObjKind::Link)
         }
-        S::Subcatchments | S::Subareas | S::Infiltration | S::Polygons => Some(ObjKind::Subcatchment),
+        S::Subcatchments | S::Subareas | S::Infiltration | S::Polygons | S::Groundwater | S::Gwf => {
+            Some(ObjKind::Subcatchment)
+        }
         S::Raingages | S::Symbols => Some(ObjKind::Gage),
         _ => None,
     }
@@ -95,6 +97,7 @@ fn ref_word(k: RefKind) -> &'static str {
         RefKind::Transect => "transect",
         RefKind::Street => "street",
         RefKind::Snowpack => "snow pack",
+        RefKind::Aquifer => "aquifer",
     }
 }
 
@@ -433,6 +436,7 @@ fn needs_target(kind: &SectionKind, key: &str) -> bool {
             "from" | "to"
         ) | (SectionKind::Rdii, "uh")
             | (SectionKind::Raingages, "ts")
+            | (SectionKind::Groundwater, "aquifer" | "node")
     )
 }
 

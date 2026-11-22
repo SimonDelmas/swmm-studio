@@ -11,6 +11,8 @@ const KINDS: [TableKind, string][] = [
   ["timeseries", "Time series"],
   ["pattern", "Time patterns"],
   ["transect", "Transects"],
+  ["aquifer", "Aquifers"],
+  ["snowpack", "Snow packs"],
 ];
 
 function Category({ kind, title }: { kind: TableKind; title: string }) {
@@ -65,7 +67,7 @@ export function DataPanel() {
         <button onClick={() => setState({ dialog: "climate" })} title="Evaporation, temperature, wind speed, snowmelt, areal depletion, monthly adjustments">
           Climatology…
         </button>
-        <button onClick={() => setState({ dialog: "sections" })} title="Raw text of any section (water quality, LID, groundwater…)">
+        <button onClick={() => setState({ dialog: "sections" })} title="Raw text of any section (water quality, LID…)">
           Sections as text…
         </button>
         <button onClick={() => setState({ bottomTab: "table" })} title="Edit the objects of a section in a table">

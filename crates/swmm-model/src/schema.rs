@@ -29,6 +29,10 @@ pub enum Unit {
     PerHour,
     Percent,
     Fraction,
+    /// °F or °C.
+    Temperature,
+    /// Snowmelt coefficient: in/hr/°F or mm/hr/°C.
+    MeltRate,
 }
 
 impl Unit {
@@ -77,6 +81,20 @@ impl Unit {
             Unit::PerHour => "1/hr",
             Unit::Percent => "%",
             Unit::Fraction => "fraction",
+            Unit::Temperature => {
+                if si {
+                    "°C"
+                } else {
+                    "°F"
+                }
+            }
+            Unit::MeltRate => {
+                if si {
+                    "mm/hr/°C"
+                } else {
+                    "in/hr/°F"
+                }
+            }
         }
     }
 }
@@ -98,6 +116,7 @@ pub enum RefKind {
     Transect,
     Street,
     Snowpack,
+    Aquifer,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -209,6 +228,84 @@ pub const XSECTION_SHAPES: &[&str] = &[
     "IRREGULAR",
     "STREET",
 ];
+pub const GWF_TYPES: &[&str] = &["LATERAL", "DEEP"];
+pub const SNOWPACK_SURFACES: &[&str] = &["PLOWABLE", "IMPERVIOUS", "PERVIOUS", "REMOVAL"];
+
+/// Fields of an `[AQUIFERS]` line after the name (SWMM 5.2).
+fn aquifer_fields() -> Vec<FieldDef> {
+    use Unit as U;
+    let mut v = required(
+        vec![
+            num("por", "Porosity", U::Fraction, "0.5"),
+            num("wp", "Wilting point", U::Fraction, "0.15"),
+            num("fc", "Field capacity", U::Fraction, "0.30"),
+            num("ksat", "Conductivity", U::Rate, "5.0"),
+            num("kslope", "Conductivity slope", U::None, "10.0"),
+            num("tslope", "Tension slope", U::None, "15.0"),
+            num("etu", "Upper evaporation fraction", U::Fraction, "0.35"),
+            num("ets", "Lower evaporation depth", U::Length, "14.0"),
+            num("seep", "Lower groundwater loss rate", U::Rate, "0.002"),
+            signed("ebot", "Bottom elevation", U::Length, "0.0"),
+            signed("egw", "Water table elevation", U::Length, "10.0"),
+            num("umc", "Unsaturated zone moisture", U::Fraction, "0.30"),
+        ],
+        12,
+    );
+    v.push(refer("epat", "Evaporation pattern", RefKind::Pattern, ""));
+    v
+}
+
+/// Parameters of a snow pack line, by surface (after the name and the surface keyword).
+fn snowpack_fields(surface: &str) -> Vec<FieldDef> {
+    use Unit as U;
+    if surface == "REMOVAL" {
+        let mut v = required(
+            vec![
+                num("dplow", "Depth at which removal begins", U::Depth, "1.0"),
+                num("fout", "Fraction moved out of the watershed", U::Fraction, "0.0"),
+                num("fimp", "Fraction moved to impervious area", U::Fraction, "0.0"),
+                num("fperv", "Fraction moved to pervious area", U::Fraction, "0.0"),
+                num("fimelt", "Fraction converted to melt", U::Fraction, "0.0"),
+            ],
+            5,
+        );
+        v.push(num("fsub", "Fraction moved to another subcatchment", U::Fraction, "0.0"));
+        v.push(refer("scatch", "Receiving subcatchment", RefKind::Subcatchment, ""));
+        return v;
+    }
+    let last = if surface == "PLOWABLE" {
+        num("snn0", "Fraction of impervious area plowable", U::Fraction, "0.0")
+    } else {
+        num("sd100", "Depth for 100% cover", U::Depth, "0.0")
+    };
+    required(
+        vec![
+            num("cmin", "Min melt coefficient", U::MeltRate, "0.001"),
+            num("cmax", "Max melt coefficient", U::MeltRate, "0.001"),
+            signed("tbase", "Base temperature", U::Temperature, "32.0"),
+            num("fwf", "Free water capacity", U::Fraction, "0.10"),
+            num("sd0", "Initial snow depth", U::Depth, "0.0"),
+            num("fw0", "Initial free water", U::Depth, "0.0"),
+            last,
+        ],
+        7,
+    )
+}
+
+/// Public view of the fields of an aquifer or of a snow pack surface, for the editors.
+pub fn table_fields(kind: RefKind, surface: &str) -> Vec<FieldDef> {
+    match kind {
+        RefKind::Aquifer => aquifer_fields(),
+        RefKind::Snowpack => snowpack_fields(surface),
+        _ => Vec::new(),
+    }
+}
+
+/// Number with `*` (use the default) accepted.
+fn star(key: &'static str, name: &'static str, unit: Unit) -> FieldDef {
+    f(key, name, FieldType::Real, unit, "*")
+}
+
 pub const INFILTRATION_METHODS: &[&str] =
     &["HORTON", "MODIFIED_HORTON", "GREEN_AMPT", "MODIFIED_GREEN_AMPT", "CURVE_NUMBER"];
 
@@ -601,6 +698,51 @@ pub fn layout(kind: &SectionKind, t: &[&str], ctx: &Context) -> Option<Vec<Field
             ],
             3,
         ),
+        SectionKind::Aquifers => {
+            let mut v = vec![id("Name")];
+            v.extend(aquifer_fields());
+            v
+        }
+        SectionKind::Snowpacks => {
+            let surface = if up(1).is_empty() { "PLOWABLE".to_string() } else { up(1) };
+            let mut v = vec![id("Name"), req(choice("surface", "Surface", SNOWPACK_SURFACES, "PLOWABLE"))];
+            v.extend(snowpack_fields(&surface));
+            v
+        }
+        SectionKind::Groundwater => {
+            let mut v = required(
+                vec![
+                    FieldDef {
+                        required: true,
+                        ..f("id", "Subcatchment", FieldType::Ref { to: R::Subcatchment }, U::None, "")
+                    },
+                    refer("aquifer", "Aquifer", R::Aquifer, "*"),
+                    refer("node", "Receiving node", R::Node, "*"),
+                    signed("esurf", "Surface elevation", U::Length, "0"),
+                    signed("a1", "Groundwater flow coefficient (A1)", U::None, "0"),
+                    signed("b1", "Groundwater flow exponent (B1)", U::None, "0"),
+                    signed("a2", "Surface water flow coefficient (A2)", U::None, "0"),
+                    signed("b2", "Surface water flow exponent (B2)", U::None, "0"),
+                    signed("a3", "Interaction coefficient (A3)", U::None, "0"),
+                    num("dsw", "Fixed surface water depth", U::Length, "0"),
+                ],
+                10,
+            );
+            v.extend([
+                star("egwt", "Threshold water table elevation", U::Length),
+                star("ebot", "Aquifer bottom elevation", U::Length),
+                star("wgr", "Initial water table elevation", U::Length),
+                FieldDef { min: Some(0.0), ..star("umc", "Initial unsaturated zone moisture", U::Fraction) },
+            ]);
+            v
+        }
+        // SWMM 5.1 lines without the LATERAL / DEEP keyword are left as they are.
+        SectionKind::Gwf if !up(1).is_empty() && !GWF_TYPES.contains(&up(1).as_str()) => return None,
+        SectionKind::Gwf => vec![
+            FieldDef { required: true, ..f("id", "Subcatchment", FieldType::Ref { to: R::Subcatchment }, U::None, "") },
+            req(choice("type", "Flow", GWF_TYPES, "LATERAL")),
+            req(text("expr", "Expression", "0")),
+        ],
         SectionKind::Coordinates | SectionKind::Symbols => required(
             vec![
                 FieldDef { required: true, ..f("id", "Name", FieldType::Ref { to: R::Node }, U::None, "") },
@@ -618,7 +760,7 @@ pub fn layout(kind: &SectionKind, t: &[&str], ctx: &Context) -> Option<Vec<Field
 /// constituent for inflows).
 pub fn key_len(kind: &SectionKind) -> usize {
     match kind {
-        SectionKind::Inflows | SectionKind::Dwf | SectionKind::Tags => 2,
+        SectionKind::Inflows | SectionKind::Dwf | SectionKind::Tags | SectionKind::Gwf => 2,
         _ => 1,
     }
 }
@@ -647,6 +789,7 @@ pub fn validate(def: &FieldDef, value: &str) -> Result<String, String> {
         };
     }
     match &def.ty {
+        FieldType::Real if v == "*" && def.default == "*" => Ok(v.to_string()),
         FieldType::Real => {
             let x: f64 = v.parse().map_err(|_| format!("{}: {v:?} is not a number", def.name))?;
             if !x.is_finite() {
@@ -713,7 +856,7 @@ pub fn new_line_tokens(kind: &SectionKind, key: &[&str], ctx: &Context) -> Optio
     for (i, d) in defs.iter().enumerate() {
         if i < key.len() {
             t.push(key[i].to_string());
-        } else if !d.default.is_empty() {
+        } else if !d.default.is_empty() && (d.required || *kind != SectionKind::Groundwater) {
             t.push(d.default.to_string());
         } else {
             break;
@@ -729,6 +872,15 @@ pub fn new_line_tokens(kind: &SectionKind, key: &[&str], ctx: &Context) -> Optio
 /// left out at the end of the line.
 pub fn set_field(kind: &SectionKind, tokens: &[&str], index: usize, value: &str, ctx: &Context) -> Option<Vec<String>> {
     let old = layout(kind, tokens, ctx)?;
+    // A groundwater flow expression spans the rest of the line.
+    if *kind == SectionKind::Gwf && index == 2 {
+        let mut t: Vec<String> = tokens.iter().take(2).map(|s| s.to_string()).collect();
+        while t.len() < 2 {
+            t.push(old[t.len()].default.to_string());
+        }
+        t.extend(value.split_whitespace().map(str::to_string));
+        return Some(t);
+    }
     // A trailing infiltration method (SWMM 5.2) stays last.
     let (body, method) = split_method(kind, tokens);
     let method = method.map(str::to_string);

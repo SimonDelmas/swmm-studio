@@ -1,4 +1,4 @@
-// Editors of curves, time series, time patterns, unit hydrographs and transects.
+// Editors of curves, time series, time patterns, unit hydrographs, transects, aquifers and snow packs.
 
 import { useEffect, useState } from "react";
 import { api, errorText } from "../api";
@@ -6,7 +6,7 @@ import { tryEdit } from "../actions/edit";
 import { setState, useStore } from "../store";
 import type { Table } from "../types";
 import { Modal } from "./Modal";
-import { CurveForm, HydrographForm, PatternForm, TimeseriesForm, TransectForm } from "./tables/forms";
+import { AquiferForm, CurveForm, HydrographForm, PatternForm, SnowpackForm, TimeseriesForm, TransectForm } from "./tables/forms";
 import { latest } from "../latest";
 
 const TITLES: Record<Table["kind"], string> = {
@@ -15,6 +15,8 @@ const TITLES: Record<Table["kind"], string> = {
   pattern: "Time pattern",
   hydrograph: "Unit hydrograph",
   transect: "Transect",
+  aquifer: "Aquifer",
+  snowpack: "Snow pack",
 };
 
 export function TableEditor() {
@@ -86,6 +88,8 @@ export function TableEditor() {
         {table?.kind === "pattern" && <PatternForm t={table} set={set} />}
         {table?.kind === "hydrograph" && <HydrographForm t={table} set={set} />}
         {table?.kind === "transect" && <TransectForm t={table} set={set} />}
+        {table?.kind === "aquifer" && <AquiferForm t={table} set={set} />}
+        {table?.kind === "snowpack" && <SnowpackForm t={table} set={set} />}
         {error && <div className="panel-error">{error}</div>}
         <div className="row end">
           <button className="primary" onClick={() => apply(true)} disabled={!table}>
