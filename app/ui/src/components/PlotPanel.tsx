@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { addToPlot } from "../plot/series";
 import { savePlotView } from "../plot/savedViews";
 import { updatePlotView } from "../actions/views";
@@ -8,6 +8,8 @@ import type { Calendar } from "../analysisTypes";
 import type { ElementKind } from "../types";
 import { NumberInput } from "./CommitInput";
 import { PlotGraph } from "./PlotGraph";
+import { fromInputValue, toInputValue } from "../format";
+import { setZoom, shownRange, zoomBack, zoomBy, zoomForward } from "../plot/zoom";
 
 /** A time series tab: graphs stacked on one time axis. */
 export function PlotPanel({ view }: { view: PlotView }) {
@@ -112,7 +114,7 @@ export function PlotPanel({ view }: { view: PlotView }) {
           />
         )}
         <span className="grow" />
-        {view.zoom && <button onClick={() => updatePlotView(view.id, { zoom: null })}>Whole run</button>}
+        <ZoomControls view={view} />
         <input
           className="narrow-name"
           disabled={empty}
@@ -128,7 +130,9 @@ export function PlotPanel({ view }: { view: PlotView }) {
       {empty && (
         <div className="panel-empty">
           Select objects and click “Add selected”, add a system series, or drag a result from the properties panel onto a graph; “to a new
-          graph” stacks a new graph in the view. Drag to zoom (all the graphs of the view), double-click to reset. “Save” keeps the view in the
+          graph” stacks a new graph in the view. Drag to zoom (all the graphs of the view), turn the wheel to zoom
+          around the pointer, Shift+drag or right-drag to pan, double-click for the whole run; ◀ ▶ (or the mouse back / forward buttons) go
+          through the previous zooms, and the dates set the range shown exactly. “Save” keeps the view in the
           project. “per day / month / year” plots daily, monthly or yearly statistics.
         </div>
       )}
@@ -144,5 +148,67 @@ export function PlotPanel({ view }: { view: PlotView }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** Zoom of a view: previous / next zoom, in / out, the whole run, and the range shown typed exactly. */
+function ZoomControls({ view }: { view: PlotView }) {
+  const results = useStore((s) => s.model?.results ?? null);
+  if (!results) return null;
+  const [a, b] = shownRange(results, view);
+  const back = view.zoomBack?.length ?? 0;
+  const fwd = view.zoomForward?.length ?? 0;
+  const setEnd = (i: 0 | 1, ms: number) => {
+    const z: [number, number] = [a, b];
+    z[i] = ms / 1000;
+    if (z[1] > z[0]) setZoom(view.id, z);
+  };
+  return (
+    <span className="plot-zoom">
+      <button disabled={back === 0} title="Previous zoom (mouse back button)" onClick={() => zoomBack(view.id)}>
+        ◀
+      </button>
+      <button disabled={fwd === 0} title="Next zoom (mouse forward button)" onClick={() => zoomForward(view.id)}>
+        ▶
+      </button>
+      <button title="Zoom in (or turn the wheel on a graph)" onClick={() => zoomBy(view.id, 0.5)}>
+        +
+      </button>
+      <button disabled={!view.zoom} title="Zoom out" onClick={() => zoomBy(view.id, 2)}>
+        −
+      </button>
+      <button disabled={!view.zoom} title="Show the whole run (or double-click a graph)" onClick={() => setZoom(view.id, null)}>
+        Whole run
+      </button>
+      <TimeInput title="Start of the range shown" ms={a * 1000} onCommit={(ms) => setEnd(0, ms)} />
+      –
+      <TimeInput title="End of the range shown" ms={b * 1000} onCommit={(ms) => setEnd(1, ms)} />
+    </span>
+  );
+}
+
+/** A date and time, applied when it is left or on Enter (not at each digit typed). */
+function TimeInput({ ms, title, onCommit }: { ms: number; title: string; onCommit: (ms: number) => void }) {
+  const shown = toInputValue(ms);
+  const [text, setText] = useState(shown);
+  useEffect(() => setText(shown), [shown]);
+  const commit = () => {
+    const t = fromInputValue(text);
+    if (t !== null && text !== shown) onCommit(t);
+    else setText(shown);
+  };
+  return (
+    <input
+      type="datetime-local"
+      title={title}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") setText(shown);
+        e.stopPropagation();
+      }}
+    />
   );
 }

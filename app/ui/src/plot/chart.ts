@@ -1,13 +1,13 @@
 // The uPlot chart of a graph: its axes, its series and what the pointer does on it.
 
 import uPlot from "uplot";
-import { updatePlotView } from "../actions/views";
 import { formatDateTime, periodMs } from "../format";
 import { cssVar } from "../hooks/useSize";
 import { getState } from "../store";
 import type { PlotView } from "../uiTypes";
-import { drawnIds, runDash, zoomPeriods, type Built } from "./data";
+import { drawnIds, runDash, type Built } from "./data";
 import { COLORS } from "./series";
+import { setZoom } from "./zoom";
 
 /** Time axis labels in the model clock (UTC), 24 h. */
 function timeLabels(_u: uPlot, splits: number[], _ax: number, _space: number, incr: number): string[] {
@@ -49,6 +49,9 @@ export function chartOptions(built: Built, units: string[], size: { w: number; h
     tzDate: (ts) => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC"),
     cursor: {
       drag: { x: true, y: false },
+      // Only a plain left drag selects a range to zoom to: Shift+drag and the other buttons
+      // pan the view (PlotGraph).
+      bind: { mousedown: (_u, _t, handler) => (e) => (e.shiftKey || e.button !== 0 ? null : handler(e)) },
       // Share the cursor with the other graphs of the view, not the drag selection.
       sync: { key: syncKey, setSeries: false, filters: { pub: (type) => type !== "mousedown" && type !== "mouseup" } },
     },
@@ -134,12 +137,8 @@ export function chartOptions(built: Built, units: string[], size: { w: number; h
           const a = u.posToVal(u.select.left, "x");
           const b = u.posToVal(u.select.left + u.select.width, "x");
           u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-          const v = live.view();
-          if (!v.agg) {
-            const [p0, p1] = zoomPeriods(r, [a, b]);
-            if (p1 - p0 < 2) return;
-          }
-          updatePlotView(v.id, { zoom: [a, b] });
+          // Kept at least 2 time steps wide.
+          setZoom(live.view().id, [a, b]);
         },
       ],
     },
