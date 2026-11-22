@@ -33,6 +33,33 @@ impl Session {
         Ok(Effect::from(a).message(message))
     }
 
+    /// `target = value [where condition]` on objects of one kind, as one edit.
+    pub(super) fn bulk_expression(
+        &mut self,
+        objects: &[ObjRef],
+        statement: &str,
+        period: Option<usize>,
+    ) -> Res<Effect> {
+        let plan = self.bulk_plan(objects, statement, period)?;
+        let word = plan.kind.name();
+        let label = format!("Set {} on {} {word}s", plan.target, plan.values.len());
+        let a = self
+            .history
+            .edit(&mut self.inp, label, |tx| ops::set_field_values(tx, plan.kind, &plan.key, &plan.values))?;
+        let c = a.value;
+        let mut message = format!("{} of {} {word}s changed", c.changed, plan.objects);
+        let notes = [
+            (plan.filtered, "not matching where"),
+            (c.unchanged, "already at that value"),
+            (plan.missing, "without a value to compute"),
+            (c.without_field, "without the field"),
+        ];
+        for (n, what) in notes.into_iter().filter(|(n, _)| *n > 0) {
+            message.push_str(&format!("; {n} {what}"));
+        }
+        Ok(Effect::from(a).message(message))
+    }
+
     pub(super) fn add_line(&mut self, section_name: &str, key: &[String]) -> Res<Effect> {
         let kind = section(section_name)?;
         let label = format!("Add [{}] to {}", kind.name(), first_key(key));

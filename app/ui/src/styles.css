@@ -970,6 +970,11 @@ tr.absent td:first-child {
   margin-top: 10px;
 }
 
+.bulk-expression {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Data panel */
 .data-panel {
   padding: 6px 10px;

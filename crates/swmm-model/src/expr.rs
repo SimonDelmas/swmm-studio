@@ -288,7 +288,7 @@ impl Parser {
                 }
                 Ok(e)
             }
-            Tok::Word(w) if ["and", "or", "not"].iter().any(|k| w.eq_ignore_ascii_case(k)) => {
+            Tok::Word(w) if ["and", "or", "not", "where"].iter().any(|k| w.eq_ignore_ascii_case(k)) => {
                 Err(ExprError::at(format!("a value is expected before {w:?}"), at))
             }
             Tok::Word(w) => {
@@ -320,6 +320,36 @@ pub fn parse(src: &str) -> Result<Expr, ExprError> {
     match p.peek() {
         Tok::End => Ok(e),
         _ => Err(ExprError::at("an operator (and, or, =, <…) is expected here", p.offset())),
+    }
+}
+
+/// A bulk edit: `diameter = diameter * 1.2 where slope < 0.005`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assignment {
+    /// Name of the field set.
+    pub target: String,
+    /// New value of each object.
+    pub value: Expr,
+    /// Only the objects matching this condition change.
+    pub filter: Option<Expr>,
+}
+
+/// Reads an assignment: `name = value`, optionally followed by `where condition`.
+pub fn parse_assignment(src: &str) -> Result<Assignment, ExprError> {
+    let mut p = Parser { toks: tokenize(src)?, pos: 0 };
+    let target = match p.next() {
+        Tok::End => return Err(ExprError::new("the expression is empty")),
+        Tok::Word(w) if !w.eq_ignore_ascii_case("where") => w,
+        _ => return Err(ExprError::at("the name of the value to set is expected first, like diameter = …", 0)),
+    };
+    if !p.eat("", &["=", "=="]) {
+        return Err(ExprError::at(format!("= is expected after {target}, like {target} = …"), p.offset()));
+    }
+    let value = p.or()?;
+    let filter = if p.eat("where", &[]) { Some(p.or()?) } else { None };
+    match p.peek() {
+        Tok::End => Ok(Assignment { target, value, filter }),
+        _ => Err(ExprError::at("an operator or where is expected here", p.offset())),
     }
 }
 
@@ -747,6 +777,27 @@ mod tests {
         assert_eq!(p.value(0), 11.0);
         assert_eq!(e.references(), vec![(None, "length")]);
         assert_eq!(parse("max(flow) > a").unwrap().references(), vec![(Some("max"), "flow"), (None, "a")]);
+    }
+
+    #[test]
+    fn assignments() {
+        let a = parse_assignment("diameter = diameter * 1.2 WHERE slope < 0.005").unwrap();
+        assert_eq!(a.target, "diameter");
+        assert_eq!(a.value, parse("diameter * 1.2").unwrap());
+        assert_eq!(a.filter, Some(parse("slope < 0.005").unwrap()));
+        let a = parse_assignment("shape = CIRCULAR").unwrap();
+        assert_eq!((a.value, a.filter), (Expr::Name("CIRCULAR".into()), None));
+        let a = parse_assignment("n = 0.013 where id = 'C*' or not (length > 10)").unwrap();
+        assert_eq!(a.filter, Some(parse("id = 'C*' or not (length > 10)").unwrap()));
+        let err = |s: &str| parse_assignment(s).unwrap_err().message;
+        assert!(err("").contains("empty"));
+        assert!(err("2 = 3").contains("name of the value"));
+        assert!(err("where = 3").contains("name of the value"));
+        assert!(err("diameter * 2").contains("= is expected"));
+        assert!(err("diameter = ").contains("not finished"));
+        assert!(err("diameter = 1 where").contains("not finished"));
+        assert!(err("diameter = where x > 1").contains("value is expected"));
+        assert!(err("diameter = 1 2").contains("operator or where"));
     }
 
     #[test]

@@ -8,6 +8,19 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Bulk edit with expressions (#47): with several objects selected, "Edit with an expression"
+  in the properties panel sets a field of the selected objects of one kind from an
+  expression, optionally restricted by a condition:
+  `diameter = diameter * 1.2 where slope < 0.005`. Fields are named as in queries and
+  thematic maps (diameter, roughness, length, invert_elevation, max_depth, area, width…) or
+  by key (n, off1, geom2, shape, nimp…), in whichever section holds them (`[XSECTIONS]`,
+  `[SUBAREAS]`, `[INFILTRATION]`…); the value and the condition use the names, result
+  variables and operators of Select by query, and a text can be set (`shape = RECT_CLOSED`).
+  Values are checked as in the property panel and written to 7 significant digits; the whole
+  change is one edit, reverted by one undo. The panel says how many objects changed and why
+  the others did not (not matching where, already at the value, no value to compute, no such
+  field).
+
 - Control rules editor (#35): in "Sections as text", `[CONTROLS]` is shown with line numbers
   and its syntax highlighted (RULE / IF / AND / OR / THEN / ELSE / PRIORITY, object types,
   names, comparisons, values, comments). The rules are checked as they are typed: clauses out
