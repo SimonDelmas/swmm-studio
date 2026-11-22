@@ -116,6 +116,9 @@ export interface PlotView {
   agg: PlotAgg | null;
   /** Zoomed time range in seconds (null: the whole run). */
   zoom: [number, number] | null;
+  /** Zooms to go back to (the last one first to go), and forward again (not saved). */
+  zoomBack?: ([number, number] | null)[];
+  zoomForward?: ([number, number] | null)[];
 }
 
 /** A tab of the bottom panel showing a longitudinal profile. */

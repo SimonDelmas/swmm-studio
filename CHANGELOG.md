@@ -8,6 +8,11 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Added
 
+- Time series zoom: the wheel zooms around the time under the pointer (Ctrl: finer),
+  Shift+wheel, Shift+drag or a right / middle drag pans, and the toolbar of the view has the
+  previous / next zoom (also the mouse back / forward buttons), zoom in / out, the whole run
+  and the start and end of the range shown, typed exactly. A zoom is at least 2 time steps
+  wide and stays within the run; a double-click (whole run) can be undone with "previous zoom".
 - Bulk edit with expressions (#47): with several objects selected, "Edit with an expression"
   in the properties panel sets a field of the selected objects of one kind from an
   expression, optionally restricted by a condition:

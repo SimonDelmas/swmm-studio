@@ -11,6 +11,7 @@ import { chartOptions } from "../plot/chart";
 import { graphSvg, graphTable } from "../plot/exportGraph";
 import { COLORS } from "../plot/series";
 import { updatePlotView } from "../actions/views";
+import { setZoom, zoomBack, zoomBy, zoomForward } from "../plot/zoom";
 import { getState, setState, useStore } from "../store";
 import type { PlotGraph as GraphDef, PlotSeries, PlotView } from "../uiTypes";
 
@@ -46,10 +47,11 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
   const active = view.target === graph.id;
   const name = `${view.name} – graph ${number}`;
 
-  // Aggregates are all fetched: their zoom only sets the x scale.
-  const applyAggZoom = (u: uPlot) => {
+  // The x scale is the zoom exactly (the data fetched covers whole periods around it, and
+  // aggregates are all fetched); set at once, before the data of the new zoom comes.
+  const applyZoom = (u: uPlot) => {
     const v = viewRef.current;
-    if (v.agg && v.zoom) u.setScale("x", { min: v.zoom[0], max: v.zoom[1] });
+    if (v.zoom) u.setScale("x", { min: v.zoom[0], max: v.zoom[1] });
   };
 
   // Without the cache a long run cannot be read whole: unzoomed, show the longest readable
@@ -113,7 +115,7 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
     const opts = chartOptions(built, units, size, `plot-view-${view.id}`, live);
     const u = new uPlot(opts, built.data, wrap.current);
     chart.current = u;
-    applyAggZoom(u);
+    applyZoom(u);
     // Click (without drag) sets the current time.
     let downX = 0;
     u.over.addEventListener("mousedown", (e) => (downX = e.clientX));
@@ -123,7 +125,58 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
       const s = u.posToVal(e.offsetX, "x");
       setState({ period: periodAt(r, s * 1000) });
     });
-    u.over.addEventListener("dblclick", () => updatePlotView(viewRef.current.id, { zoom: null }));
+    u.over.addEventListener("dblclick", () => setZoom(viewRef.current.id, null));
+    // Wheel: zoom around the time under the pointer; Shift+wheel or a horizontal wheel: pan.
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const id = viewRef.current.id;
+      const w = u.bbox.width / devicePixelRatio;
+      const pan = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      const sx = u.scales.x;
+      if (sx.min == null || sx.max == null || w <= 0) return;
+      const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? w : 1;
+      if (pan) {
+        const d = ((e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX) * unit * (sx.max - sx.min)) / w;
+        setZoom(id, [sx.min + d, sx.max + d], true);
+        return;
+      }
+      // About ×1.2 a notch; Ctrl: finer.
+      const factor = Math.min(4, Math.max(0.25, Math.pow(e.ctrlKey ? 1.0004 : 1.0018, e.deltaY * unit)));
+      zoomBy(id, factor, u.posToVal(e.offsetX, "x"), true);
+    };
+    u.over.addEventListener("wheel", wheel, { passive: false });
+    // Drag with the right or middle button, or Shift+drag: pan.
+    const panStart = (e: MouseEvent) => {
+      if (!(e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey))) return;
+      const sx = u.scales.x;
+      if (sx.min == null || sx.max == null) return;
+      e.preventDefault();
+      const [a, b] = [sx.min, sx.max];
+      const x0 = e.clientX;
+      const perPx = (b - a) / (u.bbox.width / devicePixelRatio);
+      const id = viewRef.current.id;
+      u.over.style.cursor = "grabbing";
+      const move = (m: MouseEvent) => {
+        const d = (x0 - m.clientX) * perPx;
+        if (Math.abs(m.clientX - x0) > 1) setZoom(id, [a + d, b + d], true);
+      };
+      const up = () => {
+        u.over.style.cursor = "";
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    };
+    u.over.addEventListener("mousedown", panStart);
+    u.over.addEventListener("contextmenu", (e) => e.preventDefault());
+    // The back and forward buttons of the mouse: previous / next zoom.
+    u.over.addEventListener("mouseup", (e) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (e.button === 3) zoomBack(viewRef.current.id);
+      else zoomForward(viewRef.current.id);
+    });
     return () => {
       u.destroy();
       chart.current = null;
@@ -134,14 +187,14 @@ export function PlotGraph({ view, graph, number, removable }: { view: PlotView; 
     const u = chart.current;
     if (!u || !built) return;
     u.setData(built.data, true);
-    applyAggZoom(u);
+    applyZoom(u);
   }, [built]);
 
   useEffect(() => {
     const u = chart.current;
-    if (!u || !agg) return;
-    if (zoom) applyAggZoom(u);
-    else u.setData(u.data, true);
+    if (!u) return;
+    if (zoom) applyZoom(u);
+    else if (agg) u.setData(u.data, true);
   }, [zoom]);
 
   useEffect(() => {

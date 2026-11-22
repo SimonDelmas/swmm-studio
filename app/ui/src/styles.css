@@ -467,6 +467,15 @@ label {
   margin-top: 4px;
   font-size: 11px;
 }
+/* Time series: the zoom controls of the view. */
+.plot-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.plot-zoom input[type="datetime-local"] {
+  width: 11.5em;
+}
 /* Time series: the graphs of the view stacked. */
 .plot-graphs {
   flex: 1;
