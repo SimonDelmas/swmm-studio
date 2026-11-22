@@ -3,7 +3,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { Issue, ProfileDto, RunDto } from "./analysisTypes";
-import type { DeletePlan, Geometry, ModelInfo, ObjKind, ObjRef, TableKind } from "./types";
+import type { DeletePlan, FileChange, Geometry, ModelInfo, ObjKind, ObjRef, TableKind } from "./types";
 import { defaultStyle, styleUsable, type BottomTab, type CompareView, type Dialog, type LayerStyle, type PlotView, type ProfileView, type ReportTabView, type RunState, type SimView, type StyledKind, type Tool, type XYView } from "./uiTypes";
 
 export interface State {
@@ -73,6 +73,8 @@ export interface State {
   tableEditor: { kind: TableKind; name: string } | null;
   /** Deletion waiting for confirmation. */
   pendingDelete: { objects: ObjRef[]; plan: DeletePlan } | null;
+  /** Files of the model changed by other programs, to reload or keep (one per kind). */
+  fileChanges: FileChange[];
   run: RunState;
   /** Engine a run would use (null: none configured). */
   engine: string | null;
@@ -128,6 +130,7 @@ const initial: State = {
   sectionsAt: null,
   tableEditor: null,
   pendingDelete: null,
+  fileChanges: [],
   run: { running: false, dir: null, progress: null, elapsed: 0, log: [], last: null },
   engine: null,
   sideTab: "props",
@@ -189,6 +192,8 @@ export function resetForModel(model: ModelInfo, geometry: Geometry | null) {
     dialog: null,
     tableEditor: null,
     pendingDelete: null,
+    // Read from disk just now.
+    fileChanges: [],
   });
 }
 

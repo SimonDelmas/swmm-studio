@@ -6,6 +6,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { CrsDialog } from "./components/CrsDialog";
 import { DataPanel } from "./components/DataPanel";
 import { DeleteDialog } from "./components/DeleteDialog";
+import { FileChangedDialog } from "./components/FileChangedDialog";
 import { NewModelDialog } from "./components/NewModelDialog";
 import { OptionsDialog } from "./components/OptionsDialog";
 import { PropertiesPanel } from "./components/PropertiesPanel";
@@ -124,6 +125,7 @@ export function App() {
       {dialog === "palette" && <CommandPalette />}
       <TableEditor />
       <DeleteDialog />
+      <FileChangedDialog />
     </div>
   );
 }

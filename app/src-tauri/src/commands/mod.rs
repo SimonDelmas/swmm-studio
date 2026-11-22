@@ -57,6 +57,15 @@ impl AppState {
         }
     }
 
+    /// The open model's files changed by other programs. Skipped while the model is in use
+    /// (looked at again on the next poll), not to hold up the commands.
+    pub fn poll_files(&self) -> Vec<crate::watch::FileChange> {
+        match self.session.try_write() {
+            Ok(mut g) => g.as_mut().map(Session::poll_files).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        }
+    }
+
     /// Closes the model (the app quits): its recovery file goes with it, the user
     /// already chose not to save.
     pub fn close(&self) {

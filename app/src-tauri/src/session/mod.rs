@@ -21,6 +21,7 @@ use swmm_rpt::Report;
 
 use crate::project::{Basemap, Project};
 use crate::recovery::{Autosave, RecoveryInfo};
+use crate::watch::{FileChange, Watch};
 
 pub(crate) use display::Display;
 pub use display::{GeometryPatch, Space};
@@ -133,6 +134,8 @@ pub struct Session {
     /// Autosave of unsaved changes to a recovery file (none until started, or when another
     /// app has the model open).
     pub(crate) autosave: Option<Autosave>,
+    /// The model file as it was read or saved, to see changes made by other programs.
+    pub(crate) inp_watch: Watch,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -142,6 +145,8 @@ fn mtime(p: &Path) -> Option<SystemTime> {
 impl Session {
     /// Opens a model and its project file, and loads linked (or most recent) results.
     pub fn open(path: &Path) -> Res<Session> {
+        // Before reading: a change made while it is read is a change.
+        let inp_watch = Watch::new(path);
         let inp = InpFile::read(path).map_err(|e| e.to_string())?;
         let net = Network::from_inp(&inp);
         let (project, project_error) = Project::load(path);
@@ -173,6 +178,7 @@ impl Session {
             revision: 0,
             observed_cache: Default::default(),
             autosave: None,
+            inp_watch,
         };
         let (out, rpt) = s.find_results();
         if let Some(out) = out {
@@ -354,6 +360,36 @@ impl Session {
             self.project.ui = ui;
         }
         self.save_project()
+    }
+
+    /// The model and the loaded results changed by other programs since they were read (or
+    /// since the user chose to keep them as they are): each change is reported once.
+    pub fn poll_files(&mut self) -> Vec<FileChange> {
+        let mut changes = Vec::new();
+        if let Some(exists) = self.inp_watch.poll(&self.inp_path) {
+            changes.push(FileChange { kind: "model", path: self.inp_path.clone(), exists });
+        }
+        if let Some(lr) = &mut self.results {
+            if let Some(exists) = lr.watch.poll(&lr.path) {
+                changes.push(FileChange { kind: "results", path: lr.path.clone(), exists });
+            }
+        }
+        changes
+    }
+
+    /// Keeps the model (`model`) or the loaded results (`results`) as they are: their file as
+    /// it is now on disk is no longer reported as changed.
+    pub fn ignore_file_change(&mut self, kind: &str) -> Res<()> {
+        match kind {
+            "model" => self.inp_watch.ignore(&self.inp_path),
+            "results" => {
+                if let Some(lr) = &mut self.results {
+                    lr.watch.ignore(&lr.path);
+                }
+            }
+            _ => return Err(format!("unknown file kind {kind:?}")),
+        }
+        Ok(())
     }
 
     /// File of the model.

@@ -371,6 +371,8 @@ impl Session {
             let _ = std::fs::remove_file(&tmp);
             format!("{}: {e}", target.display())
         })?;
+        // Written by the app: not a change made by another program.
+        self.inp_watch = crate::watch::Watch::new(&target);
         if target != self.inp_path {
             self.inp_path = target;
             self.save_project()?;
