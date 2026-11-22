@@ -241,3 +241,29 @@ fn autosave_restore_and_save() {
     assert!(!file.exists());
     assert!(std::fs::read_to_string(&inp).unwrap().contains("100.5"));
 }
+
+#[test]
+fn snow_packs_and_aquifers() {
+    let (_dir, mut s) = open();
+    let o = s.edit(EditRequest::AddTable { kind: RefKind::Snowpack }, &[]).unwrap();
+    assert_eq!(o.created.as_deref(), Some("Snow1"));
+    // A metric model: snow melts from 0 degrees C.
+    let Table::Snowpack(p) = s.table(RefKind::Snowpack, "Snow1").unwrap() else { panic!() };
+    assert_eq!(p.pervious[2], "0.0");
+    let o = s.edit(EditRequest::AddTable { kind: RefKind::Aquifer }, &[]).unwrap();
+    assert_eq!(o.created.as_deref(), Some("Aquifer1"));
+    assert_eq!(s.names(RefKind::Aquifer), ["Aquifer1"]);
+    s.edit(EditRequest::AddLine { section: "GROUNDWATER".into(), key: vec!["S1".into()] }, &[]).unwrap();
+    s.edit(
+        EditRequest::SetField {
+            section: "GROUNDWATER".into(),
+            key: vec!["S1".into()],
+            field: 1,
+            value: "Aquifer1".into(),
+        },
+        &[],
+    )
+    .unwrap();
+    let e = s.edit(EditRequest::DeleteTable { kind: RefKind::Aquifer, name: "Aquifer1".into() }, &[]).unwrap_err();
+    assert!(e.contains("S1 [GROUNDWATER]"), "{e}");
+}

@@ -171,6 +171,7 @@ fn sites(kind: RefKind) -> Vec<Site> {
                     vec![]
                 }
             }),
+            site(S::Snowpacks, Ref, |l| if up(l, 1) == "REMOVAL" && l.len() > 8 { vec![8] } else { vec![] }),
             site(S::Tags, Owned, |l| if up(l, 0) == "SUBCATCH" { vec![1] } else { vec![] }),
             site(S::Report, List, report_list("SUBCATCHMENTS")),
         ],
@@ -225,6 +226,7 @@ fn sites(kind: RefKind) -> Vec<Site> {
             site(S::Snowpacks, Def, t0),
             site(S::Subcatchments, Ref, |l| if l.len() > 8 { vec![8] } else { vec![] }),
         ],
+        RefKind::Aquifer => vec![site(S::Aquifers, Def, t0), site(S::Groundwater, Ref, t1)],
         RefKind::Outlet => {
             let mut v = sites(RefKind::Node);
             v.extend(sites(RefKind::Subcatchment));

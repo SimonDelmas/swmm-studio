@@ -40,8 +40,8 @@ continuous simulations over many years whose results files reach several gigabyt
 - **Edit many objects at once**: set a value on the whole selection, or work on a full section
   (junctions, conduits, subareas…) in a spreadsheet-like table, with copy and paste to and from Excel.
 - **Data editors**: curves, time series, time patterns, unit hydrographs and RDII, transects,
-  climatology, simulation options. Any other section (water quality, LID, groundwater…) can be
-  edited as text.
+  aquifers and groundwater, snow packs, climatology, simulation options. Any other section
+  (water quality, LID…) can be edited as text.
 - **Model checks** after every edit: missing references, links without a cross-section, adverse
   slopes, unconnected nodes, parts of the network that reach no outfall… Click an issue to go to
   the object.

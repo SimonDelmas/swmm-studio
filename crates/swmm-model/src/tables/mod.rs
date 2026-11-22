@@ -1,5 +1,5 @@
 //! Named data objects edited as a whole: curves, time series, time patterns, unit
-//! hydrographs (RDII) and transects. Values are kept as text so that untouched numbers
+//! hydrographs (RDII), transects, aquifers and snow packs. Values are kept as text so that untouched numbers
 //! are written back as they were.
 
 use std::collections::HashSet;
@@ -28,6 +28,8 @@ pub fn section_of(kind: RefKind) -> Option<SectionKind> {
         RefKind::Pattern => SectionKind::Patterns,
         RefKind::Hydrograph => SectionKind::Hydrographs,
         RefKind::Transect => SectionKind::Transects,
+        RefKind::Aquifer => SectionKind::Aquifers,
+        RefKind::Snowpack => SectionKind::Snowpacks,
         _ => return None,
     })
 }
@@ -135,6 +137,36 @@ pub fn read(inp: &InpFile, kind: RefKind, name: &str) -> Option<Table> {
             }
             Table::Hydrograph(h)
         }
+        RefKind::Aquifer => {
+            let t = toks(first);
+            let mut values = defaults(RefKind::Aquifer, "");
+            values.truncate(12);
+            for (v, s) in values.iter_mut().zip(&t) {
+                *v = s.to_string();
+            }
+            Table::Aquifer(Aquifer { name, values, pattern: t.get(12).map_or(String::new(), |s| s.to_string()) })
+        }
+        RefKind::Snowpack => {
+            let Some(Table::Snowpack(mut p)) = Table::empty(RefKind::Snowpack, &name) else { unreachable!() };
+            for l in &lines {
+                let t = toks(l);
+                let Some(surface) = t.first().map(|s| s.to_ascii_uppercase()) else { continue };
+                let target = match surface.as_str() {
+                    "PLOWABLE" => &mut p.plowable,
+                    "IMPERVIOUS" => &mut p.impervious,
+                    "PERVIOUS" => &mut p.pervious,
+                    "REMOVAL" => {
+                        p.subcatchment = t.get(7).map_or(String::new(), |s| s.to_string());
+                        &mut p.removal
+                    }
+                    _ => continue,
+                };
+                for (v, s) in target.iter_mut().zip(&t[1..]) {
+                    *v = s.to_string();
+                }
+            }
+            Table::Snowpack(p)
+        }
         _ => return None,
     })
 }
@@ -196,6 +228,29 @@ fn table_rows(t: &Table) -> Vec<Vec<String>> {
                 }
                 rows.push(v);
             }
+        }
+        Table::Aquifer(a) => {
+            let mut r = vec![a.name.clone()];
+            r.extend(a.values.iter().map(|v| v.trim().to_string()));
+            if !a.pattern.trim().is_empty() {
+                r.push(a.pattern.trim().to_string());
+            }
+            rows.push(r);
+        }
+        Table::Snowpack(p) => {
+            for (surface, values) in
+                [("PLOWABLE", &p.plowable), ("IMPERVIOUS", &p.impervious), ("PERVIOUS", &p.pervious)]
+            {
+                let mut r = vec![p.name.clone(), surface.to_string()];
+                r.extend(values.iter().map(|v| v.trim().to_string()));
+                rows.push(r);
+            }
+            let mut r = vec![p.name.clone(), "REMOVAL".to_string()];
+            r.extend(p.removal.iter().map(|v| v.trim().to_string()));
+            if !p.subcatchment.trim().is_empty() {
+                r.push(p.subcatchment.trim().to_string());
+            }
+            rows.push(r);
         }
         Table::Transect(_) => unreachable!("transects are written as blocks"),
     }
