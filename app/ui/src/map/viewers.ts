@@ -118,15 +118,18 @@ export function createMapViewer(container: HTMLDivElement, bm: Basemap, onView: 
       return [q.x, q.y];
     },
     unitsPerPixel: () => EARTH / (512 * Math.pow(2, map.getZoom())),
-    fit: (b, exact = false) =>
+    fit: (b, exact = false) => {
       map.fitBounds(
         [
           [b[0], b[1]],
           [b[2], b[3]],
         ],
         { padding: exact ? 0 : 40, duration: 0, maxZoom: exact ? 24 : 19 },
-      ),
-    center: (p) => map.easeTo({ center: p, duration: 300 }),
+      );
+    },
+    center: (p) => {
+      map.easeTo({ center: p, duration: 300 });
+    },
     extent: () => {
       const b = map.getBounds();
       return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
