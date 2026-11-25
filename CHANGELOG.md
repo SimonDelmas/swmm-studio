@@ -192,6 +192,9 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Fixed
 
+- Map: selecting an object outside the view of a model with a background map, when the map
+  had to zoom out to show it, no longer stops the interface at the next selection
+  ("ue is not a function"); the pan-to-selection effect returned the map as its cleanup.
 - Map: a model without a coordinate system, reopened with its labels on, no longer stops the
   interface ("deck.gl: assertion failed"); the labels asked for the view before the map was
   ready. The view is not saved in the project until the map has one.

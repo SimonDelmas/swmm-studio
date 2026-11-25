@@ -65,8 +65,9 @@ function useViewRequests(viewer: React.RefObject<Viewer | null>) {
     if (!b) return;
     const e = v.extent();
     if (b[0] >= e[0] && b[1] >= e[1] && b[2] <= e[2] && b[3] <= e[3]) return;
-    if (b[2] - b[0] > e[2] - e[0] || b[3] - b[1] > e[3] - e[1]) return v.fit(b);
-    v.center([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
+    // No `return v.fit(b)`: whatever an effect returns, React calls as its cleanup.
+    if (b[2] - b[0] > e[2] - e[0] || b[3] - b[1] > e[3] - e[1]) v.fit(b);
+    else v.center([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
   }, [panSelection]);
 }
 
