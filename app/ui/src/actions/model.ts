@@ -122,9 +122,10 @@ export function setResultsInfo(model: ModelInfo, resetTime: boolean) {
   setState({ model, styles, plotViews, ...(resetTime ? { period: 0, playing: false } : {}) });
 }
 
-/** Asks for a results file (`.out`) and loads it into the open model. */
+/** Asks for a results file (`.out`), starting in the folder of the model, and loads it into the open model. */
 export async function chooseResults() {
-  const path = await open({ filters: [{ name: "SWMM results", extensions: ["out"] }] });
+  const folder = getState().model?.path.replace(/[\\/][^\\/]*$/, "");
+  const path = await open({ defaultPath: folder || undefined, filters: [{ name: "SWMM results", extensions: ["out"] }] });
   if (typeof path !== "string") return;
   const done = startBusy("Opening results…");
   setState({ playing: false });
