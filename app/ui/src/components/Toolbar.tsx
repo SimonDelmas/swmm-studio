@@ -32,7 +32,8 @@ function ProjectMenu() {
     if (open) api.recentFiles().then(setRecent).catch(() => {});
   }, [open]);
   // The open model is first in the list: the others are worth offering.
-  const others = recent.filter((f) => f.path.toLowerCase() !== model?.path.toLowerCase());
+  // The five most recent only.
+  const others = recent.filter((f) => f.path.toLowerCase() !== model?.path.toLowerCase()).slice(0, 5);
   // Nothing is opened or saved while a model or results are loading.
   const item = (
     label: string,

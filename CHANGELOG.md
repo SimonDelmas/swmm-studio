@@ -142,6 +142,8 @@ All notable changes to SWMM Studio are recorded here. The format follows
 
 ### Changed
 
+- Project menu: only the five models opened last are listed under Recent.
+- Open results: the file dialog starts in the folder of the model.
 - Simulation: back in the bottom panel, between Issues and Events, without sub-tabs. It lists
   the runs, the running one first with its progress bar; a click on a run shows its console
   while it runs, its report once it has finished, with the errors of its console when it failed
